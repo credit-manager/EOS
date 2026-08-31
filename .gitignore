@@ -1,0 +1,65 @@
+# Environment files (contain secrets)
+.env
+.env.local
+.env.production
+.env.staging
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Database
+*.db
+*.sqlite3
+
+# --- Session / security artifacts (added during security review) ---
+# Pre-patch backups that may contain the vulnerable code / build context
+*.bak
+*.orig
+*.rej
+
+# Auth tokens, login bodies, and test credentials captured during review
+*token*.json
+*login*.json
+*_resp.json
+*token*
+
+# Database backups / dumps
+backups/
+*.backup
+*.dump
+
+# Operation logs generated at runtime
+uvicorn_*.log
+
+# Local only: sandbox / RLS scratch files
+utility/
+
+# Security-review scratch (one-off ad-hoc test scripts created during IDOR/tenant audit)
+apply_tenant_idor_patch.py
+apply_tenant_idor_patch_final.py
+cross_tenant_negative_test.py
+idor_target_context.txt

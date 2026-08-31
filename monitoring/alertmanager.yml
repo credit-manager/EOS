@@ -1,0 +1,94 @@
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'eos-alerts@eos-dbp.com'
+  smtp_auth_username: ''
+  smtp_auth_password: ''
+  smtp_require_tls: true
+
+# ═══════════════════════════════════════════════
+# Notification Templates
+# ═══════════════════════════════════════════════
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# ═══════════════════════════════════════════════
+# Alert Routing Tree
+# ═══════════════════════════════════════════════
+route:
+  receiver: 'eos-default'
+  group_by: ['alertname', 'severity', 'service']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  routes:
+    # Critical alerts → immediate notification
+    - match:
+        severity: critical
+      receiver: 'eos-critical'
+      group_wait: 10s
+      repeat_interval: 1h
+
+    # Warning alerts → default channel
+    - match:
+        severity: warning
+      receiver: 'eos-default'
+      repeat_interval: 4h
+
+    # Backup alerts
+    - match:
+        service: backup
+      receiver: 'eos-backup'
+      repeat_interval: 12h
+
+    # Database alerts
+    - match:
+        service: database
+      receiver: 'eos-critical'
+      repeat_interval: 2h
+
+# ═══════════════════════════════════════════════
+# Receivers
+# ═══════════════════════════════════════════════
+receivers:
+  - name: 'eos-default'
+    webhook_configs:
+      - url: 'http://eos-api:8000/api/v1/webhooks/alerts'
+        send_resolved: true
+    # Uncomment for email:
+    # email_configs:
+    #   - to: 'admin@eos-dbp.com'
+    #     send_resolved: true
+
+  - name: 'eos-critical'
+    webhook_configs:
+      - url: 'http://eos-api:8000/api/v1/webhooks/alerts'
+        send_resolved: true
+    # Uncomment for email:
+    # email_configs:
+    #   - to: 'admin@eos-dbp.com'
+    #     send_resolved: true
+
+  - name: 'eos-backup'
+    webhook_configs:
+      - url: 'http://eos-api:8000/api/v1/webhooks/alerts'
+        send_resolved: true
+
+# ═══════════════════════════════════════════════
+# Inhibition Rules (suppress noise)
+# ═══════════════════════════════════════════════
+inhibit_rules:
+  # If API is down, suppress high error rate / latency alerts
+  - source_match:
+      alertname: 'EosApiDown'
+    target_match_re:
+      alertname: 'Eos(HighErrorRate|HighLatency|CriticalLatency|High4xxRate)'
+    equal: ['service']
+
+  # If PostgreSQL is down, suppress connection/latency alerts
+  - source_match:
+      alertname: 'EosPostgresDown'
+    target_match_re:
+      alertname: 'Eos(HighDbConnections|Deadlocks|HighDbLatency)'
+    equal: ['service']

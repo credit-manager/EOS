@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ar" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EOS - Dynamic Business Platform</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+        nav { background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 16px 0; position: sticky; top: 0; z-index: 100; }
+        nav .container { display: flex; justify-content: space-between; align-items: center; }
+        nav .logo { font-size: 24px; font-weight: 700; color: #2563eb; }
+        nav .links a { margin-left: 20px; text-decoration: none; color: #64748b; font-weight: 500; }
+        nav .links a:hover { color: #2563eb; }
+        .hero { text-align: center; padding: 80px 20px; background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%); color: white; }
+        .hero h1 { font-size: 48px; margin-bottom: 16px; }
+        .hero p { font-size: 20px; opacity: 0.9; margin-bottom: 32px; }
+        .hero .btn { display: inline-block; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px; margin: 0 8px; }
+        .hero .btn-primary { background: white; color: #2563eb; }
+        .hero .btn-secondary { background: rgba(255,255,255,0.2); color: white; border: 2px solid white; }
+        .features { padding: 60px 20px; }
+        .features h2 { text-align: center; font-size: 32px; margin-bottom: 40px; }
+        .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+        .feature-card { background: white; padding: 32px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .feature-card h3 { font-size: 20px; margin-bottom: 12px; color: #2563eb; }
+        .feature-card p { color: #64748b; line-height: 1.6; }
+        .form-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .form-card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 420px; }
+        .form-card h2 { text-align: center; margin-bottom: 24px; font-size: 24px; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 500; color: #374151; }
+        .form-group input { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+        .form-group input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+        .btn-full { width: 100%; padding: 12px; background: #2563eb; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: 600; cursor: pointer; }
+        .btn-full:hover { background: #1d4ed8; }
+        .btn-full:disabled { opacity: 0.5; cursor: not-allowed; }
+        .error-msg { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; padding: 10px; border-radius: 6px; margin-bottom: 16px; display: none; }
+        .success-msg { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; padding: 10px; border-radius: 6px; margin-bottom: 16px; display: none; }
+        .form-link { text-align: center; margin-top: 16px; }
+        .form-link a { color: #2563eb; text-decoration: none; }
+        .dashboard { padding: 40px 20px; }
+        .dashboard h1 { margin-bottom: 24px; }
+        .card { background: white; padding: 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 16px; }
+        .card h3 { margin-bottom: 12px; color: #2563eb; }
+        .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
+        .info-row:last-child { border-bottom: none; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+        .badge-green { background: #dcfce7; color: #16a34a; }
+        .badge-blue { background: #dbeafe; color: #2563eb; }
+        .hidden { display: none !important; }
+        footer { background: #1e293b; color: #94a3b8; text-align: center; padding: 24px; margin-top: 60px; }
+    </style>
+</head>
+<body>
+    <!-- LANDING PAGE -->
+    <div id="page-landing">
+        <nav>
+            <div class="container">
+                <div class="logo">EOS</div>
+                <div class="links">
+                    <a href="#" onclick="showPage('login')">Login</a>
+                    <a href="#" onclick="showPage('signup')" style="background:#2563eb;color:white;padding:8px 16px;border-radius:6px;">Sign Up</a>
+                </div>
+            </div>
+        </nav>
+        <div class="hero">
+            <h1>EOS Dynamic Business Platform</h1>
+            <p>Full-stack ERP with AI Composer, Multi-Tenant SaaS, and 50+ modules</p>
+            <a class="btn btn-primary" href="#" onclick="showPage('signup')">Start Free Trial</a>
+            <a class="btn btn-secondary" href="#" onclick="showPage('login')">Login</a>
+        </div>
+        <div class="features">
+            <div class="container">
+                <h2>Everything Your Business Needs</h2>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <h3>AI Business Composer</h3>
+                        <p>Describe your business in Arabic or English. AI generates your complete ERP configuration automatically.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Multi-Tenant SaaS</h3>
+                        <p>Enterprise-grade isolation. Each customer gets their own secure data space with RBAC.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>50+ Modules</h3>
+                        <p>Accounting, Inventory, HR, CRM, Projects, Manufacturing, POS, and more. Install from Marketplace.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <footer>
+            <p>EOS Dynamic Business Platform &copy; 2026</p>
+        </footer>
+    </div>
+
+    <!-- SIGNUP PAGE -->
+    <div id="page-signup" class="hidden">
+        <div class="form-page">
+            <div class="form-card">
+                <h2>Create Account</h2>
+                <div class="error-msg" id="signup-error"></div>
+                <div class="success-msg" id="signup-success"></div>
+                <form onsubmit="handleSignup(event)">
+                    <div class="form-group">
+                        <label>First Name</label>
+                        <input type="text" id="signup-fname" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Last Name</label>
+                        <input type="text" id="signup-lname" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Company Name</label>
+                        <input type="text" id="signup-company" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="signup-email" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="signup-password" required minlength="4">
+                    </div>
+                    <button type="submit" class="btn-full" id="signup-btn">Create Account</button>
+                </form>
+                <div class="form-link">
+                    Already have an account? <a href="#" onclick="showPage('login')">Login</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOGIN PAGE -->
+    <div id="page-login" class="hidden">
+        <div class="form-page">
+            <div class="form-card">
+                <h2>Login</h2>
+                <div class="error-msg" id="login-error"></div>
+                <div class="success-msg" id="login-success"></div>
+                <form onsubmit="handleLogin(event)">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="login-email" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="login-password" required>
+                    </div>
+                    <button type="submit" class="btn-full" id="login-btn">Login</button>
+                </form>
+                <div class="form-link">
+                    Don't have an account? <a href="#" onclick="showPage('signup')">Sign Up</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VERIFY PAGE -->
+    <div id="page-verify" class="hidden">
+        <div class="form-page">
+            <div class="form-card">
+                <h2>Email Verification</h2>
+                <div class="error-msg" id="verify-error"></div>
+                <div class="success-msg" id="verify-success"></div>
+                <p style="color:#64748b;margin-bottom:16px;">Enter the verification token from your email:</p>
+                <form onsubmit="handleVerify(event)">
+                    <div class="form-group">
+                        <label>Verification Token</label>
+                        <input type="text" id="verify-token" required>
+                    </div>
+                    <button type="submit" class="btn-full">Verify Email</button>
+                </form>
+                <div class="form-link">
+                    <a href="#" onclick="showPage('login')">Back to Login</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DASHBOARD PAGE -->
+    <div id="page-dashboard" class="hidden">
+        <nav>
+            <div class="container">
+                <div class="logo">EOS</div>
+                <div class="links">
+                    <a href="#" onclick="showPage('dashboard')">Dashboard</a>
+                    <a href="#" id="logout-btn" onclick="handleLogout()" style="background:#dc2626;color:white;padding:8px 16px;border-radius:6px;">Logout</a>
+                </div>
+            </div>
+        </nav>
+        <div class="dashboard">
+            <div class="container">
+                <h1>Welcome, <span id="dash-name"></span>!</h1>
+                <div class="card">
+                    <h3>Account Info</h3>
+                    <div class="info-row"><span>Email</span><span id="dash-email"></span></div>
+                    <div class="info-row"><span>Role</span><span id="dash-role"></span></div>
+                    <div class="info-row"><span>Tenant</span><span id="dash-tenant"></span></div>
+                    <div class="info-row"><span>Status</span><span class="badge badge-green">Active</span></div>
+                </div>
+                <div class="card">
+                    <h3>Quick Actions</h3>
+                    <div class="info-row">
+                        <span>Dynamic Entities</span>
+                        <a href="/docs" target="_blank" style="color:#2563eb;">API Docs</a>
+                    </div>
+                    <div class="info-row">
+                        <span>Marketplace</span>
+                        <a href="/docs" target="_blank" style="color:#2563eb;">Browse</a>
+                    </div>
+                    <div class="info-row">
+                        <span>AI Composer</span>
+                        <a href="/docs" target="_blank" style="color:#2563eb;">Try Now</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const API = '';
+    let authToken = localStorage.getItem('eos_token');
+
+    function showPage(name) {
+        document.querySelectorAll('[id^="page-"]').forEach(p => p.classList.add('hidden'));
+        document.getElementById('page-' + name).classList.remove('hidden');
+    }
+
+    function showError(id, msg) {
+        const el = document.getElementById(id);
+        el.textContent = msg;
+        el.style.display = 'block';
+        document.getElementById(id.replace('error', 'success')).style.display = 'none';
+    }
+
+    function showSuccess(id, msg) {
+        const el = document.getElementById(id.replace('error', 'success'));
+        el.textContent = msg;
+        el.style.display = 'block';
+        document.getElementById(id).style.display = 'none';
+    }
+
+    async function api(path, opts = {}) {
+        const headers = {'Content-Type': 'application/json'};
+        if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+        const r = await fetch(API + path, {...opts, headers});
+        const data = await r.json();
+        if (r.status >= 400) throw new Error(data.detail?.error?.message || data.detail?.message || 'Request failed');
+        return data;
+    }
+
+    async function handleSignup(e) {
+        e.preventDefault();
+        const btn = document.getElementById('signup-btn');
+        btn.disabled = true; btn.textContent = 'Creating...';
+        try {
+            const data = await api('/api/v1/auth/register', {method: 'POST', body: JSON.stringify({
+                first_name: document.getElementById('signup-fname').value,
+                last_name: document.getElementById('signup-lname').value,
+                company_name: document.getElementById('signup-company').value,
+                email: document.getElementById('signup-email').value,
+                password: document.getElementById('signup-password').value,
+            })});
+            const token = data.data.verification_token;
+            if (token) {
+                showSuccess('signup-error', 'Account created! Token: ' + token.substring(0, 20) + '...');
+                localStorage.setItem('eos_verify_token', token);
+                setTimeout(() => showPage('verify'), 2000);
+            } else {
+                showSuccess('signup-error', 'Account created! Check your email for verification link.');
+                setTimeout(() => showPage('login'), 2000);
+            }
+        } catch (err) {
+            showError('signup-error', err.message);
+        }
+        btn.disabled = false; btn.textContent = 'Create Account';
+    }
+
+    async function handleLogin(e) {
+        e.preventDefault();
+        const btn = document.getElementById('login-btn');
+        btn.disabled = true; btn.textContent = 'Logging in...';
+        try {
+            const data = await api('/api/v1/auth/login', {method: 'POST', body: JSON.stringify({
+                email: document.getElementById('login-email').value,
+                password: document.getElementById('login-password').value,
+            })});
+            authToken = data.data.access_token;
+            localStorage.setItem('eos_token', authToken);
+            localStorage.setItem('eos_user', JSON.stringify(data.data.user));
+            showDashboard(data.data.user);
+        } catch (err) {
+            if (err.message.includes('verify')) {
+                showError('login-error', err.message + ' Please verify your email first.');
+                setTimeout(() => showPage('verify'), 2000);
+            } else {
+                showError('login-error', err.message);
+            }
+        }
+        btn.disabled = false; btn.textContent = 'Login';
+    }
+
+    async function handleVerify(e) {
+        e.preventDefault();
+        try {
+            const token = document.getElementById('verify-token').value || localStorage.getItem('eos_verify_token');
+            await api('/api/v1/auth/verify-email', {method: 'POST', body: JSON.stringify({token: token})});
+            showSuccess('verify-error', 'Email verified! Redirecting to login...');
+            setTimeout(() => showPage('login'), 2000);
+        } catch (err) {
+            showError('verify-error', err.message);
+        }
+    }
+
+    function showDashboard(user) {
+        document.getElementById('dash-name').textContent = user.first_name + ' ' + user.last_name;
+        document.getElementById('dash-email').textContent = user.email;
+        document.getElementById('dash-role').textContent = user.role;
+        document.getElementById('dash-tenant').textContent = user.tenant_id;
+        showPage('dashboard');
+    }
+
+    function handleLogout() {
+        authToken = null;
+        localStorage.removeItem('eos_token');
+        localStorage.removeItem('eos_user');
+        showPage('landing');
+    }
+
+    // Auto-login if token exists
+    if (authToken) {
+        const user = JSON.parse(localStorage.getItem('eos_user'));
+        if (user) {
+            showDashboard(user);
+        } else {
+            showPage('landing');
+        }
+    }
+    </script>
+</body>
+</html>
