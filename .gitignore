@@ -9,9 +9,12 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
-dist/
 build/
 .eggs/
+
+# Ignore build dist outputs EXCEPT the committed React frontend build served at /ui
+dist/
+!eos-system/frontend/dist/
 
 # Virtual environments
 venv/
