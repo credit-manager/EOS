@@ -7,6 +7,13 @@ Publishing registers custom entities into the dynamic platform metadata
 (dbp_entities/dbp_fields) with real physical tables, making them immediately
 usable via standard Dynamic CRUD (/api/v1/dynamic/entities/{code}/records).
 
+Tenant model:
+- entity_code is reusable across tenants;
+- dbp_entities uniqueness is (tenant_id, code) for tenant entities;
+- physical builder tables are shared and always contain tenant_id, so tenant
+  data remains isolated without multiplying tables per customer;
+- global/system entities (tenant_id IS NULL) remain globally unique.
+
 Transaction model:
 - draft saves are independent transactions;
 - publish is one database transaction, including PostgreSQL DDL;
@@ -113,7 +120,7 @@ class BuilderEngine:
                 return {"success":False,"error":f"Invalid module code: {code!r}"}
             seen[code]=bool(m.get("enabled",True))
         existing={m["code"]:m.get("enabled",True) for m in proj["draft_config"].get("modules",[])}
-        existing.update(seen); proj["draft_config"]["modules"]=[{"code":c,"enabled":e} for c,e in sorted(existing.items())]
+        existing.update(seen); proj["draft_config"]["modules"]= [{"code":c,"enabled":e} for c,e in sorted(existing.items())]
         return {"success":self._save_draft(tenant_id,pid,proj["draft_config"])}
 
     def add_entity(self, tenant_id: str, pid: str, entity_def: Dict) -> Dict[str,Any]:
@@ -213,8 +220,6 @@ class BuilderEngine:
         cfg=proj["draft_config"]; validation=self.validate_draft(cfg)
         if not validation["valid"]:return {"success":False,"error":"Validation failed","validation":validation}
         try:
-            # PostgreSQL DDL is transactional. No helper called below may commit.
-            # Lock the project so two concurrent publishes cannot allocate the same version.
             self.db.execute(text("SELECT id FROM dbp_builder_projects WHERE id=:pid AND tenant_id=:tid FOR UPDATE"),{"pid":pid,"tid":tenant_id}).fetchone()
             created=[]; registered=[]
             for ent in cfg.get("custom_entities",[]):
@@ -254,7 +259,6 @@ class BuilderEngine:
             current_codes={e["entity_code"] for e in proj["draft_config"].get("custom_entities",[])}
             target_codes={e["entity_code"] for e in target_cfg.get("custom_entities",[])}
             removed=[]; restored=[]
-            # Restore/create every entity and field from the target snapshot.
             for ent in target_cfg.get("custom_entities",[]):
                 tbl=BUILDER_TABLE_PREFIX+ent["entity_code"]
                 self._ensure_physical_table(tbl,ent.get("fields",[]))
@@ -293,9 +297,11 @@ class BuilderEngine:
             self.db.execute(text(f"ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS {code} {sqltype}"))
 
     def _register_entity(self,tenant_id:str,table_name:str,ent:Dict):
-        existing=self.db.execute(text("SELECT id,tenant_id FROM dbp_entities WHERE code=:code"),{"code":ent["entity_code"]}).fetchone()
+        # Entity codes are tenant-scoped. A global/system entity is never
+        # implicitly reused by a tenant custom entity.
+        existing=self.db.execute(text("SELECT id,tenant_id,is_system FROM dbp_entities WHERE code=:code AND tenant_id=:tid"),{"code":ent["entity_code"],"tid":tenant_id}).fetchone()
         if existing:
-            if str(existing[1])!=str(tenant_id):raise RuntimeError(f"Entity code '{ent['entity_code']}' owned by another tenant")
+            if existing[2]: raise RuntimeError(f"Entity code '{ent['entity_code']}' is reserved as a system entity")
             self._sync_fields(existing[0],ent); return
         eid=str(uuid.uuid4())
         self.db.execute(text("INSERT INTO dbp_entities (id,tenant_id,code,name_en,name_ar,faculty,table_mapping,is_system,metadata_schema) VALUES (:id,:tid,:code,:nen,:nar,:fac,:tbl,false,'{}')"),
@@ -306,7 +312,6 @@ class BuilderEngine:
         desired={f["code"]:f for f in ent.get("fields",[])}
         current=self.db.execute(text("SELECT id,code FROM dbp_fields WHERE entity_id=:eid"),{"eid":entity_id}).fetchall()
         current_map={r[1]:r[0] for r in current}
-        # Metadata removal is safe: physical columns are intentionally retained for data safety.
         for code,fid in current_map.items():
             if code not in desired:self.db.execute(text("DELETE FROM dbp_fields WHERE id=:fid"),{"fid":fid})
         for order,(code,fld) in enumerate(desired.items(),1):
@@ -315,8 +320,8 @@ class BuilderEngine:
                 self.db.execute(text("UPDATE dbp_fields SET label_en=:len,label_ar=:lar,field_type=:ftype,is_required=:req,enum_values=CAST(:enums AS JSONB),ui_config=CAST(:ui AS JSONB) WHERE entity_id=:eid AND code=:code"),
                                  {"len":fld.get("label_en",code),"lar":fld.get("label_ar"),"ftype":fld["field_type"],"req":bool(fld.get("is_required")),"enums":enums,"ui":ui,"eid":entity_id,"code":code})
             else:
-                self.db.execute(text("INSERT INTO dbp_fields (id,entity_id,code,label_en,label_ar,field_type,is_required,ui_config,enum_values) VALUES (:id,:eid,:code,:len,:lar,:ftype,:req,CAST(:ui AS JSONB),CAST(:enums AS JSONB))"),
-                                 {"id":str(uuid.uuid4()),"eid":entity_id,"code":code,"len":fld.get("label_en",code),"lar":fld.get("label_ar"),"ftype":fld["field_type"],"req":bool(fld.get("is_required")),"ui":ui,"enums":enums})
+                self.db.execute(text("INSERT INTO dbp_fields (id,entity_id,code,label_en,label_ar,field_type,is_required,ui_config,enum_values) VALUES (:id,:eid,:code,:len,:lar,:ftype,:req,CAST(:ui AS JSONB),CAST(:enums AS JSONB)"),
+                                 {"id":str(uuid.uuid4()),"eid":entity_id,"code":code,"len":fld.get("label_en",code),"lar":fld.get("label_ar"),"ftype":fld["field_type"],"req":bool(fld.get("is_required")),"enums":enums,"ui":ui})
         self.db.flush()
 
     def _unregister_entity(self,tenant_id:str,table_name:str,ecode:str):
