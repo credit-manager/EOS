@@ -8,13 +8,10 @@ from alembic import op
 revision = "20260901_tenant_entity_codes"
 down_revision = None
 branch_labels = None
- depends_on = None
+depends_on = None
 
 
 def upgrade():
-    # Remove the legacy global UNIQUE constraint/index on dbp_entities.code.
-    # The exact generated name can differ between installations, so inspect
-    # PostgreSQL catalog rather than assuming a name.
     op.execute("""
     DO $$
     DECLARE r record;
@@ -47,13 +44,11 @@ def upgrade():
       END LOOP;
     END $$;
     """)
-    # Tenant custom entities: code unique inside a tenant.
     op.execute("""
       CREATE UNIQUE INDEX IF NOT EXISTS uq_dbp_entities_tenant_code
       ON public.dbp_entities (tenant_id, code)
       WHERE tenant_id IS NOT NULL
     """)
-    # Global/system entities: code remains globally unique when tenant_id is NULL.
     op.execute("""
       CREATE UNIQUE INDEX IF NOT EXISTS uq_dbp_entities_global_code
       ON public.dbp_entities (code)
