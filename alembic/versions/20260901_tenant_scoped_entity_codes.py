@@ -6,7 +6,7 @@ Tenant entities are unique only within their tenant.
 from alembic import op
 
 revision = "20260901_tenant_entity_codes"
-down_revision = None
+down_revision = "20260901_tenant_safe_accounting"
 branch_labels = None
 depends_on = None
 
