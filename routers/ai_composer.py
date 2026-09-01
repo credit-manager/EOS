@@ -1,16 +1,29 @@
-"""
-P53 AI Composer Router — AI Business Composer
-"""
+"""P53 AI Composer Router — tenant-scoped business configuration sessions."""
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from database import get_db
 from core.auth import require_permission, get_current_user
 from core.rate_limit import read_limiter, write_limiter
 from core.ai_composer import AIComposerEngine
+from security.tenant_scope import require_tenant_access
 
 router = APIRouter(prefix="/api/v1/dynamic/composer", tags=["AI Composer"])
+
+
+def _session_tenant(db: Session, session_id: str):
+    row = db.execute(text("SELECT tenant_id FROM dbp_ai_composer_sessions WHERE id = :sid"), {"sid": session_id}).fetchone()
+    if not row:
+        raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Session not found"}})
+    return row[0]
+
+
+def _authorize_session(db: Session, session_id: str, user: dict):
+    tenant_id = _session_tenant(db, session_id)
+    require_tenant_access(user, tenant_id)
+    return tenant_id
 
 
 @router.post("/compose", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
@@ -18,14 +31,17 @@ async def compose(body: dict, user: dict = Depends(get_current_user), db: Sessio
     user_input = body.get("input") or body.get("natural_language_input")
     if not user_input:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": "input required"}})
-    result = AIComposerEngine(db).create_session(
-        user.get("tenant_id"), user.get("id") or "unknown", user_input)
+    tenant_id = user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(403, "Authenticated user has no tenant")
+    result = AIComposerEngine(db).create_session(tenant_id, user.get("id") or "unknown", user_input)
     db.commit()
     return {"status": "success", "data": result}
 
 
 @router.get("/sessions/{session_id}", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_session(session_id: str, db: Session = Depends(get_db)):
+async def get_session(session_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    _authorize_session(db, session_id, user)
     s = AIComposerEngine(db).get_session(session_id)
     if not s:
         raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Session not found"}})
@@ -34,6 +50,7 @@ async def get_session(session_id: str, db: Session = Depends(get_db)):
 
 @router.post("/sessions/{session_id}/approve", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def approve(session_id: str, body: dict = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    _authorize_session(db, session_id, user)
     result = AIComposerEngine(db).approve_session(session_id, user.get("id") or "admin")
     if not result["success"]:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "APPROVE_FAILED", "message": result["error"]}})
@@ -42,7 +59,8 @@ async def approve(session_id: str, body: dict = None, user: dict = Depends(get_c
 
 
 @router.post("/sessions/{session_id}/activate", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def activate(session_id: str, db: Session = Depends(get_db)):
+async def activate(session_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    _authorize_session(db, session_id, user)
     result = AIComposerEngine(db).activate_session(session_id)
     if not result["success"]:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "ACTIVATE_FAILED", "message": result["error"]}})
@@ -52,4 +70,7 @@ async def activate(session_id: str, db: Session = Depends(get_db)):
 
 @router.get("/sessions", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def list_sessions(status: Optional[str] = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    return {"status": "success", "data": AIComposerEngine(db).list_sessions(user.get("tenant_id"), status=status)}
+    tenant_id = user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(403, "Authenticated user has no tenant")
+    return {"status": "success", "data": AIComposerEngine(db).list_sessions(tenant_id, status=status)}
