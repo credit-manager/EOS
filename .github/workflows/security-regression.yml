@@ -1,0 +1,22 @@
+name: EOS Security Regression
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  security-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pytest fastapi
+      - name: Compile security-sensitive modules
+        run: python -m py_compile security/tenant_scope.py routers/industry_framework.py routers/entity_management.py routers/ai_composer.py
+      - name: Tenant isolation tests
+        run: pytest -q tests/test_tenant_scope.py
