@@ -35,6 +35,8 @@ jobs:
         run: PYTHONPATH=. pytest -q tests/test_tenant_scope.py tests/test_e2e_erp_generation.py
       - name: Composer and Builder integration contracts
         run: PYTHONPATH=. pytest -q tests/test_composer_builder_e2e.py
+      - name: Dynamic CRUD mandatory security regressions
+        run: PYTHONPATH=. pytest -q tests/test_dynamic_crud_tenant_security.py
       - name: Live PostgreSQL tenant isolation smoke test
         env:
           EOS_TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/eos_test
