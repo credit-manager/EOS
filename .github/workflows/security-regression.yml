@@ -28,9 +28,9 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install test dependencies
-        run: python -m pip install --upgrade pip pytest fastapi sqlalchemy psycopg2-binary
+        run: python -m pip install --upgrade pip pytest fastapi sqlalchemy psycopg2-binary python-dotenv
       - name: Compile security-sensitive modules
-        run: python -m py_compile security/tenant_scope.py core/builder_safety.py routers/industry_framework.py routers/entity_management.py routers/ai_composer.py routers/builder.py
+        run: python -m py_compile security/tenant_scope.py core/builder_safety.py routers/industry_framework.py routers/entity_management.py routers/ai_composer.py routers/builder.py routers/dynamic_crud.py
       - name: Tenant isolation and ERP generation tests
         run: PYTHONPATH=. pytest -q tests/test_tenant_scope.py tests/test_e2e_erp_generation.py
       - name: Composer and Builder integration contracts
