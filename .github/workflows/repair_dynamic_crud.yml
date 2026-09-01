@@ -9,17 +9,14 @@ permissions:
 
 jobs:
   repair-and-test:
-    if: github.actor == 'credit-manager'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Restore full Dynamic CRUD and apply security patch
         shell: bash
         run: |
@@ -28,7 +25,6 @@ jobs:
           from pathlib import Path
           p = Path('routers/dynamic_crud.py')
           s = p.read_text(encoding='utf-8')
-
           replacements = [
           ('''def get_verification_engine(\n    entity_code: str,\n    db: Session = Depends(get_db)\n):\n    return DynamicVerificationEngine(db, entity_code)''', '''def get_verification_engine(\n    entity_code: str,\n    db: Session = Depends(get_db),\n    current_user: Optional[dict] = Depends(optional_get_current_user),\n):\n    tenant_id = current_user.get("tenant_id") if current_user else None\n    return DynamicVerificationEngine(db, entity_code, tenant_id=tenant_id)'''),
           ('''    ent_row = db.execute(\n        text(\n            "SELECT id, table_mapping FROM dbp_entities "\n            "WHERE code = :code"\n        ),\n        {"code": entity_code}\n    ).fetchone()''', '''    tenant_id = current_user.get("tenant_id") if current_user else None\n    ent_sql = "SELECT id, table_mapping, tenant_id FROM dbp_entities WHERE code = :code"\n    ent_params = {"code": entity_code}\n    if tenant_id:\n        ent_sql += " AND (tenant_id = :tenant_id OR tenant_id IS NULL)"\n        ent_params["tenant_id"] = tenant_id\n    else:\n        ent_sql += " AND tenant_id IS NULL"\n    ent_row = db.execute(text(ent_sql), ent_params).fetchone()'''),
@@ -41,19 +37,14 @@ jobs:
               s = s.replace(old, new, 1)
           p.write_text(s, encoding='utf-8')
           PY
-
       - name: Compile
         run: python -m py_compile routers/dynamic_crud.py core/dynamic_verification.py
-
       - name: Install tests
         run: python -m pip install --upgrade pip pytest fastapi sqlalchemy psycopg2-binary python-dotenv
-
       - name: Mandatory Dynamic CRUD security tests
         run: PYTHONPATH=. pytest -q tests/test_dynamic_crud_tenant_security.py
-
       - name: Existing security and ERP tests
         run: PYTHONPATH=. pytest -q tests/test_tenant_scope.py tests/test_e2e_erp_generation.py tests/test_composer_builder_e2e.py
-
       - name: Commit repaired full router
         run: |
           git config user.name 'credit-manager'
@@ -61,7 +52,6 @@ jobs:
           git add routers/dynamic_crud.py
           git diff --cached --quiet || git commit -m 'security: restore full Dynamic CRUD and tenant-scope metadata'
           git push origin main
-
       - name: Remove one-shot repair workflow
         if: success()
         run: |
