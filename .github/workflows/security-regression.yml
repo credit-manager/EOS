@@ -9,14 +9,31 @@ on:
 jobs:
   security-regression:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: eos_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d eos_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - name: Install test dependencies
-        run: python -m pip install --upgrade pip pytest fastapi
+        run: python -m pip install --upgrade pip pytest fastapi sqlalchemy psycopg2-binary
       - name: Compile security-sensitive modules
         run: python -m py_compile security/tenant_scope.py core/builder_safety.py routers/industry_framework.py routers/entity_management.py routers/ai_composer.py routers/builder.py
       - name: Tenant isolation and ERP generation tests
         run: PYTHONPATH=. pytest -q tests/test_tenant_scope.py tests/test_e2e_erp_generation.py
+      - name: Live PostgreSQL tenant isolation smoke test
+        env:
+          EOS_TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/eos_test
+        run: PYTHONPATH=. pytest -q tests/test_live_postgres_e2e.py
