@@ -1,12 +1,11 @@
 from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import Session, sessionmaker, declarative_base
 import os
 import contextvars
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Request-scoped authenticated tenant. Never populate this from a client header.
 current_tenant_id: contextvars.ContextVar = contextvars.ContextVar(
     "current_tenant_id", default=None
 )
@@ -47,7 +46,7 @@ if is_production:
 
 @event.listens_for(engine, "begin")
 def _set_tenant_on_begin(conn):
-    """Set the transaction-local PostgreSQL RLS tenant context."""
+    """Set transaction-local tenant context for PostgreSQL RLS."""
     tid = current_tenant_id.get()
     if tid is not None:
         safe = str(tid).replace("'", "''")
@@ -58,14 +57,9 @@ Base = declarative_base()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-@event.listens_for(SessionLocal, "before_flush")
+@event.listens_for(Session, "before_flush")
 def _enforce_orm_tenant_boundary(session, flush_context, instances):
-    """Prevent ORM writes from silently using a platform/default tenant.
-
-    Tenant-owned ORM models are expected to expose a ``tenant_id`` attribute.
-    Platform/global models should not use this listener because they do not
-    carry tenant_id. A tenant request may only write rows for its own tenant.
-    """
+    """Prevent ORM writes from silently crossing or inventing tenants."""
     tid = current_tenant_id.get()
     for obj in list(session.new) + list(session.dirty):
         if not hasattr(obj, "tenant_id"):
