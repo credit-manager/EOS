@@ -1,3 +1,4 @@
+# Security regression suite. Dependency installation intentionally follows requirements.txt.
 name: EOS Security Regression
 
 on:
