@@ -40,12 +40,12 @@ def db_session(test_engine) -> Generator[Session, None, None]:
     connection = test_engine.connect()
     transaction = connection.begin()
     SessionLocal = sessionmaker(
-        autocommit=False, 
-        autoflush=False, 
+        autocommit=False,
+        autoflush=False,
         bind=connection
     )
     session = SessionLocal()
-    
+
     try:
         yield session
     finally:
@@ -62,12 +62,12 @@ def client(db_session) -> Generator[TestClient, None, None]:
             yield db_session
         finally:
             pass
-    
+
     app.dependency_overrides = {}
-    
+
     with TestClient(app) as test_client:
         yield test_client
-    
+
     app.dependency_overrides = {}
 
 
@@ -101,17 +101,17 @@ def test_tenant(db_session: Session):
 
 
 # ============================================
-| اختبارات Unit Tests
+# اختبارات Unit Tests
 # ============================================
 
 class TestCoreModules:
     """اختبار الوحدات الأساسية"""
-    
+
     def test_import_main(self):
         """اختبار استيراد main.py"""
         import main
         assert hasattr(main, 'app')
-    
+
     def test_database_models(self):
         """اختبار النماذج"""
         from models import User, Tenant, DBPEntity
@@ -122,12 +122,12 @@ class TestCoreModules:
 
 class TestAPIEndpoints:
     """اختبار نقاط API"""
-    
+
     def test_health_check(self, client: TestClient):
         """اختبار نقطة الصحة"""
         response = client.get("/health")
-        assert response.status_code in [200, 404]  # قد لا تكون موجودة
-    
+        assert response.status_code in [200, 404]
+
     def test_root_endpoint(self, client: TestClient):
         """اختبار الجذر"""
         response = client.get("/")
@@ -136,11 +136,11 @@ class TestAPIEndpoints:
 
 class TestMetadataEngine:
     """اختبار محرك الميتاداتا"""
-    
+
     def test_entity_creation(self, db_session: Session):
         """اختبار إنشاء كيان"""
         from models import DBPEntity
-        
+
         entity = DBPEntity(
             name="TestEntity",
             code="TEST_ENT",
@@ -148,71 +148,68 @@ class TestMetadataEngine:
         )
         db_session.add(entity)
         db_session.commit()
-        
+
         assert entity.id is not None
         assert entity.code == "TEST_ENT"
 
 
 class TestAIComposer:
     """اختبار محرك الذكاء الاصطناعي"""
-    
+
     def test_industry_detection(self):
         """اختبار اكتشاف الصناعة"""
         from core.ai_composer import AIComposer
-        
+
         composer = AIComposer()
-        
-        # اختبار كلمات سياحة
+
         result = composer.detect_industry("شركة سياحة وسفر")
         assert 'tourism' in result or 'travel' in result or len(result) > 0
-    
+
     def test_module_mapping(self):
         """اختبار ربط الوحدات"""
         from core.ai_composer import AIComposer
-        
+
         composer = AIComposer()
         modules = composer.suggest_modules(['tourism'])
-        
+
         assert isinstance(modules, list)
 
 
 class TestBuilderEngine:
     """اختبار محرك البناء"""
-    
+
     def test_builder_initialization(self):
-        """اختبار تهيئة(builder"""
+        """اختبار تهيئة builder"""
         from core.builder_engine import BuilderEngine
-        
+
         builder = BuilderEngine()
         assert builder is not None
 
 
 class TestMultiTenancy:
     """اختبار عزل المستأجرين"""
-    
+
     def test_tenant_isolation(self, db_session: Session):
         """اختبار عزل البيانات بين المستأجرين"""
         from models import DBPEntity
-        
-        # إنشاء كيانات لمستأجرين مختلفين
+
         entity1 = DBPEntity(name="Entity1", code="ENT1", tenant_id=1)
         entity2 = DBPEntity(name="Entity2", code="ENT2", tenant_id=2)
-        
+
         db_session.add_all([entity1, entity2])
         db_session.commit()
-        
-        # التحقق من العزل
+
         tenant1_entities = db_session.query(DBPEntity).filter(
             DBPEntity.tenant_id == 1
         ).all()
-        
+
         assert len(tenant1_entities) == 1
         assert tenant1_entities[0].code == "ENT1"
 
 
 class TestIndustryPacks:
     """اختبار حزم الصناعات"""
-    
+
     def test_tourism_pack_exists(self):
         """اختبار وجود حزمة السياحة"""
         try:
@@ -221,7 +218,7 @@ class TestIndustryPacks:
             assert pack is not None
         except ImportError:
             pytest.skip("Tourism pack not yet implemented")
-    
+
     def test_construction_pack_exists(self):
         """اختبار حزمة المقاولات"""
         try:
@@ -233,37 +230,29 @@ class TestIndustryPacks:
 
 
 # ============================================
-| اختبارات التكامل Integration Tests
+# اختبارات التكامل Integration Tests
 # ============================================
 
 class TestIntegration:
     """اختبارات التكامل الشاملة"""
-    
+
     def test_full_workflow(self, client: TestClient, db_session: Session):
         """اختبار سير عمل كامل من البداية للنهاية"""
-        # 1. إنشاء tenant
-        # 2. إنشاء مستخدم
-        # 3. تفعيل وحدات
-        # 4. إنشاء كيانات
-        # 5. اختبار CRUD
-        
-        # هذا اختبار شامل يمكن توسيعه
         assert True
 
 
 # ============================================
-| اختبارات الأداء Performance Tests
+# اختبارات الأداء Performance Tests
 # ============================================
 
 class TestPerformance:
     """اختبارات الأداء"""
-    
+
     def test_entity_query_performance(self, db_session: Session):
         """اختبار أداء الاستعلامات"""
         from models import DBPEntity
         import time
-        
-        # إنشاء 100 كيان
+
         start = time.time()
         for i in range(100):
             entity = DBPEntity(
@@ -273,41 +262,38 @@ class TestPerformance:
             )
             db_session.add(entity)
         db_session.commit()
-        
+
         creation_time = time.time() - start
-        
-        # قراءة جميع الكيانات
+
         start = time.time()
         entities = db_session.query(DBPEntity).filter(
             DBPEntity.tenant_id == 1
         ).all()
         query_time = time.time() - start
-        
+
         assert len(entities) == 100
-        assert creation_time < 5.0  # أقل من 5 ثواني
-        assert query_time < 1.0  # أقل من ثانية
+        assert creation_time < 5.0
+        assert query_time < 1.0
 
 
 # ============================================
-| اختبارات الأمان Security Tests
+# اختبارات الأمان Security Tests
 # ============================================
 
 class TestSecurity:
     """اختبارات الأمان"""
-    
+
     def test_sql_injection_prevention(self, client: TestClient):
         """اختبار منع SQL Injection"""
-        # محاولة حقن SQL
         malicious_input = "'; DROP TABLE users; --"
-        
-        # يجب أن يفشل بشكل آمن
+
         response = client.get(f"/api/users?search={malicious_input}")
         assert response.status_code in [200, 400, 401, 403, 404]
-    
+
     def test_xss_prevention(self, client: TestClient):
         """اختبار منع XSS"""
         xss_payload = "<script>alert('xss')</script>"
-        
+
         response = client.post(
             "/api/test",
             json={"data": xss_payload}
@@ -316,7 +302,7 @@ class TestSecurity:
 
 
 # ============================================
-| تشغيل الاختبارات
+# تشغيل الاختبارات
 # ============================================
 
 if __name__ == "__main__":
