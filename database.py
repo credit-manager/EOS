@@ -4,27 +4,17 @@ import os
 import contextvars
 from dotenv import load_dotenv
 
-# Load .env file from project root
 load_dotenv()
 
-# --- RLS tenant scoping ----------------------------------------------------
-# Holds the tenant_id for the current request so RLS policies can be applied
-# per-session. Set by auth middleware / get_current_user; applied via SET LOCAL
-# when a transaction begins on each connection.
+# Request-scoped authenticated tenant. Never populate this from a client header.
 current_tenant_id: contextvars.ContextVar = contextvars.ContextVar(
     "current_tenant_id", default=None
 )
-
 RLS_CONTEXT_PARAM = "app.tenant_id"
+PLATFORM_TENANT = "platform"
 
 
 def _get_database_url() -> str:
-    """
-    Get DATABASE_URL from environment.
-
-    No hardcoded passwords. No fallback to credentials.
-    Raises ValueError if not set.
-    """
     url = os.getenv("DATABASE_URL")
     if not url:
         raise ValueError(
@@ -39,8 +29,8 @@ is_production = os.getenv("EOS_AUTH_MODE", "test").lower() == "production"
 
 engine = create_engine(
     DATABASE_URL,
-    pool_size=20,
-    max_overflow=40,
+    pool_size=int(os.getenv("DB_POOL_SIZE", "20")),
+    max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "40")),
     pool_recycle=300,
     pool_pre_ping=True,
     echo=False,
@@ -57,21 +47,39 @@ if is_production:
 
 @event.listens_for(engine, "begin")
 def _set_tenant_on_begin(conn):
-    """Inject current request tenant into the transaction so RLS policies filter rows."""
+    """Set the transaction-local PostgreSQL RLS tenant context."""
     tid = current_tenant_id.get()
     if tid is not None:
-        # tenant_id is a sanitized value (UUID / plain identifier) controlled by auth.
-        # Defend against any quote/escaping to avoid SQL injection via the GUC value.
         safe = str(tid).replace("'", "''")
         conn.exec_driver_sql(f"SET LOCAL {RLS_CONTEXT_PARAM} = '{safe}'")
 
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+@event.listens_for(SessionLocal, "before_flush")
+def _enforce_orm_tenant_boundary(session, flush_context, instances):
+    """Prevent ORM writes from silently using a platform/default tenant.
+
+    Tenant-owned ORM models are expected to expose a ``tenant_id`` attribute.
+    Platform/global models should not use this listener because they do not
+    carry tenant_id. A tenant request may only write rows for its own tenant.
+    """
+    tid = current_tenant_id.get()
+    for obj in list(session.new) + list(session.dirty):
+        if not hasattr(obj, "tenant_id"):
+            continue
+        obj_tenant = getattr(obj, "tenant_id", None)
+        if tid is None:
+            if obj_tenant == PLATFORM_TENANT:
+                raise ValueError("Tenant context is required for tenant-owned ORM writes")
+            continue
+        if obj_tenant != tid:
+            raise ValueError("Cross-tenant ORM write denied")
+
 
 def get_db():
-    """Yield a DB session. If a tenant is bound to the current context (via
-    authentication), it is applied as app.tenant_id for RLS on this session."""
     db = SessionLocal()
     try:
         yield db
