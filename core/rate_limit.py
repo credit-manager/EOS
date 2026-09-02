@@ -74,15 +74,26 @@ def _get_client_ip(request: Request) -> str:
     return str(client_ip)
 
 
+def _state_user(request: Request):
+    """Normalize dict/object authentication state without trusting client headers."""
+    return getattr(request.state, "user", None)
+
+
+def _user_value(user, name: str):
+    if isinstance(user, dict):
+        return user.get(name)
+    return getattr(user, name, None)
+
+
 def _get_tenant_from_request(request: Request) -> Optional[str]:
-    user = getattr(request.state, "user", None)
-    tenant_id = getattr(user, "tenant_id", None) if user else None
+    user = _state_user(request)
+    tenant_id = _user_value(user, "tenant_id") if user else None
     return str(tenant_id) if tenant_id else None
 
 
 def _get_user_from_request(request: Request) -> Optional[str]:
-    user = getattr(request.state, "user", None)
-    user_id = getattr(user, "id", None) if user else None
+    user = _state_user(request)
+    user_id = _user_value(user, "id") if user else None
     return str(user_id) if user_id else None
 
 
@@ -135,8 +146,6 @@ class RateLimiter:
         buckets = self._generate_buckets(request)
         placeholders = ", ".join(f":b{i}" for i in range(len(buckets)))
         params = {f"b{i}": bucket for i, (bucket, _limit) in enumerate(buckets)}
-        params["ws"] = window_start
-
         try:
             with engine.begin() as conn:
                 for bucket, _limit in buckets:
@@ -144,12 +153,11 @@ class RateLimiter:
                         "INSERT INTO dbp_rate_limits (bucket, window_start, request_count) "
                         "VALUES (:b, :ws, 0) ON CONFLICT (bucket) DO NOTHING"),
                         {"b": bucket, "ws": window_start})
-
+                params["ws"] = window_start
                 rows = conn.execute(
                     stext(f"SELECT bucket, window_start, request_count FROM dbp_rate_limits "
                           f"WHERE bucket IN ({placeholders}) FOR UPDATE"), params).fetchall()
                 state = {row[0]: (row[1], int(row[2])) for row in rows}
-
                 for bucket, limit in buckets:
                     row_start, count = state[bucket]
                     effective_count = 0 if row_start != window_start else count
@@ -162,7 +170,6 @@ class RateLimiter:
                                      "X-RateLimit-Limit": str(limit),
                                      "X-RateLimit-Remaining": "0"},
                         )
-
                 for bucket, _limit in buckets:
                     conn.execute(stext(
                         "UPDATE dbp_rate_limits SET window_start = :ws, "
