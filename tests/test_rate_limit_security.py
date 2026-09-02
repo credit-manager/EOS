@@ -1,6 +1,4 @@
 """Security regression tests for the application rate limiter."""
-import os
-
 import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
