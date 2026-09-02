@@ -152,6 +152,20 @@ jobs:
     name: Security Validation
     runs-on: ubuntu-latest
     needs: [code-quality, automated-tests, migration-validation]
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: security_user
+          POSTGRES_PASSWORD: security_pass
+          POSTGRES_DB: eos_security
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5434:5432
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -179,7 +193,7 @@ jobs:
           fi
       - name: Run tenant/security regression suite
         env:
-          DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/eos_test
+          DATABASE_URL: postgresql://security_user:security_pass@localhost:5434/eos_security
           SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
           EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
           EOS_AUTH_MODE: testing
