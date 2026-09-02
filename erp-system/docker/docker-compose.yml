@@ -1,0 +1,130 @@
+version: '3.8'
+
+services:
+  # قاعدة بيانات PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: erp_postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-erp_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - erp_network
+
+  # Redis للتخزين المؤقت
+  redis:
+    image: redis:7-alpine
+    container_name: erp_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - erp_network
+
+  # Backend API
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../docker/Dockerfile.backend
+    container_name: erp_backend
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-erp_db}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      DEBUG: ${DEBUG:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../backend:/app
+      - uploads_data:/app/uploads
+    ports:
+      - "8000:8000"
+    networks:
+      - erp_network
+    command: >
+      sh -c "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  # Frontend
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../docker/Dockerfile.frontend
+    container_name: erp_frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    networks:
+      - erp_network
+
+  # Celery Worker للمهام غير المتزامنة
+  celery_worker:
+    build:
+      context: ../backend
+      dockerfile: ../docker/Dockerfile.backend
+    container_name: erp_celery_worker
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-erp_db}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ../backend:/app
+      - uploads_data:/app/uploads
+    networks:
+      - erp_network
+    command: celery -A app.celery worker --loglevel=info
+
+  # Celery Beat للمهام المجدولة
+  celery_beat:
+    build:
+      context: ../backend
+      dockerfile: ../docker/Dockerfile.backend
+    container_name: erp_celery_beat
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-erp_db}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ../backend:/app
+    networks:
+      - erp_network
+    command: celery -A app.celery beat --loglevel=info
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  uploads_data:
+    driver: local
+
+networks:
+  erp_network:
+    driver: bridge

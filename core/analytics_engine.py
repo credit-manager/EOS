@@ -23,6 +23,7 @@ from decimal import Decimal
 import json
 
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 from database import SessionLocal
 
 logger = logging.getLogger("eos.analytics")

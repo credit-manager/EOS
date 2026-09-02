@@ -24,8 +24,49 @@ try:
 except ImportError:
     pyotp = None
 
+try:
+    from cryptography.fernet import Fernet
+    CRYPTO_AVAILABLE = True
+except ImportError:
+    CRYPTO_AVAILABLE = False
+    Fernet = None
+
 from sqlalchemy import text
 from core.industry_security import uid, now
+
+# Get encryption key from environment (must be set for production)
+ENCRYPTION_KEY = os.getenv("EOS_2FA_ENCRYPTION_KEY")
+if not ENCRYPTION_KEY and CRYPTO_AVAILABLE:
+    # Generate a new key if not set (for development only)
+    ENCRYPTION_KEY = Fernet.generate_key().decode()
+    print(f"⚠️  WARNING: EOS_2FA_ENCRYPTION_KEY not set. Generated temporary key: {ENCRYPTION_KEY}")
+    print("   Set this in your .env file for production!")
+
+def _get_cipher() -> Optional[Fernet]:
+    """Get Fernet cipher instance for encrypting/decrypting 2FA secrets."""
+    if not CRYPTO_AVAILABLE or not ENCRYPTION_KEY:
+        return None
+    return Fernet(ENCRYPTION_KEY.encode())
+
+def _encrypt_secret(secret: str) -> str:
+    """Encrypt 2FA secret before storing in database."""
+    cipher = _get_cipher()
+    if cipher:
+        return cipher.encrypt(secret.encode()).decode()
+    # Fallback to plain text only in dev without crypto (NOT FOR PRODUCTION)
+    return secret
+
+def _decrypt_secret(encrypted_secret: str) -> str:
+    """Decrypt 2FA secret from database."""
+    cipher = _get_cipher()
+    if cipher:
+        try:
+            return cipher.decrypt(encrypted_secret.encode()).decode()
+        except Exception:
+            # If decryption fails, return as-is (might be unencrypted old data)
+            return encrypted_secret
+    # Fallback to plain text only in dev without crypto
+    return encrypted_secret
 
 
 def _generate_secret() -> str:
@@ -105,6 +146,7 @@ def enable_2fa(db, user_id: str, method: str = "totp") -> Dict:
     ), {"uid": user_id}).fetchone()
     
     secret = _generate_secret()
+    encrypted_secret = _encrypt_secret(secret)  # ENCRYPT before storing
     recovery_codes = _generate_recovery_codes()
     recovery_hashes = [_hash_code(c) for c in recovery_codes]
     
@@ -114,7 +156,7 @@ def enable_2fa(db, user_id: str, method: str = "totp") -> Dict:
             "SET is_enabled = TRUE, method = :method, secret = :secret, "
             "recovery_codes_used = 0, updated_at = :now "
             "WHERE user_id = :uid"
-        ), {"method": method, "secret": secret, "now": now(), "uid": user_id})
+        ), {"method": method, "secret": encrypted_secret, "now": now(), "uid": user_id})
         
         db.execute(text(
             "DELETE FROM dbp_2fa_recovery_codes WHERE user_id = :uid"
@@ -124,7 +166,7 @@ def enable_2fa(db, user_id: str, method: str = "totp") -> Dict:
             "INSERT INTO dbp_2fa_settings "
             "(id, user_id, is_enabled, method, secret, recovery_codes_used, created_at, updated_at) "
             "VALUES (:id, :uid, TRUE, :method, :secret, 0, :now, :now)"
-        ), {"id": uid(), "uid": user_id, "method": method, "secret": secret, "now": now()})
+        ), {"id": uid(), "uid": user_id, "method": method, "secret": encrypted_secret, "now": now()})
     
     for code_hash in recovery_hashes:
         db.execute(text(
@@ -145,7 +187,7 @@ def enable_2fa(db, user_id: str, method: str = "totp") -> Dict:
         provisioning_uri = None
     
     return {
-        "secret": secret,
+        "secret": secret,  # Return plain secret to user (for QR code generation)
         "recovery_codes": recovery_codes,
         "provisioning_uri": provisioning_uri,
         "method": method,
@@ -179,7 +221,8 @@ def verify_totp(db, user_id: str, code: str, ip: str = None) -> Tuple[bool, str]
     if not row:
         return False, "2FA not enabled"
     
-    secret = row[0]
+    encrypted_secret = row[0]
+    secret = _decrypt_secret(encrypted_secret)  # DECRYPT before using
     
     if pyotp:
         totp = pyotp.TOTP(secret)

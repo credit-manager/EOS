@@ -15,10 +15,22 @@ if db_url:
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+# Import all models to ensure they are registered with Base.metadata
 try:
     from models import Base
+    # Import all model modules to register them with Base.metadata
+    # This ensures Alembic can detect all tables for migrations
+    import models  # noqa: F401
+    
+    # Try to import core engines that might define additional models
+    try:
+        from core import builder_engine, ai_composer, metadata_engine  # noqa: F401
+    except ImportError:
+        pass
+    
     target_metadata = Base.metadata
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import models: {e}")
     target_metadata = None
 
 
