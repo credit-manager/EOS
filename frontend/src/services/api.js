@@ -77,8 +77,7 @@ export const settingsAPI = {
   getRoles: () => api.get('/settings/roles'),
   createRole: (data) => api.post('/settings/roles', data),
   updateRole: (roleId, data) => api.put(`/settings/roles/${roleId}`, data),
-  deleteRole: (userId) => api.delete(`/settings/users/${userId}`),
-  getRoles: () => api.get('/settings/roles'),
+  deleteRole: (roleId) => api.delete(`/settings/roles/${roleId}`),
 }
 
 export const tenantAPI = {
