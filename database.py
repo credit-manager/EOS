@@ -66,7 +66,10 @@ def _enforce_orm_tenant_boundary(session, flush_context, instances):
             continue
         obj_tenant = getattr(obj, "tenant_id", None)
         if tid is None:
-            if obj_tenant == PLATFORM_TENANT:
+            # A tenant-owned object must never be written without an
+            # authenticated tenant context.  Global/system objects may keep
+            # tenant_id=NULL and are intentionally allowed here.
+            if obj_tenant is not None:
                 raise ValueError("Tenant context is required for tenant-owned ORM writes")
             continue
         if obj_tenant != tid:
