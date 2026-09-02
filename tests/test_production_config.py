@@ -1,5 +1,3 @@
-import os
-
 from core.production_config import validate_production_config
 
 
