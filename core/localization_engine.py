@@ -3,9 +3,9 @@ P32 Localization Engine
 """
 import uuid
 from datetime import datetime
-from typing import Optional, Dict, List
-from sqlalchemy.orm import Session
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class LocalizationEngine:
@@ -142,7 +142,7 @@ class LocalizationEngine:
                 int_str = grp_sep + int_str
             int_str = ch + int_str
         if dec_part > 0:
-            dec_str = f"{dec_sep}{int(round(dec_part * 100)):02d}"
+            dec_str = f"{dec_sep}{round(dec_part * 100):02d}"
         else:
             dec_str = ""
         result = f"{'-' if negative else ''}{int_str}{dec_str} {currency_code}"

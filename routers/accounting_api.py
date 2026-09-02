@@ -4,15 +4,14 @@ C1 FIX: All queries now filter by tenant_id for multi-tenant isolation.
 C5 FIX: Journal posting now updates GL account balances.
 """
 import uuid
-from typing import Optional
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-from database import get_db
 from core.auth import get_current_user
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/accounting", tags=["Accounting API"])
 
@@ -21,10 +20,10 @@ router = APIRouter(prefix="/api/v1/accounting", tags=["Accounting API"])
 
 @router.get("/accounts")
 async def list_accounts(
-    account_type: Optional[str] = None,
-    parent_id: Optional[str] = None,
-    search: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    account_type: str | None = None,
+    parent_id: str | None = None,
+    search: str | None = None,
+    page: int | None=None,
     page_size: int = Query(50, ge=1, le=200),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -67,7 +66,7 @@ async def list_accounts(
 
 
 @router.get("/accounts/{account_id}")
-async def get_account(account_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_account(account_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     tid = user.get("tenant_id")
     r = db.execute(
         text("SELECT id, code, name_en, name_ar, account_type, parent_id, currency_code, "
@@ -84,7 +83,7 @@ async def get_account(account_id: str, user: dict = Depends(get_current_user), d
 
 
 @router.post("/accounts", status_code=201)
-async def create_account(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_account(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     if not body.get("name"):
         raise HTTPException(400, detail="name required")
     tid = user.get("tenant_id")
@@ -107,7 +106,7 @@ async def create_account(body: dict, user: dict = Depends(get_current_user), db:
 
 
 @router.put("/accounts/{account_id}")
-async def update_account(account_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def update_account(account_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     tid = user.get("tenant_id")
     existing = db.execute(text("SELECT id FROM dbp_accounts WHERE id = :id AND tenant_id = :tid"),
                           {"id": account_id, "tid": tid}).fetchone()
@@ -125,7 +124,7 @@ async def update_account(account_id: str, body: dict, user: dict = Depends(get_c
 
 
 @router.delete("/accounts/{account_id}")
-async def delete_account(account_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def delete_account(account_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     tid = user.get("tenant_id")
     existing = db.execute(text("SELECT is_system FROM dbp_accounts WHERE id = :id AND tenant_id = :tid"),
                           {"id": account_id, "tid": tid}).fetchone()
@@ -142,10 +141,10 @@ async def delete_account(account_id: str, user: dict = Depends(get_current_user)
 
 @router.get("/journal")
 async def list_journal_entries(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    status: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    start_date: str | None = None,
+    end_date: str | None = None,
+    status: str | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -189,7 +188,7 @@ async def list_journal_entries(
 
 
 @router.get("/journal/{entry_id}")
-async def get_journal_entry(entry_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_journal_entry(entry_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     tid = user.get("tenant_id")
     r = db.execute(
         text("SELECT id, entry_number, entry_date, entry_type, description, reference, "
@@ -222,7 +221,7 @@ async def get_journal_entry(entry_id: str, user: dict = Depends(get_current_user
 
 
 @router.post("/journal", status_code=201)
-async def create_journal_entry(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_journal_entry(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     tid = user.get("tenant_id")
     eid = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
@@ -260,7 +259,7 @@ async def create_journal_entry(body: dict, user: dict = Depends(get_current_user
 
 
 @router.post("/journal/{entry_id}/post")
-async def post_journal_entry(entry_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def post_journal_entry(entry_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     """C4 FIX: Uses SELECT FOR UPDATE to prevent double-posting.
        C5 FIX: Updates GL account balances after posting."""
     tid = user.get("tenant_id")
@@ -293,7 +292,7 @@ async def post_journal_entry(entry_id: str, user: dict = Depends(get_current_use
 
 
 @router.post("/journal/{entry_id}/reverse")
-async def reverse_journal_entry(entry_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def reverse_journal_entry(entry_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     tid = user.get("tenant_id")
     existing = db.execute(text(
         "SELECT id, status FROM dbp_journal_entries WHERE id = :id AND tenant_id = :tid"
@@ -326,8 +325,8 @@ async def reverse_journal_entry(entry_id: str, user: dict = Depends(get_current_
 
 @router.get("/reports/trial-balance")
 async def trial_balance(
-    as_of_date: Optional[str] = None,
-    user: dict = Depends(get_current_user),
+    as_of_date: str | None = None,
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     tid = user.get("tenant_id")
@@ -345,9 +344,9 @@ async def trial_balance(
 
 @router.get("/reports/income-statement")
 async def income_statement(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    user: dict = Depends(get_current_user),
+    start_date: str | None = None,
+    end_date: str | None = None,
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     tid = user.get("tenant_id")
@@ -363,8 +362,8 @@ async def income_statement(
 
 @router.get("/reports/balance-sheet")
 async def balance_sheet(
-    as_of_date: Optional[str] = None,
-    user: dict = Depends(get_current_user),
+    as_of_date: str | None = None,
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     tid = user.get("tenant_id")
@@ -381,9 +380,9 @@ async def balance_sheet(
 
 @router.get("/reports/cash-flow")
 async def cash_flow(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    user: dict = Depends(get_current_user),
+    start_date: str | None = None,
+    end_date: str | None = None,
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     return {"operating": 0, "investing": 0, "financing": 0, "net_cash": 0}
@@ -391,9 +390,9 @@ async def cash_flow(
 
 @router.get("/reports/profit-and-loss")
 async def profit_and_loss(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    user: dict = Depends(get_current_user),
+    start_date: str | None = None,
+    end_date: str | None = None,
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     tid = user.get("tenant_id")

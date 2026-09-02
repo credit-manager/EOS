@@ -3,10 +3,10 @@ EOS Industry Engine — Business Rules Engine
 Defines and evaluates validation, calculation, and condition rules.
 """
 
-from typing import Dict, List, Any, Optional, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-import json
+from typing import Any
 
 
 class RuleType(str, Enum):
@@ -60,15 +60,15 @@ class BusinessRule:
     entity: str
     module: str = ""
     description: str = ""
-    conditions: List[RuleCondition] = field(default_factory=list)
+    conditions: list[RuleCondition] = field(default_factory=list)
     event: RuleEvent = RuleEvent.BEFORE_CREATE
     priority: int = 0
     is_active: bool = True
     error_message: str = ""
     error_message_ar: str = ""
-    formula: Optional[str] = None        # For CALCULATION rules
-    action: Optional[Dict[str, Any]] = None  # For HOOK rules
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    formula: str | None = None        # For CALCULATION rules
+    action: dict[str, Any] | None = None  # For HOOK rules
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class RulesEngine:
@@ -78,9 +78,9 @@ class RulesEngine:
     """
 
     def __init__(self):
-        self._rules: Dict[str, BusinessRule] = {}
-        self._calculators: Dict[str, Callable] = {}
-        self._validators: Dict[str, Callable] = {}
+        self._rules: dict[str, BusinessRule] = {}
+        self._calculators: dict[str, Callable] = {}
+        self._validators: dict[str, Callable] = {}
         self._register_builtins()
 
     def _register_builtins(self):
@@ -124,20 +124,20 @@ class RulesEngine:
         """Register a custom validation function."""
         self._validators[rule_code] = validator
 
-    def get(self, code: str) -> Optional[BusinessRule]:
+    def get(self, code: str) -> BusinessRule | None:
         """Get rule by code."""
         return self._rules.get(code)
 
-    def get_by_entity(self, entity_code: str) -> List[BusinessRule]:
+    def get_by_entity(self, entity_code: str) -> list[BusinessRule]:
         """Get all rules for an entity."""
         return [r for r in self._rules.values() if r.entity == entity_code and r.is_active]
 
-    def get_by_event(self, entity_code: str, event: RuleEvent) -> List[BusinessRule]:
+    def get_by_event(self, entity_code: str, event: RuleEvent) -> list[BusinessRule]:
         """Get rules for an entity that trigger on a specific event."""
         return [r for r in self._rules.values()
                 if r.entity == entity_code and r.event == event and r.is_active]
 
-    def evaluate_conditions(self, conditions: List[RuleCondition], data: Dict[str, Any]) -> bool:
+    def evaluate_conditions(self, conditions: list[RuleCondition], data: dict[str, Any]) -> bool:
         """Evaluate if all conditions are met."""
         for cond in conditions:
             value = data.get(cond.field)
@@ -173,7 +173,7 @@ class RulesEngine:
             return actual is not None and actual != ""
         return True
 
-    def validate(self, entity_code: str, data: Dict[str, Any], event: RuleEvent = RuleEvent.BEFORE_CREATE) -> List[str]:
+    def validate(self, entity_code: str, data: dict[str, Any], event: RuleEvent = RuleEvent.BEFORE_CREATE) -> list[str]:
         """
         Run all validation rules for an entity.
         Returns list of error messages.
@@ -210,7 +210,7 @@ class RulesEngine:
 
         return errors
 
-    def calculate(self, entity_code: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    def calculate(self, entity_code: str, data: dict[str, Any]) -> dict[str, Any]:
         """
         Run all calculation rules for an entity.
         Returns dict of calculated field values.
@@ -227,7 +227,7 @@ class RulesEngine:
 
         return results
 
-    def get_triggered_actions(self, entity_code: str, data: Dict[str, Any], event: RuleEvent) -> List[Dict[str, Any]]:
+    def get_triggered_actions(self, entity_code: str, data: dict[str, Any], event: RuleEvent) -> list[dict[str, Any]]:
         """Get actions triggered by rules for a given event."""
         actions = []
         rules = self.get_by_event(entity_code, event)
@@ -240,7 +240,7 @@ class RulesEngine:
 
         return actions
 
-    def export_rules(self, module_code: Optional[str] = None) -> List[Dict[str, Any]]:
+    def export_rules(self, module_code: str | None = None) -> list[dict[str, Any]]:
         """Export rules for a module (for JSON template definitions)."""
         rules = self._rules.values()
         if module_code:

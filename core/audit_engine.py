@@ -1,11 +1,11 @@
 ﻿"""
 P31 Audit & Compliance Engine
 """
-import uuid
 import json
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
+import uuid
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class AuditComplianceEngine:
@@ -169,11 +169,11 @@ class AuditComplianceEngine:
             f"AND created_at >= NOW() - INTERVAL '30 days' GROUP BY action"
         ), params).fetchall()
         denied = self.db.execute(text(
-            f"SELECT COUNT(*) FROM dbp_data_access_logs WHERE access_granted = false "
-            f"AND created_at >= NOW() - INTERVAL '30 days'"
+            "SELECT COUNT(*) FROM dbp_data_access_logs WHERE access_granted = false "
+            "AND created_at >= NOW() - INTERVAL '30 days'"
         )).scalar() or 0
         active_rules = self.db.execute(text(
-            f"SELECT COUNT(*) FROM dbp_compliance_rules WHERE company_id = :cid AND is_active = true"
+            "SELECT COUNT(*) FROM dbp_compliance_rules WHERE company_id = :cid AND is_active = true"
         ), {"cid": company_id}).scalar() or 0
         return {"audit_events_30d": {r[0]: r[1] for r in action_counts},
                 "denied_access_30d": int(denied), "active_rules": int(active_rules)}

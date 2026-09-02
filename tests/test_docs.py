@@ -1,4 +1,8 @@
-import sys, io, json, uuid
+import io
+import json
+import sys
+import uuid
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import urllib.request
 
@@ -162,10 +166,10 @@ test("4.6 Invalid share type rejected", "_err" in bad_share)
 
 # ═══ 5. SEARCH ═══
 print("\n--- Search ---")
-search1 = api("GET", f"/docs/search?q=invoice", token=token)
+search1 = api("GET", "/docs/search?q=invoice", token=token)
 test("5.1 Search by name", "_err" not in search1 and len(search1["data"]) >= 1)
 
-search2 = api("GET", f"/docs/search?q=contract", token=token)
+search2 = api("GET", "/docs/search?q=contract", token=token)
 test("5.2 Search by tag", "_err" not in search2 and len(search2["data"]) >= 1)
 
 search3 = api("GET", "/docs/search?q=nonexistent_xyz", token=token)

@@ -6,7 +6,7 @@ failed. This patch keeps schema changes in the caller transaction.
 """
 from sqlalchemy import text
 
-from core.builder_engine import BuilderEngine, FIELD_SQL_TYPES
+from core.builder_engine import FIELD_SQL_TYPES, BuilderEngine
 
 
 def _atomic_ensure_physical_table(self, table_name, fields):

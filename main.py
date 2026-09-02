@@ -1,78 +1,99 @@
 """
 EOS Dynamic Business Platform — FastAPI Application (P13 hardened)
 """
+import json
+import os
+import uuid
+
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from core.structured_logging import setup_logging, RequestIdMiddleware, audit_logger
-from core.locale_middleware import LocaleMiddleware
-from routers import dynamic_crud
-from routers import relationships
-from routers import entity_management
-from routers import events_webhooks
-from routers import security_admin
-from routers import auto_ui
-from routers import notifications
-from routers import dashboards
-from routers import workflows
-from routers import data_jobs
-from routers import webhook_management
-from routers import validation
-from routers import erp_foundation
-from routers import accounting
-from routers import finance
-from routers import procurement
-from routers import inventory
-from routers import sales, sales_api, inventory_api, accounting_api, projects_api, hr_api, control_plane, construction_api, industry_framework, trading_api, retail_api, restaurant_api, manufacturing_api, services_api, notify_api, approve_api, docs_api, analytics_api, custom_api
-from routers import hr
-from routers import projects
-from routers import fixed_assets
-from routers import documents
-from routers import audit
-from routers import localization
-from routers import esignature
-from routers import api_quotas
-from routers import reports
-from routers import ai_features
-from routers import system
-from routers import production_ops
-from routers import validation_ops
-from routers import saas_cp
-from routers import tenant_lifecycle
-from routers import billing
-from routers import edge_region
-from routers import analytics
-from routers import compliance
-from routers import identity
-from routers import iot
-from routers import blockchain
-from routers import platform_maturity
-from routers import onboarding
-from routers import ai_composer
-from routers import builder
-from routers import marketplace
-from routers import billing_flow
-from routers import portal
-from routers import saas_journey
-from routers import auth as auth_router
-from routers import locale_router
-from routers import analytics_router
-from routers import whitelabel
-from routers import ws_router
-from routers import two_factor_api
-from routers import payment_api
-from routers import currency_api
-from routers import reconciliation_api
-from routers import portal_customer_api
-from routers import reporting_api
-from core.audit import set_request_id, get_request_id
-from core.health_check import router as health_router
-from core.api_versioning import APIVersionMiddleware, SUPPORTED_VERSIONS
-import os
-import json
-import uuid
 
+from core.api_versioning import SUPPORTED_VERSIONS, APIVersionMiddleware
+from core.audit import set_request_id
+from core.health_check import router as health_router
+from core.locale_middleware import LocaleMiddleware
+from core.structured_logging import RequestIdMiddleware, audit_logger, setup_logging
+from routers import (
+    accounting,
+    accounting_api,
+    ai_composer,
+    ai_features,
+    analytics,
+    analytics_api,
+    analytics_router,
+    api_quotas,
+    approve_api,
+    audit,
+    auto_ui,
+    billing,
+    billing_flow,
+    blockchain,
+    builder,
+    compliance,
+    construction_api,
+    control_plane,
+    currency_api,
+    custom_api,
+    dashboards,
+    data_jobs,
+    docs_api,
+    documents,
+    dynamic_crud,
+    edge_region,
+    entity_management,
+    erp_foundation,
+    esignature,
+    events_webhooks,
+    finance,
+    fixed_assets,
+    hr,
+    hr_api,
+    identity,
+    industry_framework,
+    inventory,
+    inventory_api,
+    iot,
+    locale_router,
+    localization,
+    manufacturing_api,
+    marketplace,
+    notifications,
+    notify_api,
+    onboarding,
+    payment_api,
+    platform_maturity,
+    portal,
+    portal_customer_api,
+    procurement,
+    production_ops,
+    projects,
+    projects_api,
+    reconciliation_api,
+    relationships,
+    reporting_api,
+    reports,
+    restaurant_api,
+    retail_api,
+    saas_cp,
+    saas_journey,
+    sales,
+    sales_api,
+    security_admin,
+    services_api,
+    system,
+    tenant_lifecycle,
+    trading_api,
+    two_factor_api,
+    validation,
+    validation_ops,
+    webhook_management,
+    whitelabel,
+    workflows,
+    ws_router,
+)
+from routers import auth as auth_router
 
 # ──────────────────────────────────────────────────────────────
 # SECURITY MIDDLEWARE — Headers + Request ID + Body Size
@@ -173,12 +194,12 @@ app.add_middleware(LocaleMiddleware)
 app.add_middleware(APIVersionMiddleware)
 
 # Prometheus metrics - manual endpoint
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry
-from fastapi import Response
+from prometheus_client import CollectorRegistry, generate_latest
 
 _prometheus_registry = CollectorRegistry()
 # Add default collectors
-from prometheus_client import ProcessCollector, PlatformCollector
+from prometheus_client import PlatformCollector, ProcessCollector
+
 ProcessCollector(registry=_prometheus_registry)
 PlatformCollector(registry=_prometheus_registry)
 
@@ -340,8 +361,9 @@ def root():
 
 @app.get("/app")
 async def serve_landing():
-    from fastapi.responses import FileResponse
     import os
+
+    from fastapi.responses import FileResponse
     index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path, media_type="text/html")
@@ -353,8 +375,9 @@ async def serve_landing():
 # Access at http://HOST/ui  (does NOT touch /app or any API route)
 # ──────────────────────────────────────────────────────────────
 import os as _os
-from fastapi.staticfiles import StaticFiles
+
 from fastapi.responses import FileResponse as _FileResponse
+from fastapi.staticfiles import StaticFiles
 
 _REACT_DIST = _os.path.join(_os.path.dirname(__file__), "eos-system", "frontend", "dist")
 

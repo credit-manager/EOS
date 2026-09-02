@@ -2,9 +2,10 @@
 P27 Human Resources Engine
 """
 import uuid
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class HREngine:
@@ -40,10 +41,10 @@ class HREngine:
         self.db.flush()
         return eid
 
-    def list_employees(self, company_id: str, tenant_id: str = None,
-                       department_id: str = None) -> List[Dict]:
+    def list_employees(self, company_id: str, tenant_id: str | None = None,
+                       department_id: str | None = None) -> list[dict]:
         conditions = ["company_id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id}
+        params: dict[str, Any] = {"cid": company_id}
         if tenant_id:
             conditions.append("tenant_id = :tid")
             params["tid"] = tenant_id
@@ -62,11 +63,11 @@ class HREngine:
                  "employment_status": r[7],
                  "salary": float(r[8]) if r[8] is not None else 0} for r in rows]
 
-    def update_employee(self, employee_id: str, tenant_id: str = None, **kw) -> Dict[str, Any]:
+    def update_employee(self, employee_id: str, tenant_id: str | None = None, **kw) -> dict[str, Any]:
         fields = {k: v for k, v in kw.items() if k in self.EMPLOYEE_FIELDS and v is not None}
         if not fields:
             return {"success": False, "error": "No valid fields to update"}
-        params: Dict[str, Any] = {"eid": employee_id}
+        params: dict[str, Any] = {"eid": employee_id}
         tscope = ""
         if tenant_id:
             tscope = " AND tenant_id = :tid"
@@ -87,7 +88,7 @@ class HREngine:
     # ── LEAVE REQUESTS ──
 
     def create_leave_request(self, tenant_id: str, employee_id: str, leave_type: str,
-                             start_date, end_date, days: int, reason: str = None) -> str:
+                             start_date, end_date, days: int, reason: str | None = None) -> str:
         lid = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_leave_requests (id, tenant_id, employee_id, leave_type, "
@@ -98,8 +99,8 @@ class HREngine:
         self.db.flush()
         return lid
 
-    def approve_leave_request(self, request_id: str, approved_by: str, tenant_id: str = None) -> Dict[str, Any]:
-        params: Dict[str, Any] = {"rid": request_id}
+    def approve_leave_request(self, request_id: str, approved_by: str, tenant_id: str | None = None) -> dict[str, Any]:
+        params: dict[str, Any] = {"rid": request_id}
         tscope = ""
         if tenant_id:
             tscope = " AND tenant_id = :tid"
@@ -118,10 +119,10 @@ class HREngine:
         self.db.flush()
         return {"success": True, "request_id": request_id, "status": "approved"}
 
-    def list_leave_requests(self, company_id: str, tenant_id: str = None,
-                            status: str = None, employee_id: str = None) -> List[Dict]:
+    def list_leave_requests(self, company_id: str, tenant_id: str | None = None,
+                            status: str | None = None, employee_id: str | None = None) -> list[dict]:
         conditions = ["e.company_id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id}
+        params: dict[str, Any] = {"cid": company_id}
         if tenant_id:
             conditions.append("lr.tenant_id = :tid")
             params["tid"] = tenant_id
@@ -174,11 +175,11 @@ class HREngine:
         self.db.flush()
         return aid
 
-    def get_attendance(self, company_id: str, tenant_id: str = None,
-                       employee_id: str = None, start_date=None,
-                       end_date=None) -> List[Dict]:
+    def get_attendance(self, company_id: str, tenant_id: str | None = None,
+                       employee_id: str | None = None, start_date=None,
+                       end_date=None) -> list[dict]:
         conditions = ["e.company_id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id}
+        params: dict[str, Any] = {"cid": company_id}
         if tenant_id:
             conditions.append("a.tenant_id = :tid")
             params["tid"] = tenant_id
@@ -252,8 +253,8 @@ class HREngine:
         self.db.flush()
         return lid
 
-    def get_payroll_run(self, run_id: str, tenant_id: str = None) -> Optional[Dict]:
-        params: Dict[str, Any] = {"rid": run_id}
+    def get_payroll_run(self, run_id: str, tenant_id: str | None = None) -> dict | None:
+        params: dict[str, Any] = {"rid": run_id}
         tscope = ""
         if tenant_id:
             tscope = " AND tenant_id = :tid"
@@ -291,9 +292,9 @@ class HREngine:
                            "tax": float(l[8]) if l[8] is not None else 0,
                            "net_pay": float(l[9]) if l[9] is not None else 0} for l in lines]}
 
-    def list_payroll_runs(self, company_id: str, tenant_id: str = None) -> List[Dict]:
+    def list_payroll_runs(self, company_id: str, tenant_id: str | None = None) -> list[dict]:
         conditions = ["company_id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id}
+        params: dict[str, Any] = {"cid": company_id}
         if tenant_id:
             conditions.append("tenant_id = :tid")
             params["tid"] = tenant_id

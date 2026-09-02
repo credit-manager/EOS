@@ -3,13 +3,19 @@ EOS Localization Router — API endpoints for language, translations, formatting
 P64.3: API endpoints for language switching and translation retrieval.
 """
 
+
 from fastapi import APIRouter, Query, Request, Response
-from typing import Optional
+
 from core.localization import (
-    t, get_direction, get_language_name, get_supported_languages,
-    format_number, format_currency, format_percentage, format_date,
-    TRANSLATIONS, SUPPORTED_LANGUAGES, detect_language,
-    current_lang, current_direction,
+    SUPPORTED_LANGUAGES,
+    TRANSLATIONS,
+    detect_language,
+    format_currency,
+    format_number,
+    format_percentage,
+    get_direction,
+    get_supported_languages,
+    t,
 )
 
 router = APIRouter(prefix="/api/v1/localization", tags=["Localization"], include_in_schema=False)
@@ -25,7 +31,7 @@ def list_languages():
 
 
 @router.get("/translations/{lang}")
-def get_translations(lang: str, prefix: Optional[str] = Query(None)):
+def get_translations(lang: str, prefix: str | None=None):
     """
     Get all translations for a language, optionally filtered by prefix.
     Example: /api/v1/localization/translations/ar?prefix=auth
@@ -55,8 +61,8 @@ def get_translations(lang: str, prefix: Optional[str] = Query(None)):
 
 @router.get("/translate")
 def translate_key(
-    key: str = Query(..., description="Translation key"),
-    lang: Optional[str] = Query(None, description="Language code (ar/en)"),
+    key: str | None=None,
+    lang: str | None = Query(None, description="Language code (ar/en)"),
 ):
     """Translate a single key."""
     result = t(key, lang=lang)
@@ -92,8 +98,8 @@ def detect_lang(request: Request):
 
 @router.get("/format/number")
 def fmt_number(
-    value: float = Query(..., description="Number to format"),
-    lang: Optional[str] = Query(None),
+    value: float | None=None,
+    lang: str | None = Query(None),
     decimals: int = Query(2, ge=0, le=10),
 ):
     """Format a number with locale-appropriate separators."""
@@ -106,9 +112,9 @@ def fmt_number(
 
 @router.get("/format/currency")
 def fmt_currency(
-    value: float = Query(..., description="Amount to format"),
+    value: float | None=None,
     currency: str = Query("SAR", description="Currency code"),
-    lang: Optional[str] = Query(None),
+    lang: str | None = Query(None),
 ):
     """Format a currency value with locale-appropriate symbol and separators."""
     return {
@@ -121,8 +127,8 @@ def fmt_currency(
 
 @router.get("/format/percentage")
 def fmt_percentage(
-    value: float = Query(..., description="Percentage to format"),
-    lang: Optional[str] = Query(None),
+    value: float | None=None,
+    lang: str | None = Query(None),
     decimals: int = Query(1, ge=0, le=5),
 ):
     """Format a percentage."""

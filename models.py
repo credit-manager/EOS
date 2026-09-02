@@ -1,7 +1,19 @@
-from sqlalchemy import Column, String, Boolean, Integer, Text, JSON, DateTime, ForeignKey
-from sqlalchemy.sql import func
-from database import Base
 import uuid
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
+from sqlalchemy.sql import func
+
+from database import Base
+
 
 class DBPEntity(Base):
     __tablename__ = "dbp_entities"

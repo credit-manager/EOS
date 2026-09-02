@@ -2,20 +2,20 @@
 EOS Platform - Pytest Test Suite
 اختبارات آلية لمنصة EOS ERP
 """
-import pytest
-import asyncio
-from typing import AsyncGenerator, Generator
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from fastapi.testclient import TestClient
 
 # Import النماذج الأساسية
 import sys
+from collections.abc import Generator
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+
 sys.path.append('/workspace')
 
-from models import Base, User, Tenant
 from main import app
-
+from models import Base, Tenant, User
 
 # ============================================
 # Fixtures أساسية
@@ -114,7 +114,7 @@ class TestCoreModules:
 
     def test_database_models(self):
         """اختبار النماذج"""
-        from models import User, Tenant, DBPEntity
+        from models import DBPEntity, Tenant, User
         assert User is not None
         assert Tenant is not None
         assert DBPEntity is not None
@@ -250,8 +250,9 @@ class TestPerformance:
 
     def test_entity_query_performance(self, db_session: Session):
         """اختبار أداء الاستعلامات"""
-        from models import DBPEntity
         import time
+
+        from models import DBPEntity
 
         start = time.time()
         for i in range(100):

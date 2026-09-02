@@ -2,9 +2,10 @@
 P26 Sales & Invoicing Engine
 """
 import uuid
-from typing import Optional, Dict, Any, List, Tuple
-from sqlalchemy.orm import Session
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class SalesEngine:
@@ -35,8 +36,8 @@ class SalesEngine:
         self.db.flush()
         return cid_
 
-    def list_customers(self, company_id: str, tenant_id: str = None) -> List[Dict]:
-        params: Dict[str, Any] = {"cid": company_id}
+    def list_customers(self, company_id: str, tenant_id: str | None = None) -> list[dict]:
+        params: dict[str, Any] = {"cid": company_id}
         tenant_filter = ""
         if tenant_id:
             tenant_filter = " AND tenant_id = :tid"
@@ -54,7 +55,7 @@ class SalesEngine:
     # ── QUOTATIONS ──
 
     def create_quotation(self, tenant_id: str, company_id: str, customer_id: str,
-                         quote_date: str, lines: List[Dict], **kw) -> str:
+                         quote_date: str, lines: list[dict], **kw) -> str:
         qid = str(uuid.uuid4())
         qnum = self._next_code(company_id, "QT")
         total, tax_total = self._calc_totals(lines)
@@ -74,7 +75,7 @@ class SalesEngine:
         return qid
 
     def convert_quotation_to_order(self, quote_id: str, tenant_id: str, company_id: str,
-                                   created_by: str = None) -> Dict[str, Any]:
+                                   created_by: str | None = None) -> dict[str, Any]:
         quote = self.db.execute(text(
             "SELECT id, status, customer_id, quote_date, total_amount, tax_amount, "
             "currency_code, notes FROM dbp_sales_quotations WHERE id = :qid AND tenant_id = :tid"
@@ -112,7 +113,7 @@ class SalesEngine:
     # ── SALES ORDERS ──
 
     def create_sales_order(self, tenant_id: str, company_id: str, customer_id: str,
-                           order_date: str, lines: List[Dict], **kw) -> str:
+                           order_date: str, lines: list[dict], **kw) -> str:
         total, tax_total = self._calc_totals(lines)
         oid = self._insert_sales_order(tenant_id, company_id, customer_id, order_date,
                                        total, tax_total,
@@ -126,8 +127,8 @@ class SalesEngine:
         self.db.flush()
         return oid
 
-    def get_sales_order(self, order_id: str, tenant_id: str = None) -> Optional[Dict]:
-        params: Dict[str, Any] = {"oid": order_id}
+    def get_sales_order(self, order_id: str, tenant_id: str | None = None) -> dict | None:
+        params: dict[str, Any] = {"oid": order_id}
         tscope = ""
         if tenant_id:
             tscope = " AND o.tenant_id = :tid"
@@ -160,10 +161,10 @@ class SalesEngine:
                        "tax_amount": float(l[9]) if l[9] is not None else 0} for l in lines]
         }
 
-    def list_sales_orders(self, company_id: str, status: Optional[str] = None,
-                          tenant_id: str = None) -> List[Dict]:
+    def list_sales_orders(self, company_id: str, status: str | None = None,
+                          tenant_id: str | None = None) -> list[dict]:
         conditions = ["o.company_id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id}
+        params: dict[str, Any] = {"cid": company_id}
         if tenant_id:
             conditions.append("o.tenant_id = :tid")
             params["tid"] = tenant_id
@@ -185,7 +186,7 @@ class SalesEngine:
     # ── INVOICES ──
 
     def create_invoice(self, tenant_id: str, company_id: str, customer_id: str,
-                       invoice_date: str, lines: List[Dict], **kw) -> str:
+                       invoice_date: str, lines: list[dict], **kw) -> str:
         iid = str(uuid.uuid4())
         invnum = self._next_code(company_id, "INV")
         total, tax_total = self._calc_totals(lines)
@@ -206,8 +207,8 @@ class SalesEngine:
         self.db.flush()
         return iid
 
-    def get_invoice(self, invoice_id: str, tenant_id: str = None) -> Optional[Dict]:
-        params: Dict[str, Any] = {"iid": invoice_id}
+    def get_invoice(self, invoice_id: str, tenant_id: str | None = None) -> dict | None:
+        params: dict[str, Any] = {"iid": invoice_id}
         tscope = ""
         if tenant_id:
             tscope = " AND i.tenant_id = :tid"
@@ -242,10 +243,10 @@ class SalesEngine:
                        "tax_amount": float(l[8]) if l[8] is not None else 0} for l in lines]
         }
 
-    def list_invoices(self, company_id: str, status: Optional[str] = None,
-                      tenant_id: str = None) -> List[Dict]:
+    def list_invoices(self, company_id: str, status: str | None = None,
+                      tenant_id: str | None = None) -> list[dict]:
         conditions = ["i.company_id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id}
+        params: dict[str, Any] = {"cid": company_id}
         if tenant_id:
             conditions.append("i.tenant_id = :tid")
             params["tid"] = tenant_id
@@ -270,8 +271,8 @@ class SalesEngine:
     # ── PAYMENTS ──
 
     def record_payment(self, invoice_id: str, amount: float, payment_date: str,
-                       tenant_id: str = None, **kw) -> Dict[str, Any]:
-        params: Dict[str, Any] = {"iid": invoice_id}
+                       tenant_id: str | None = None, **kw) -> dict[str, Any]:
+        params: dict[str, Any] = {"iid": invoice_id}
         tscope = ""
         if tenant_id:
             tscope = " AND tenant_id = :tid"
@@ -303,7 +304,7 @@ class SalesEngine:
 
     # ── HELPERS ──
 
-    def _calc_totals(self, lines: List[Dict]) -> Tuple[float, float]:
+    def _calc_totals(self, lines: list[dict]) -> tuple[float, float]:
         total = sum(float(l.get("quantity", 0)) * float(l.get("unit_price", 0)) for l in lines)
         tax_total = sum(
             float(l["tax_amount"]) if l.get("tax_amount")
@@ -313,10 +314,10 @@ class SalesEngine:
         return total, tax_total
 
     def _insert_lines(self, table: str, tenant_id: str, fk_col: str, fk_id: str,
-                      lines: List[Dict]) -> None:
+                      lines: list[dict]) -> None:
         has_delivered = table == "dbp_sales_order_lines"
-        cols = ("id, tenant_id, {fk}, line_number, item_id, description, quantity, "
-                "unit_price, line_total, tax_rate, tax_amount").format(fk=fk_col)
+        cols = (f"id, tenant_id, {fk_col}, line_number, item_id, description, quantity, "
+                "unit_price, line_total, tax_rate, tax_amount")
         vals = (":id, :tid, :fkid, :ln, :iid, :desc, :qty, :up, :lt, :tr, :txa")
         if has_delivered:
             cols += ", quantity_delivered"
@@ -325,7 +326,7 @@ class SalesEngine:
         for i, line in enumerate(lines, 1):
             lid = str(uuid.uuid4())
             lt = float(line.get("quantity", 0)) * float(line.get("unit_price", 0))
-            params: Dict[str, Any] = {
+            params: dict[str, Any] = {
                 "id": lid, "tid": tenant_id, "fkid": fk_id, "ln": i,
                 "iid": line.get("item_id"), "desc": line.get("description"),
                 "qty": line.get("quantity", 0), "up": line.get("unit_price", 0),
@@ -337,7 +338,7 @@ class SalesEngine:
 
     def _insert_sales_order(self, tenant_id: str, company_id: str, customer_id: str,
                             order_date: str, total: float, tax: float, currency: str,
-                            notes: Optional[str], created_by: Optional[str]) -> str:
+                            notes: str | None, created_by: str | None) -> str:
         oid = str(uuid.uuid4())
         ocode = self._next_code(company_id, "SO")
         self.db.execute(text(

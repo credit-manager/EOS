@@ -1,15 +1,14 @@
 """
 P20 Validation Rules Router — CRUD + validate endpoints
 """
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import require_permission, get_current_user
+from core.auth import require_permission
 from core.rate_limit import read_limiter, write_limiter
 from core.validation_engine import ValidationEngine
-
+from database import get_db
 
 router = APIRouter(
     prefix="/api/v1/dynamic",
@@ -22,8 +21,8 @@ router = APIRouter(
     dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)],
 )
 async def list_rules(
-    entity_id: str = Query(...),
-    field_code: Optional[str] = None,
+    entity_id: str | None=None,
+    field_code: str | None = None,
     db: Session = Depends(get_db),
 ):
     """List validation rules for an entity."""
@@ -38,7 +37,7 @@ async def list_rules(
 )
 async def create_rule(
     body: dict,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Create a validation rule."""
@@ -86,7 +85,7 @@ async def create_rule(
 )
 async def delete_rule(
     rule_id: str,
-    db: Session = Depends(get_db),
+    db: Session=None,
 ):
     """Delete (soft) a validation rule."""
     engine = ValidationEngine(db)
@@ -107,7 +106,7 @@ async def delete_rule(
 async def validate_record(
     entity_code: str,
     body: dict,
-    db: Session = Depends(get_db),
+    db: Session=None,
 ):
     """Validate a record against entity rules."""
     entity = db.execute(
@@ -141,7 +140,7 @@ async def validate_record(
 async def validate_batch(
     entity_code: str,
     body: dict,
-    db: Session = Depends(get_db),
+    db: Session=None,
 ):
     """Validate a batch of records against entity rules."""
     entity = db.execute(

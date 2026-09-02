@@ -1,7 +1,11 @@
 """
 P73.17-20 SECURITY, TENANT ISOLATION, ACCOUNTING, CROSS-INDUSTRY E2E
 """
-import sys, io, json, uuid
+import io
+import json
+import sys
+import uuid
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import urllib.request
 
@@ -42,29 +46,32 @@ print("--- P73.17 Tenant Isolation ---")
 
 items = api("GET", "/trading/items", token=token)
 if items.get("data"):
-    tenants = set(i.get("tenant_id") for i in items["data"])
+    tenants = {i.get("tenant_id") for i in items["data"]}
     test("P73.17 Items single-tenant", len(tenants) == 1)
 
 customers = api("GET", "/trading/customers", token=token)
 if customers.get("data"):
-    tenants = set(c.get("tenant_id") for c in customers["data"])
+    tenants = {c.get("tenant_id") for c in customers["data"]}
     test("P73.17 Customers single-tenant", len(tenants) == 1)
 
 suppliers = api("GET", "/trading/suppliers", token=token)
 if suppliers.get("data"):
-    tenants = set(s.get("tenant_id") for s in suppliers["data"])
+    tenants = {s.get("tenant_id") for s in suppliers["data"]}
     test("P73.17 Suppliers single-tenant", len(tenants) == 1)
 
 # Stock isolation
 stock = api("GET", "/trading/stock", token=token)
 if stock.get("data"):
-    tenants = set(s.get("tenant_id", "unknown") for s in stock["data"])
+    tenants = {s.get("tenant_id", "unknown") for s in stock["data"]}
     test("P73.17 Stock single-tenant", len(tenants) <= 1)
 
 # ═══ P73.18 ACCOUNTING E2E ═══
 print("\n--- P73.18 Accounting E2E ---")
 
-import base64, psycopg2
+import base64
+
+import psycopg2
+
 payload = token.split('.')[1]
 if len(payload) % 4: payload += '=' * (4 - len(payload) % 4)
 decoded = json.loads(base64.urlsafe_b64decode(payload))

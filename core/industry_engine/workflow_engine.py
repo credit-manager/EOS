@@ -3,9 +3,9 @@ EOS Industry Engine — Workflow Engine
 Approval chains, state machines, escalation, notifications.
 """
 
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 
 class WorkflowStatus(str, Enum):
@@ -44,8 +44,8 @@ class WorkflowStep:
     timeout_hours: int = 0        # Escalation timeout
     escalation_type: EscalationType = EscalationType.NONE
     escalation_to: str = ""       # Escalation target
-    conditions: List[Dict[str, Any]] = field(default_factory=list)  # When to skip/require
-    parallel_steps: List[str] = field(default_factory=list)  # For parallel approval
+    conditions: list[dict[str, Any]] = field(default_factory=list)  # When to skip/require
+    parallel_steps: list[str] = field(default_factory=list)  # For parallel approval
     order: int = 0
 
 
@@ -57,12 +57,12 @@ class WorkflowDefinition:
     entity: str                    # Entity this workflow applies to
     module: str = ""
     description: str = ""
-    steps: List[WorkflowStep] = field(default_factory=list)
+    steps: list[WorkflowStep] = field(default_factory=list)
     auto_start: bool = False       # Auto-start on entity creation
     allow_cancel: bool = True
     allow_rework: bool = False     # Allow sending back for rework
     notification_template: str = ""
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -75,9 +75,9 @@ class WorkflowInstance:
     status: WorkflowStatus = WorkflowStatus.DRAFT
     current_step: str = ""
     initiated_by: str = ""
-    initiated_at: Optional[str] = None
-    completed_at: Optional[str] = None
-    history: List[Dict[str, Any]] = field(default_factory=list)
+    initiated_at: str | None = None
+    completed_at: str | None = None
+    history: list[dict[str, Any]] = field(default_factory=list)
 
 
 class WorkflowEngine:
@@ -87,8 +87,8 @@ class WorkflowEngine:
     """
 
     def __init__(self):
-        self._workflows: Dict[str, WorkflowDefinition] = {}
-        self._instances: Dict[str, WorkflowInstance] = {}
+        self._workflows: dict[str, WorkflowDefinition] = {}
+        self._instances: dict[str, WorkflowInstance] = {}
         self._register_builtins()
 
     def _register_builtins(self):
@@ -156,20 +156,20 @@ class WorkflowEngine:
         """Register a new workflow definition."""
         self._workflows[workflow.code] = workflow
 
-    def get(self, code: str) -> Optional[WorkflowDefinition]:
+    def get(self, code: str) -> WorkflowDefinition | None:
         """Get workflow definition by code."""
         return self._workflows.get(code)
 
-    def get_all(self) -> Dict[str, WorkflowDefinition]:
+    def get_all(self) -> dict[str, WorkflowDefinition]:
         """Get all registered workflows."""
         return dict(self._workflows)
 
-    def get_by_entity(self, entity_code: str) -> List[WorkflowDefinition]:
+    def get_by_entity(self, entity_code: str) -> list[WorkflowDefinition]:
         """Get workflows for an entity."""
         return [w for w in self._workflows.values() if w.entity == entity_code]
 
     def start_workflow(self, workflow_code: str, entity_id: str, entity_code: str,
-                       tenant_id: str, initiated_by: str, entity_data: Dict[str, Any] = None) -> WorkflowInstance:
+                       tenant_id: str, initiated_by: str, entity_data: dict[str, Any] | None = None) -> WorkflowInstance:
         """Start a new workflow instance."""
         workflow = self._workflows.get(workflow_code)
         if not workflow:
@@ -198,7 +198,7 @@ class WorkflowEngine:
         return instance
 
     def approve_step(self, instance_id: str, step_code: str, approved_by: str,
-                     comments: str = "", entity_data: Dict[str, Any] = None) -> WorkflowInstance:
+                     comments: str = "", entity_data: dict[str, Any] | None = None) -> WorkflowInstance:
         """Approve a workflow step."""
         instance = self._instances.get(instance_id)
         if not instance:
@@ -275,7 +275,7 @@ class WorkflowEngine:
         return instance
 
     def _find_next_step(self, workflow: WorkflowDefinition, current_step: str,
-                        entity_data: Dict[str, Any]) -> Optional[WorkflowStep]:
+                        entity_data: dict[str, Any]) -> WorkflowStep | None:
         """Find the next applicable step after current."""
         sorted_steps = sorted(workflow.steps, key=lambda s: s.order)
 
@@ -297,7 +297,7 @@ class WorkflowEngine:
 
         return None
 
-    def _step_applies(self, step: WorkflowStep, entity_data: Dict[str, Any]) -> bool:
+    def _step_applies(self, step: WorkflowStep, entity_data: dict[str, Any]) -> bool:
         """Check if a step applies based on conditions."""
         for condition in step.conditions:
             field_name = condition.get("field", "")
@@ -305,22 +305,16 @@ class WorkflowEngine:
             expected = condition.get("value")
             actual = entity_data.get(field_name)
 
-            if operator == "gt" and float(actual or 0) <= float(expected):
-                return False
-            elif operator == "lt" and float(actual or 0) >= float(expected):
-                return False
-            elif operator == "eq" and actual != expected:
-                return False
-            elif operator == "gte" and float(actual or 0) < float(expected):
+            if operator == "gt" and float(actual or 0) <= float(expected) or operator == "lt" and float(actual or 0) >= float(expected) or operator == "eq" and actual != expected or operator == "gte" and float(actual or 0) < float(expected):
                 return False
 
         return True
 
-    def get_instance(self, instance_id: str) -> Optional[WorkflowInstance]:
+    def get_instance(self, instance_id: str) -> WorkflowInstance | None:
         """Get workflow instance."""
         return self._instances.get(instance_id)
 
-    def get_pending_for_user(self, user_id: str, role: str = "") -> List[WorkflowInstance]:
+    def get_pending_for_user(self, user_id: str, role: str = "") -> list[WorkflowInstance]:
         """Get pending workflows for a user."""
         pending = []
         for inst in self._instances.values():
@@ -333,14 +327,14 @@ class WorkflowEngine:
                                 pending.append(inst)
         return pending
 
-    def get_workflow_history(self, instance_id: str) -> List[Dict[str, Any]]:
+    def get_workflow_history(self, instance_id: str) -> list[dict[str, Any]]:
         """Get approval history for a workflow instance."""
         instance = self._instances.get(instance_id)
         if not instance:
             return []
         return instance.history
 
-    def export_workflows(self, module_code: Optional[str] = None) -> List[Dict[str, Any]]:
+    def export_workflows(self, module_code: str | None = None) -> list[dict[str, Any]]:
         """Export workflow definitions for templates."""
         workflows = self._workflows.values()
         if module_code:

@@ -14,16 +14,15 @@ Provides:
 - H6: Error Handling (standardized responses)
 - H7: Journal Posting (balanced debit/credit)
 """
-import uuid
 import json
+import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional, List, Dict, Any
+from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-
 
 # ═══════════════════════════════════════════════════
 # CORE UTILITIES
@@ -137,7 +136,7 @@ def verify_tenant_access(user: dict, record_tenant_id: str):
 
 def audit_log(db: Session, tenant_id: str, user_id: str, action: str,
               entity_type: str, entity_id: str,
-              old_values: dict = None, new_values: dict = None):
+              old_values: dict | None = None, new_values: dict | None = None):
     """Log an audit entry for any mutation."""
     db.execute(
         text("INSERT INTO dbp_construction_audit "
@@ -156,7 +155,7 @@ def audit_log(db: Session, tenant_id: str, user_id: str, action: str,
 
 def post_journal(db: Session, tenant_id: str, company_id: str,
                  journal_type: str, description: str,
-                 lines: List[Dict[str, Any]],
+                 lines: list[dict[str, Any]],
                  ref_entity: str = "", ref_id: str = "") -> str:
     """
     Post a journal entry. Enforces balanced debits=credits.
@@ -271,7 +270,7 @@ def atomic_stock_receive(db: Session, tenant_id: str, item_id: str,
 # ═══════════════════════════════════════════════════
 
 def generate_sequence(db: Session, tenant_id: str, prefix: str, table: str,
-                      column: str = "number", entity_type: str = None) -> str:
+                      column: str = "number", entity_type: str | None = None) -> str:
     """
     Generate a unique sequential number per tenant.
 
@@ -303,7 +302,7 @@ def generate_sequence(db: Session, tenant_id: str, prefix: str, table: str,
 # H6: STANDARDIZED RESPONSES
 # ═══════════════════════════════════════════════════
 
-def success_response(message: str, data: dict = None) -> dict:
+def success_response(message: str, data: dict | None = None) -> dict:
     """Standard success response."""
     resp = {"status": "success", "message": message}
     if data:

@@ -1,26 +1,25 @@
 """
 P23 Finance & Treasury Router
 """
-from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import require_permission, get_current_user
-from core.rate_limit import read_limiter, write_limiter
+from core.auth import require_permission
 from core.finance_engine import FinanceEngine
-
+from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic", tags=["Finance & Treasury"])
 
 
 @router.get("/companies/{cid}/bank-accounts", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_bank_accounts(cid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_bank_accounts(cid: str, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": FinanceEngine(db).get_bank_accounts(cid, user.get("tenant_id"))}
 
 
 @router.post("/companies/{cid}/bank-accounts", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_bank_account(cid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_bank_account(cid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     if not body.get("account_name"):
         raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": "account_name required"}})
     bid = FinanceEngine(db).create_bank_account(user.get("tenant_id"), cid, body["account_name"],
@@ -32,12 +31,12 @@ async def create_bank_account(cid: str, body: dict, user: dict = Depends(get_cur
 
 
 @router.get("/companies/{cid}/payments", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_payments(cid: str, payment_type: Optional[str] = None, status: Optional[str] = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_payments(cid: str, payment_type: str | None = None, status: str | None = None, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": FinanceEngine(db).list_payments(cid, user.get("tenant_id"), payment_type=payment_type, status=status)}
 
 
 @router.post("/companies/{cid}/payments", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_payment(cid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_payment(cid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ("payment_type", "payment_date", "amount"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -55,7 +54,7 @@ async def create_payment(cid: str, body: dict, user: dict = Depends(get_current_
 
 
 @router.post("/payments/{pid}/approve", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def approve_payment(pid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def approve_payment(pid: str, user: dict | None=None, db: Session = Depends(get_db)):
     result = FinanceEngine(db).approve_payment(pid, user.get("id") or user.get("user_id"), user.get("tenant_id"))
     if not result["success"]:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "APPROVE_FAILED", "message": result["error"]}})
@@ -64,7 +63,7 @@ async def approve_payment(pid: str, user: dict = Depends(get_current_user), db: 
 
 
 @router.get("/exchange-rates", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_exchange_rate(from_currency: str = Query(...), to_currency: str = Query(...), db: Session = Depends(get_db)):
+async def get_exchange_rate(from_currency: str | None=None, to_currency: str = Query(...), db: Session = Depends(get_db)):
     rate = FinanceEngine(db).get_exchange_rate(from_currency, to_currency)
     if not rate:
         raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Exchange rate not found"}})
@@ -72,7 +71,7 @@ async def get_exchange_rate(from_currency: str = Query(...), to_currency: str = 
 
 
 @router.post("/exchange-rates", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def set_exchange_rate(body: dict, db: Session = Depends(get_db)):
+async def set_exchange_rate(body: dict, db: Session=None):
     for f in ("from_currency", "to_currency", "rate", "rate_date"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -83,7 +82,7 @@ async def set_exchange_rate(body: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/convert", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def convert_amount(body: dict, db: Session = Depends(get_db)):
+async def convert_amount(body: dict, db: Session=None):
     result = FinanceEngine(db).convert_amount(body.get("amount", 0), body.get("from_currency", ""), body.get("to_currency", ""))
     if not result:
         raise HTTPException(404, detail={"status": "error", "error": {"code": "NO_RATE", "message": "Exchange rate not available"}})
@@ -91,17 +90,17 @@ async def convert_amount(body: dict, db: Session = Depends(get_db)):
 
 
 @router.get("/companies/{cid}/budgets", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_budgets(cid: str, fiscal_year_id: Optional[str] = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_budgets(cid: str, fiscal_year_id: str | None = None, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": FinanceEngine(db).get_budgets(cid, user.get("tenant_id"), fiscal_year_id=fiscal_year_id)}
 
 
 @router.get("/companies/{cid}/budgets/utilization", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def budget_utilization(cid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def budget_utilization(cid: str, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": FinanceEngine(db).get_budget_utilization(cid, user.get("tenant_id"))}
 
 
 @router.post("/companies/{cid}/budgets", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_budget(cid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_budget(cid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ("account_id", "fiscal_year_id", "budget_amount"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})

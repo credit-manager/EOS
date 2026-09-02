@@ -1,8 +1,9 @@
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, declarative_base
-import os
 import contextvars
+import os
+
 from dotenv import load_dotenv
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 # Load .env file from project root
 load_dotenv()

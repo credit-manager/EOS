@@ -2,8 +2,9 @@
 EOS Bank Reconciliation Engine
 Links bank statements with payment transactions and accounting entries
 """
-import uuid, json
-from datetime import datetime
+import json
+import uuid
+
 from sqlalchemy import text
 
 

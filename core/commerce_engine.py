@@ -19,18 +19,18 @@ Design:
   - Stock operations use SELECT FOR UPDATE (H4: Concurrency)
   - Returns dicts consistently (not raw Row objects)
 """
-import json
 from decimal import Decimal
-from typing import Optional, List, Dict, Any
 
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from core.industry_security import (
-    now, uid, check_permission, audit_log, verify_tenant_access,
+    audit_log,
+    check_permission,
+    now,
+    uid,
 )
-
 
 # ═══════════════════════════════════════════════════
 # TABLE NAMES (will be renamed to dbp_commerce_* in P70.7C.2)
@@ -54,9 +54,7 @@ def _row_to_dict(row, columns: list) -> dict:
     d = {}
     for i, col in enumerate(columns):
         val = row[i]
-        if isinstance(val, (int, float)):
-            val = float(val)
-        elif hasattr(val, '__class__') and val.__class__.__name__ == 'Decimal':
+        if isinstance(val, (int, float)) or hasattr(val, '__class__') and val.__class__.__name__ == 'Decimal':
             val = float(val)
         d[col] = val
     return d

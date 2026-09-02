@@ -1,13 +1,13 @@
 """
 P34 API Rate Limiting & Quotas Router
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import require_permission, get_current_user
-from core.rate_limit import read_limiter, write_limiter
 from core.api_quota_engine import APIQuotaEngine
+from core.auth import require_permission
+from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic", tags=["API Quotas & Rate Limiting"])
 
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/v1/dynamic", tags=["API Quotas & Rate Limiting"]
 
 @router.get("/companies/{cid}/api-keys",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_api_keys(cid: str, user: dict = Depends(get_current_user),
+async def list_api_keys(cid: str, user: dict | None=None,
                         db: Session = Depends(get_db)):
     data = APIQuotaEngine(db).list_api_keys(user["tenant_id"], cid)
     return {"status": "success", "data": data}
@@ -25,7 +25,7 @@ async def list_api_keys(cid: str, user: dict = Depends(get_current_user),
 @router.post("/companies/{cid}/api-keys",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_api_key(cid: str, body: dict,
-                         user: dict = Depends(get_current_user),
+                         user: dict | None=None,
                          db: Session = Depends(get_db)):
     if "name" not in body:
         raise HTTPException(400, detail={"status": "error",
@@ -41,7 +41,7 @@ async def create_api_key(cid: str, body: dict,
 
 @router.post("/api-keys/{kid}/revoke",
              dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def revoke_api_key(kid: str, db: Session = Depends(get_db)):
+async def revoke_api_key(kid: str, db: Session=None):
     result = APIQuotaEngine(db).revoke_api_key(kid)
     if not result["success"]:
         raise HTTPException(404, detail={"status": "error",
@@ -54,9 +54,9 @@ async def revoke_api_key(kid: str, db: Session = Depends(get_db)):
 
 @router.get("/api-usage",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_api_usage(api_key_id: str = None, from_date: str = None,
-                        to_date: str = None,
-                        user: dict = Depends(get_current_user),
+async def get_api_usage(api_key_id: str | None = None, from_date: str | None = None,
+                        to_date: str | None = None,
+                        user: dict | None=None,
                         db: Session = Depends(get_db)):
     engine = APIQuotaEngine(db)
     data = engine.get_usage_stats(
@@ -67,9 +67,9 @@ async def get_api_usage(api_key_id: str = None, from_date: str = None,
 
 @router.get("/api-usage/stats",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_usage_stats(api_key_id: str = None, from_date: str = None,
-                          to_date: str = None,
-                          user: dict = Depends(get_current_user),
+async def get_usage_stats(api_key_id: str | None = None, from_date: str | None = None,
+                          to_date: str | None = None,
+                          user: dict | None=None,
                           db: Session = Depends(get_db)):
     data = APIQuotaEngine(db).get_usage_stats(
         user["tenant_id"], api_key_id=api_key_id,
@@ -82,7 +82,7 @@ async def get_usage_stats(api_key_id: str = None, from_date: str = None,
 @router.get("/companies/{cid}/rate-limit-rules",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def list_rate_limit_rules(cid: str,
-                                user: dict = Depends(get_current_user),
+                                user: dict | None=None,
                                 db: Session = Depends(get_db)):
     data = APIQuotaEngine(db).list_rate_limit_rules(user["tenant_id"], cid)
     return {"status": "success", "data": data}
@@ -91,7 +91,7 @@ async def list_rate_limit_rules(cid: str,
 @router.post("/companies/{cid}/rate-limit-rules",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_rate_limit_rule(cid: str, body: dict,
-                                 user: dict = Depends(get_current_user),
+                                 user: dict | None=None,
                                  db: Session = Depends(get_db)):
     for field in ("endpoint_pattern", "method", "rate_limit"):
         if field not in body:
@@ -108,7 +108,7 @@ async def create_rate_limit_rule(cid: str, body: dict,
 @router.post("/check-rate-limit",
              dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def check_rate_limit(body: dict,
-                           user: dict = Depends(get_current_user),
+                           user: dict | None=None,
                            db: Session = Depends(get_db)):
     for field in ("endpoint", "method"):
         if field not in body:

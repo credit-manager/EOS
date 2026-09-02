@@ -7,16 +7,15 @@ Design:
   - Delivery is synchronous (caller blocks, same transaction)
   - Retry handled via next_retry_at for async workers later
 """
-from typing import Dict, Any, Optional, List
-from sqlalchemy.orm import Session
-from sqlalchemy import text
+import hashlib
+import hmac
 import json
 import uuid
-import hmac
-import hashlib
 from datetime import datetime, timezone
+from typing import Any
 
-from models import DBPEvent, DBPWebhook, DBPWebhookDelivery
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class EventBus:
@@ -44,11 +43,11 @@ class EventBus:
         self,
         event_type: str,
         entity_code: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        record_id: Optional[str] = None,
-        payload: Optional[Dict[str, Any]] = None,
-    ) -> Optional[str]:
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        record_id: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> str | None:
         """
         Emit an event. Stores in DB and triggers webhook deliveries.
         Returns event_id or None on failure.
@@ -124,8 +123,8 @@ class EventBus:
 
     def _trigger_notifications(
         self, event_id: str, entity_code: str, event_type: str,
-        tenant_id: Optional[str], user_id: Optional[str],
-        record_id: Optional[str], payload: Optional[Dict[str, Any]],
+        tenant_id: str | None, user_id: str | None,
+        record_id: str | None, payload: dict[str, Any] | None,
     ) -> None:
         """Process event → create notifications via NotificationEngine."""
         try:
@@ -146,12 +145,12 @@ class EventBus:
 
     def get_events(
         self,
-        entity_code: Optional[str] = None,
-        event_type: Optional[str] = None,
-        tenant_id: Optional[str] = None,
+        entity_code: str | None = None,
+        event_type: str | None = None,
+        tenant_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Query events with optional filters."""
         conditions = []
         params = {"limit": limit, "offset": offset}
@@ -192,10 +191,10 @@ class EventBus:
             for r in rows
         ]
 
-    def get_event(self, event_id: str, tenant_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def get_event(self, event_id: str, tenant_id: str | None = None) -> dict[str, Any] | None:
         """Get a single event by ID with optional tenant isolation."""
         conditions = ["id = :eid"]
-        params: Dict[str, Any] = {"eid": event_id}
+        params: dict[str, Any] = {"eid": event_id}
 
         if tenant_id:
             conditions.append("tenant_id = :tid")

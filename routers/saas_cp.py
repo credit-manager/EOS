@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import require_permission, get_current_user
+from core.auth import require_permission
 from core.rate_limit import read_limiter, write_limiter
 from core.saas_cp_engine import SaaSCPEngine
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic/saas", tags=["SaaS Control Plane"])
 
@@ -12,8 +12,8 @@ router = APIRouter(prefix="/api/v1/dynamic/saas", tags=["SaaS Control Plane"])
 # ------------------------------------------------------------ saas tenants
 @router.get("/tenants",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_tenants(status: str = None,
-                      user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_tenants(status: str | None = None,
+                      user: dict | None=None, db: Session = Depends(get_db)):
     data = SaaSCPEngine(db).list_tenants(status=status)
     return {"status": "success", "data": data}
 
@@ -21,7 +21,7 @@ async def list_tenants(status: str = None,
 @router.post("/tenants",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_tenant(body: dict,
-                       user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                       user: dict | None=None, db: Session = Depends(get_db)):
     required = ["tenant_id", "name", "slug"]
     for f in required:
         if f not in body:
@@ -39,7 +39,7 @@ async def create_tenant(body: dict,
 @router.get("/tenants/{tenant_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_tenant(tenant_id: str,
-                    user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                    user: dict | None=None, db: Session = Depends(get_db)):
     data = SaaSCPEngine(db).get_tenant(tenant_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -50,7 +50,7 @@ async def get_tenant(tenant_id: str,
 @router.put("/tenants/{tenant_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_tenant(tenant_id: str, body: dict,
-                       user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                       user: dict | None=None, db: Session = Depends(get_db)):
     result = SaaSCPEngine(db).update_tenant(
         tenant_id, name=body.get("name"), status=body.get("status"),
         plan_id=body.get("plan_id"), max_users=body.get("max_users"),
@@ -62,7 +62,7 @@ async def update_tenant(tenant_id: str, body: dict,
 # -------------------------------------------------------------- saas plans
 @router.get("/plans",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_plans(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_plans(user: dict | None=None, db: Session = Depends(get_db)):
     data = SaaSCPEngine(db).list_plans(user["tenant_id"])
     return {"status": "success", "data": data}
 
@@ -70,7 +70,7 @@ async def list_plans(user: dict = Depends(get_current_user), db: Session = Depen
 @router.post("/plans",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_plan(body: dict,
-                     user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                     user: dict | None=None, db: Session = Depends(get_db)):
     required = ["plan_name", "plan_code"]
     for f in required:
         if f not in body:
@@ -91,7 +91,7 @@ async def create_plan(body: dict,
 @router.get("/plans/{plan_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_plan(plan_id: str,
-                  user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                  user: dict | None=None, db: Session = Depends(get_db)):
     data = SaaSCPEngine(db).get_plan(user["tenant_id"], plan_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -102,7 +102,7 @@ async def get_plan(plan_id: str,
 @router.put("/plans/{plan_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_plan(plan_id: str, body: dict,
-                     user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                     user: dict | None=None, db: Session = Depends(get_db)):
     result = SaaSCPEngine(db).update_plan(
         user["tenant_id"], plan_id,
         is_active=body.get("is_active"),
@@ -115,8 +115,8 @@ async def update_plan(plan_id: str, body: dict,
 # ----------------------------------------------------------- saas features
 @router.get("/features",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_features(category: str = None,
-                       user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_features(category: str | None = None,
+                       user: dict | None=None, db: Session = Depends(get_db)):
     data = SaaSCPEngine(db).list_features(category=category)
     return {"status": "success", "data": data}
 
@@ -124,7 +124,7 @@ async def list_features(category: str = None,
 @router.post("/features",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_feature(body: dict,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                        user: dict | None=None, db: Session = Depends(get_db)):
     required = ["feature_name", "feature_code"]
     for f in required:
         if f not in body:
@@ -141,7 +141,7 @@ async def create_feature(body: dict,
 @router.get("/features/{feature_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_feature(feature_id: str,
-                     user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                     user: dict | None=None, db: Session = Depends(get_db)):
     data = SaaSCPEngine(db).get_feature(feature_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -153,7 +153,7 @@ async def get_feature(feature_id: str,
 @router.post("/tenants/{tenant_id}/features",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def enable_feature(tenant_id: str, body: dict,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                        user: dict | None=None, db: Session = Depends(get_db)):
     required = ["feature_id"]
     for f in required:
         if f not in body:
@@ -168,7 +168,7 @@ async def enable_feature(tenant_id: str, body: dict,
 @router.delete("/tenants/{tenant_id}/features/{feature_id}",
                dependencies=[Depends(require_permission("dynamic", "delete")), Depends(write_limiter.check)])
 async def disable_feature(tenant_id: str, feature_id: str,
-                         user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                         user: dict | None=None, db: Session = Depends(get_db)):
     result = SaaSCPEngine(db).disable_tenant_feature(tenant_id, feature_id)
     db.commit()
     return {"status": "success", "data": result}
@@ -177,7 +177,7 @@ async def disable_feature(tenant_id: str, feature_id: str,
 @router.get("/tenants/{tenant_id}/features",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def list_tenant_features(tenant_id: str,
-                              user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                              user: dict | None=None, db: Session = Depends(get_db)):
     data = SaaSCPEngine(db).list_tenant_features(tenant_id)
     return {"status": "success", "data": data}
 
@@ -186,7 +186,7 @@ async def list_tenant_features(tenant_id: str,
 @router.post("/usage",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def record_usage(body: dict,
-                     user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                     user: dict | None=None, db: Session = Depends(get_db)):
     required = ["tenant_id", "usage_type", "usage_value"]
     for f in required:
         if f not in body:
@@ -201,8 +201,8 @@ async def record_usage(body: dict,
 
 @router.get("/usage",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_usage(usage_type: str = None, limit: int = 50,
-                    user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_usage(usage_type: str | None = None, limit: int = 50,
+                    user: dict | None=None, db: Session = Depends(get_db)):
     data = SaaSCPEngine(db).list_usage(user["tenant_id"], usage_type=usage_type, limit=limit)
     return {"status": "success", "data": data}
 
@@ -210,6 +210,6 @@ async def list_usage(usage_type: str = None, limit: int = 50,
 @router.get("/usage/summary",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def usage_summary(usage_type: str = "api_calls",
-                       user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                       user: dict | None=None, db: Session = Depends(get_db)):
     data = SaaSCPEngine(db).get_usage_summary(user["tenant_id"], usage_type)
     return {"status": "success", "data": data}

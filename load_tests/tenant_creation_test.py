@@ -8,10 +8,10 @@ Usage:
     locust -f load_tests/tenant_creation_test.py --host=http://localhost:8000 --users=50 --spawn-rate=5
 """
 
-from locust import HttpUser, task, between, events
-import json
 import time
 import uuid
+
+from locust import HttpUser, between, events, task
 
 
 class TenantCreationUser(HttpUser):
@@ -34,7 +34,7 @@ class TenantCreationUser(HttpUser):
             if response.status_code == 200:
                 data = response.json()
                 self.admin_token = data.get("access_token")
-                print(f"✅ Admin login successful")
+                print("✅ Admin login successful")
         except Exception as e:
             print(f"⚠️  Admin login failed (may need manual setup): {e}")
             self.admin_token = "test_token"
@@ -103,7 +103,7 @@ class TenantCreationUser(HttpUser):
     @task(2)
     def list_tenants(self):
         """List all tenants (read operation)."""
-        headers = {"Authorization": f"Bearer self.admin_token"}
+        headers = {"Authorization": "Bearer self.admin_token"}
         self.client.get(
             "/api/tenants",
             headers=headers,
@@ -133,7 +133,7 @@ class DynamicEntityUser(HttpUser):
         tenant_id = "test-tenant-" + str(uuid.uuid4())[:8]
         entity_name = f"custom_entity_{uuid.uuid4().hex[:8]}"
         
-        headers = {"Authorization": f"Bearer test_token"}
+        headers = {"Authorization": "Bearer test_token"}
         
         start_time = time.time()
         

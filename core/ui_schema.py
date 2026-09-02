@@ -6,11 +6,12 @@ Design:
   - Supports: form schema, list schema, detail schema, OpenAPI components
   - All security filters applied before returning to caller
 """
-from typing import Dict, Any, List, Optional
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from core.security import FieldSecurity, RowSecurity, _role_matches
+from typing import Any
 
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from core.security import _role_matches
 
 # ──────────────────────────────────────────────────────────────
 # FIELD TYPE → UI WIDGET MAPPING
@@ -44,7 +45,7 @@ class UISchemaEngine:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_entity_meta(self, entity_code: str) -> Optional[Dict[str, Any]]:
+    def get_entity_meta(self, entity_code: str) -> dict[str, Any] | None:
         """Fetch entity + fields + relationships from DB."""
         entity = self.db.execute(
             text("SELECT id, code, name_en, name_ar, faculty, table_mapping "
@@ -117,9 +118,9 @@ class UISchemaEngine:
         self,
         entity_code: str,
         mode: str = "create",
-        user_roles: Optional[List[str]] = None,
+        user_roles: list[str] | None = None,
         is_admin: bool = False,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Generate a form schema for create or edit mode.
         Respects field-level security (writable_roles, visible_roles).
@@ -141,7 +142,7 @@ class UISchemaEngine:
         form_fields = []
         for f in meta["fields"]:
             ui_config = f["ui_config"]
-            field_type = f["field_type"]
+            f["field_type"]
 
             # Security: check writable
             if mode == "create" or mode == "edit":
@@ -161,9 +162,7 @@ class UISchemaEngine:
 
             # Always hide system columns
             if f["code"] in ("id", "tenant_id", "created_at", "deleted_at", "deleted_by"):
-                if mode == "create":
-                    continue
-                elif f["code"] == "id":
+                if mode == "create" or f["code"] == "id":
                     continue
 
             form_fields.append(_build_field_schema(f, ui_config, readonly=False))
@@ -202,9 +201,9 @@ class UISchemaEngine:
     def get_list_schema(
         self,
         entity_code: str,
-        user_roles: Optional[List[str]] = None,
+        user_roles: list[str] | None = None,
         is_admin: bool = False,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Generate a list/table schema.
         Shows visible columns, sortable, filterable fields.
@@ -236,7 +235,7 @@ class UISchemaEngine:
                 "type": f["field_type"],
                 "sortable": True,
                 "maskable": is_sensitive,
-                "display": f"***" if is_sensitive else None,
+                "display": "***" if is_sensitive else None,
             })
 
             # Build filter options
@@ -309,9 +308,9 @@ class UISchemaEngine:
     def get_detail_schema(
         self,
         entity_code: str,
-        user_roles: Optional[List[str]] = None,
+        user_roles: list[str] | None = None,
         is_admin: bool = False,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Generate a detail/view schema.
         Shows all visible fields + nested relationships.
@@ -374,7 +373,7 @@ class UISchemaEngine:
     # OPENAPI SCHEMA (for /docs)
     # ──────────────────────────────────────────────────────────
 
-    def get_openapi_schema(self, entity_code: str) -> Optional[Dict[str, Any]]:
+    def get_openapi_schema(self, entity_code: str) -> dict[str, Any] | None:
         """
         Generate OpenAPI-compatible request/response schemas
         for a dynamic entity.
@@ -391,7 +390,7 @@ class UISchemaEngine:
                 continue
 
             json_type, fmt = _field_type_to_json(f["field_type"])
-            prop: Dict[str, Any] = {"type": json_type}
+            prop: dict[str, Any] = {"type": json_type}
             if fmt:
                 prop["format"] = fmt
 
@@ -512,7 +511,7 @@ class UISchemaEngine:
 # HELPERS
 # ──────────────────────────────────────────────────────────────
 
-def _build_field_schema(field: Dict, ui_config: Dict, readonly: bool = False) -> Dict[str, Any]:
+def _build_field_schema(field: dict, ui_config: dict, readonly: bool = False) -> dict[str, Any]:
     """Build a single field schema for form UI."""
     ftype = field["field_type"]
     mapping = FIELD_TYPE_MAP.get(ftype, FIELD_TYPE_MAP["string"])
@@ -521,7 +520,7 @@ def _build_field_schema(field: Dict, ui_config: Dict, readonly: bool = False) ->
     widget = ui_config.get("widget", mapping["widget"])
     input_type = ui_config.get("input_type", mapping["input_type"])
 
-    schema: Dict[str, Any] = {
+    schema: dict[str, Any] = {
         "name": field["code"],
         "label": field["label_en"],
         "label_ar": field["label_ar"],
@@ -560,7 +559,7 @@ def _build_field_schema(field: Dict, ui_config: Dict, readonly: bool = False) ->
     return schema
 
 
-def _get_actions(mode: str) -> Dict[str, bool]:
+def _get_actions(mode: str) -> dict[str, bool]:
     """Return available actions per form mode."""
     if mode == "create":
         return {"submit": True, "cancel": True, "reset": True}

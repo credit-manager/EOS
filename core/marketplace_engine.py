@@ -3,11 +3,13 @@ P55 — Marketplace Engine
 Browse and install industry packs, modules, add-ons.
 General platform capability, zero company-specific code.
 """
-import uuid, json
-from typing import Optional, List, Dict, Any
-from sqlalchemy.orm import Session
-from sqlalchemy import text
+import json
+import uuid
 from enum import Enum
+from typing import Any
+
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from core.builder_engine import BuilderEngine
 
@@ -27,10 +29,10 @@ class MarketplaceEngine:
 
     # ── BROWSE ──
 
-    def list_items(self, item_type: Optional[str] = None,
-                   is_featured: Optional[bool] = None,
-                   is_free: Optional[bool] = None,
-                   limit: int = 50) -> List[Dict]:
+    def list_items(self, item_type: str | None = None,
+                   is_featured: bool | None = None,
+                   is_free: bool | None = None,
+                   limit: int = 50) -> list[dict]:
         conditions, params = [], {}
         params["lim"] = limit
         if item_type:
@@ -56,7 +58,7 @@ class MarketplaceEngine:
                  "price_yearly": 0, "is_featured": r[9], "is_free": r[10],
                  "payload": r[11] if r[11] else {}} for r in rows]
 
-    def get_item(self, item_code: str) -> Optional[Dict]:
+    def get_item(self, item_code: str) -> dict | None:
         row = self.db.execute(text(
             "SELECT id, item_code, item_type, name_en, name_ar, description, publisher, "
             "version, price_monthly, is_featured, is_free, payload FROM dbp_marketplace_items "
@@ -73,7 +75,7 @@ class MarketplaceEngine:
     # ── INSTALL ──
 
     def install_item(self, tenant_id: str, item_code: str,
-                     installed_by: str) -> Dict[str, Any]:
+                     installed_by: str) -> dict[str, Any]:
         all_items = self.list_items()
         item = next((i for i in all_items if i["item_code"] == item_code), None)
         if not item:
@@ -98,7 +100,7 @@ class MarketplaceEngine:
         return {"success": True, "installation_id": isid, "payload": payload}
 
     def apply_installation(self, tenant_id: str, installation_id: str,
-                           draft_pid: str) -> Dict[str, Any]:
+                           draft_pid: str) -> dict[str, Any]:
         inst_row = self.db.execute(text(
             "SELECT id, item_code, applied_payload FROM dbp_tenant_installations "
             "WHERE id = :iid AND tenant_id = :tid AND status = 'pending'"
@@ -128,7 +130,7 @@ class MarketplaceEngine:
         return {"success": True, "item_code": item_code,
                 "modules_added": len(payload.get("modules", []))}
 
-    def _apply_payload(self, tenant_id: str, draft: Dict, item_code: str, payload: Dict):
+    def _apply_payload(self, tenant_id: str, draft: dict, item_code: str, payload: dict):
         cfg = draft.get("draft_config", {}) if isinstance(draft, dict) else {}
         if isinstance(cfg, str):
             cfg = json.loads(cfg)
@@ -156,7 +158,7 @@ class MarketplaceEngine:
 
     # ── LIST INSTALLATIONS ──
 
-    def list_installed(self, tenant_id: str) -> List[Dict]:
+    def list_installed(self, tenant_id: str) -> list[dict]:
         rows = self.db.execute(text(
             "SELECT id, item_code, status, installed_at FROM dbp_tenant_installations "
             "WHERE tenant_id = :tid ORDER BY installed_at DESC"
@@ -164,11 +166,11 @@ class MarketplaceEngine:
         return [{"id": r[0], "item_code": r[1], "status": r[2],
                  "installed_at": str(r[3]) if r[3] else None} for r in rows]
 
-    def list_user_installations(self, tenant_id: str) -> List[Dict]:
+    def list_user_installations(self, tenant_id: str) -> list[dict]:
         return self.list_installed(tenant_id)
 
     def uninstall_item(self, tenant_id: str, item_code: str,
-                       uninstalled_by: str) -> Dict[str, Any]:
+                       uninstalled_by: str) -> dict[str, Any]:
         row = self.db.execute(text(
             "SELECT id FROM dbp_tenant_installations WHERE tenant_id=:tid AND item_code=:code"
         ), {"tid": tenant_id, "code": item_code}).fetchone()

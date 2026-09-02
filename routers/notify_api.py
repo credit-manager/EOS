@@ -4,21 +4,26 @@ P71.1 Shared Notification Engine — API
 Event-driven notification system. Fire events → match rules → deliver.
 Shared across all 6 industries.
 """
-import sys, os, json
+import json
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
-from datetime import datetime
+from typing import Any
 
-from database import SessionLocal, get_db
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import text
-from core.auth import get_current_user
+
 from core.industry_security import (
-    now, uid, check_permission, audit_log,
-    success_response, list_response,
+    audit_log,
+    check_permission,
+    list_response,
+    success_response,
+    uid,
 )
+from database import get_db
 
 router = APIRouter(prefix="/notifications", tags=["Notification Engine"])
 
@@ -30,11 +35,11 @@ router = APIRouter(prefix="/notifications", tags=["Notification Engine"])
 class EventFire(BaseModel):
     event_type: str
     source_module: str
-    source_id: Optional[str] = None
-    payload: Optional[Dict[str, Any]] = None
+    source_id: str | None = None
+    payload: dict[str, Any] | None = None
 
 @router.post("/events/fire")
-def fire_event(body: EventFire, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def fire_event(body: EventFire, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     eid = uid()
     payload_json = json.dumps(body.payload) if body.payload else None
@@ -50,7 +55,7 @@ def fire_event(body: EventFire, user: dict = Depends(get_current_user), db=Depen
 
     delivered = 0
     for rule in rules:
-        rule_id, channel, recip_type, recip_val, template_id, rule_name = rule
+        _rule_id, channel, recip_type, recip_val, template_id, _rule_name = rule
 
         try:
             recipients = _resolve_recipients(db, t, recip_type, recip_val, user["id"], body.payload)
@@ -152,7 +157,7 @@ def _queue_email(db, tenant_id, recipient_id, subject, body):
 # ═══════════════════════════════════════════════════
 
 @router.get("/inbox")
-def list_inbox(unread_only: bool = False, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_inbox(unread_only: bool = False, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     uid_ = user["id"]
     where = "WHERE tenant_id=:t AND user_id=:u"
@@ -167,7 +172,7 @@ def list_inbox(unread_only: bool = False, user: dict = Depends(get_current_user)
     return list_response(data, len(data))
 
 @router.get("/inbox/count")
-def inbox_count(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def inbox_count(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     uid_ = user["id"]
     total = db.execute(text("SELECT COUNT(*) FROM dbp_notify_inbox WHERE tenant_id=:t AND user_id=:u"), {"t": t, "u": uid_}).fetchone()[0] or 0
@@ -175,7 +180,7 @@ def inbox_count(user: dict = Depends(get_current_user), db=Depends(get_db)):
     return success_response("Inbox count", {"total": total, "unread": unread})
 
 @router.put("/inbox/{notif_id}/read")
-def mark_read(notif_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def mark_read(notif_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     db.execute(text("UPDATE dbp_notify_inbox SET is_read=TRUE, read_at=NOW() WHERE id=:id AND tenant_id=:t AND user_id=:u"),
                {"id": notif_id, "t": t, "u": user["id"]})
@@ -183,7 +188,7 @@ def mark_read(notif_id: str, user: dict = Depends(get_current_user), db=Depends(
     return success_response("Marked as read", {"id": notif_id})
 
 @router.put("/inbox/read-all")
-def mark_all_read(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def mark_all_read(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     uid_ = user["id"]
     count = db.execute(text("UPDATE dbp_notify_inbox SET is_read=TRUE, read_at=NOW() "
@@ -200,16 +205,16 @@ def mark_all_read(user: dict = Depends(get_current_user), db=Depends(get_db)):
 class RuleCreate(BaseModel):
     rule_name: str
     event_type: str
-    source_module: Optional[str] = None
+    source_module: str | None = None
     channel: str = "in_app"
     recipient_type: str = "user"
-    recipient_value: Optional[str] = None
-    template_id: Optional[str] = None
+    recipient_value: str | None = None
+    template_id: str | None = None
     priority: int = Field(default=5, ge=1, le=10)
-    conditions: Optional[Dict[str, Any]] = None
+    conditions: dict[str, Any] | None = None
 
 @router.post("/rules")
-def create_rule(body: RuleCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_rule(body: RuleCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     valid_channels = {"in_app", "email", "sms", "whatsapp"}
@@ -235,7 +240,7 @@ def create_rule(body: RuleCreate, user: dict = Depends(get_current_user), db=Dep
     return success_response("Rule created", {"id": rid})
 
 @router.get("/rules")
-def list_rules(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_rules(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text(
         "SELECT id,rule_name,event_type,source_module,channel,recipient_type,recipient_value,is_active,priority "
@@ -246,7 +251,7 @@ def list_rules(user: dict = Depends(get_current_user), db=Depends(get_db)):
     return list_response(data, len(data))
 
 @router.put("/rules/{rule_id}/toggle")
-def toggle_rule(rule_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def toggle_rule(rule_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     r = db.execute(text("SELECT is_active FROM dbp_notify_rules WHERE id=:id AND tenant_id=:t"),
@@ -268,13 +273,13 @@ class TemplateCreate(BaseModel):
     template_code: str
     name: str
     channel: str = "in_app"
-    subject: Optional[str] = None
+    subject: str | None = None
     body: str
-    body_html: Optional[str] = None
-    variables: Optional[List[str]] = None
+    body_html: str | None = None
+    variables: list[str] | None = None
 
 @router.post("/templates")
-def create_template(body: TemplateCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_template(body: TemplateCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     existing = db.execute(text("SELECT id FROM dbp_notify_templates WHERE tenant_id=:t AND template_code=:tc"),
@@ -294,7 +299,7 @@ def create_template(body: TemplateCreate, user: dict = Depends(get_current_user)
     return success_response("Template created", {"id": tid})
 
 @router.get("/templates")
-def list_templates(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_templates(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text(
         "SELECT id,template_code,name,channel,subject,is_active "
@@ -315,7 +320,7 @@ class PrefUpdate(BaseModel):
     is_muted: bool = False
 
 @router.post("/preferences")
-def update_preferences(body: PrefUpdate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def update_preferences(body: PrefUpdate, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     pid = uid()
     db.execute(text(
@@ -328,7 +333,7 @@ def update_preferences(body: PrefUpdate, user: dict = Depends(get_current_user),
     return success_response("Preferences updated", {"category": body.category})
 
 @router.get("/preferences")
-def list_preferences(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_preferences(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text(
         "SELECT category,in_app,email,is_muted FROM dbp_notify_preferences WHERE tenant_id=:t AND user_id=:u"),
@@ -342,7 +347,7 @@ def list_preferences(user: dict = Depends(get_current_user), db=Depends(get_db))
 # ═══════════════════════════════════════════════════
 
 @router.get("/stats")
-def notification_stats(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def notification_stats(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     events_today = db.execute(text(
         "SELECT COUNT(*) FROM dbp_notify_events WHERE tenant_id=:t AND created_at >= CURRENT_DATE"),

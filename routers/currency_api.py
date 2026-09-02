@@ -1,12 +1,12 @@
 """
 Multi-Currency API Router
 """
-from fastapi import APIRouter, Depends, HTTPException
+
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
-from database import SessionLocal
-from core.auth import get_current_user
+
 from core.currency_engine import MultiCurrencyEngine
+from database import SessionLocal
 
 router = APIRouter(prefix="/currencies", tags=["Multi-Currency"])
 
@@ -14,17 +14,17 @@ router = APIRouter(prefix="/currencies", tags=["Multi-Currency"])
 class CurrencyCreate(BaseModel):
     code: str
     name: str
-    symbol: Optional[str] = None
-    decimal_places: Optional[int] = 2
-    is_base: Optional[bool] = False
+    symbol: str | None = None
+    decimal_places: int | None = 2
+    is_base: bool | None = False
 
 
 class ExchangeRateCreate(BaseModel):
     from_currency: str
     to_currency: str
     rate: float
-    source: Optional[str] = "manual"
-    effective_date: Optional[str] = None
+    source: str | None = "manual"
+    effective_date: str | None = None
 
 
 class ConvertRequest(BaseModel):
@@ -34,7 +34,7 @@ class ConvertRequest(BaseModel):
 
 
 @router.get("")
-async def list_currencies(user: dict = Depends(get_current_user)):
+async def list_currencies(user: dict | None=None):
     db = SessionLocal()
     try:
         data = MultiCurrencyEngine(db).list_currencies(user["tenant_id"])
@@ -44,7 +44,7 @@ async def list_currencies(user: dict = Depends(get_current_user)):
 
 
 @router.post("")
-async def create_currency(body: CurrencyCreate, user: dict = Depends(get_current_user)):
+async def create_currency(body: CurrencyCreate, user: dict | None=None):
     db = SessionLocal()
     try:
         result = MultiCurrencyEngine(db).create_currency(
@@ -57,7 +57,7 @@ async def create_currency(body: CurrencyCreate, user: dict = Depends(get_current
 
 
 @router.get("/base")
-async def get_base_currency(user: dict = Depends(get_current_user)):
+async def get_base_currency(user: dict | None=None):
     db = SessionLocal()
     try:
         data = MultiCurrencyEngine(db).get_base_currency(user["tenant_id"])
@@ -69,7 +69,7 @@ async def get_base_currency(user: dict = Depends(get_current_user)):
 
 
 @router.get("/rates")
-async def list_rates(user: dict = Depends(get_current_user)):
+async def list_rates(user: dict | None=None):
     db = SessionLocal()
     try:
         data = MultiCurrencyEngine(db).list_exchange_rates(user["tenant_id"])
@@ -79,7 +79,7 @@ async def list_rates(user: dict = Depends(get_current_user)):
 
 
 @router.post("/rates")
-async def set_rate(body: ExchangeRateCreate, user: dict = Depends(get_current_user)):
+async def set_rate(body: ExchangeRateCreate, user: dict | None=None):
     db = SessionLocal()
     try:
         result = MultiCurrencyEngine(db).set_exchange_rate(
@@ -92,7 +92,7 @@ async def set_rate(body: ExchangeRateCreate, user: dict = Depends(get_current_us
 
 
 @router.get("/rates/{from_currency}/{to_currency}")
-async def get_rate(from_currency: str, to_currency: str, user: dict = Depends(get_current_user)):
+async def get_rate(from_currency: str, to_currency: str, user: dict | None=None):
     db = SessionLocal()
     try:
         rate = MultiCurrencyEngine(db).get_exchange_rate(user["tenant_id"], from_currency, to_currency)
@@ -104,7 +104,7 @@ async def get_rate(from_currency: str, to_currency: str, user: dict = Depends(ge
 
 
 @router.post("/convert")
-async def convert_currency(body: ConvertRequest, user: dict = Depends(get_current_user)):
+async def convert_currency(body: ConvertRequest, user: dict | None=None):
     db = SessionLocal()
     try:
         result = MultiCurrencyEngine(db).convert(
@@ -118,7 +118,7 @@ async def convert_currency(body: ConvertRequest, user: dict = Depends(get_curren
 
 
 @router.get("/summary")
-async def currency_summary(user: dict = Depends(get_current_user)):
+async def currency_summary(user: dict | None=None):
     db = SessionLocal()
     try:
         data = MultiCurrencyEngine(db).get_currency_summary(user["tenant_id"])

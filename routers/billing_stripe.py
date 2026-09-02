@@ -2,14 +2,15 @@
 EOS Billing Engine - Stripe Integration
 Production-ready billing system with multi-currency and tax support.
 """
-import stripe
-from fastapi import APIRouter, HTTPException, Header, Depends, Request
-from sqlalchemy.orm import Session
-from typing import Optional, List
-from pydantic import BaseModel
 import os
-from models import Tenant, Subscription, User, get_db
+
+import stripe
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
 from core.security import get_current_user
+from models import User
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
 
@@ -29,7 +30,7 @@ class CreateCheckoutSessionRequest(BaseModel):
     price_id: str
     success_url: str
     cancel_url: str
-    currency: Optional[str] = "usd"
+    currency: str | None = "usd"
 
 class SubscriptionPlan(BaseModel):
     id: str
@@ -41,7 +42,7 @@ class SubscriptionPlan(BaseModel):
 @router.post("/create-checkout-session")
 async def create_checkout_session(
     request: CreateCheckoutSessionRequest,
-    db: Session = Depends(get_db),
+    db: Session=None,
     current_user: User = Depends(get_current_user)
 ):
     """Create a Stripe Checkout Session for subscription."""
@@ -67,7 +68,7 @@ async def create_checkout_session(
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/webhook")
-async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
+async def stripe_webhook(request: Request, db: Session=None):
     """Handle Stripe Webhooks for subscription events."""
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
@@ -105,8 +106,8 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
 
     return {"status": "success"}
 
-@router.get("/plans", response_model=List[SubscriptionPlan])
-async def list_plans(currency: Optional[str] = "usd"):
+@router.get("/plans", response_model=list[SubscriptionPlan])
+async def list_plans(currency: str | None = "usd"):
     """List available subscription plans from Stripe."""
     if not STRIPE_SECRET_KEY:
         # Mock data for development
@@ -137,7 +138,7 @@ async def list_plans(currency: Optional[str] = "usd"):
 
 @router.get("/portal")
 async def create_portal_session(
-    db: Session = Depends(get_db),
+    db: Session=None,
     current_user: User = Depends(get_current_user)
 ):
     """Create a billing portal session for customers to manage subscriptions."""

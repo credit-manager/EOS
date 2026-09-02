@@ -1,15 +1,14 @@
 """
 P22 Accounting Engine Router
 """
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import require_permission, get_current_user
-from core.rate_limit import read_limiter, write_limiter
 from core.accounting_engine import AccountingEngine
-
+from core.auth import get_current_user, require_permission
+from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic", tags=["Accounting Engine"])
 
@@ -17,17 +16,17 @@ router = APIRouter(prefix="/api/v1/dynamic", tags=["Accounting Engine"])
 # ── CHART OF ACCOUNTS ──
 
 @router.get("/companies/{company_id}/accounts", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_accounts(company_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_accounts(company_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": AccountingEngine(db).get_accounts(company_id, user.get("tenant_id"))}
 
 
 @router.get("/companies/{company_id}/accounts/tree", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_account_tree(company_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_account_tree(company_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": AccountingEngine(db).get_account_tree(company_id, user.get("tenant_id"))}
 
 
 @router.post("/companies/{company_id}/accounts", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_account(company_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_account(company_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     if not body.get("code") or not body.get("name_en") or not body.get("account_type"):
         raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": "code, name_en, account_type required"}})
     aid = AccountingEngine(db).create_account(user.get("tenant_id"), company_id, body["code"], body["name_en"],
@@ -42,13 +41,13 @@ async def create_account(company_id: str, body: dict, user: dict = Depends(get_c
 # ── JOURNAL ENTRIES ──
 
 @router.get("/companies/{company_id}/journal-entries", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_journal_entries(company_id: str, status: Optional[str] = None,
-                               limit: int = Query(50, ge=1, le=200), user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_journal_entries(company_id: str, status: str | None = None,
+                               limit: int | None=None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     return {"status": "success", "data": AccountingEngine(db).list_journal_entries(company_id, user.get("tenant_id"), status=status, limit=limit)}
 
 
 @router.post("/companies/{company_id}/journal-entries", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_journal_entry(company_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_journal_entry(company_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     if not body.get("entry_date") or not body.get("entry_type"):
         raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": "entry_date and entry_type required"}})
     jeid = AccountingEngine(db).create_journal_entry(
@@ -63,7 +62,7 @@ async def create_journal_entry(company_id: str, body: dict, user: dict = Depends
 
 
 @router.get("/journal-entries/{je_id}", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_journal_entry(je_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_journal_entry(je_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     entry = AccountingEngine(db).get_journal_entry(je_id, user.get("tenant_id"))
     if not entry:
         raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Journal entry not found"}})
@@ -71,7 +70,7 @@ async def get_journal_entry(je_id: str, user: dict = Depends(get_current_user), 
 
 
 @router.post("/journal-entries/{je_id}/lines", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def add_journal_line(je_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def add_journal_line(je_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     if not body.get("account_id"):
         raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": "account_id required"}})
     lid = AccountingEngine(db).add_journal_line(
@@ -85,7 +84,7 @@ async def add_journal_line(je_id: str, body: dict, user: dict = Depends(get_curr
 
 
 @router.post("/journal-entries/{je_id}/post", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def post_journal_entry(je_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def post_journal_entry(je_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     result = AccountingEngine(db).post_journal_entry(je_id, user.get("tenant_id"))
     if not result["success"]:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "POST_FAILED", "message": result["error"]}})
@@ -96,5 +95,5 @@ async def post_journal_entry(je_id: str, user: dict = Depends(get_current_user),
 # ── TRIAL BALANCE ──
 
 @router.get("/companies/{company_id}/trial-balance", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_trial_balance(company_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_trial_balance(company_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": AccountingEngine(db).get_trial_balance(company_id, user.get("tenant_id"))}

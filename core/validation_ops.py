@@ -2,9 +2,10 @@
 P40 Production Validation Engine
 """
 import uuid
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class ProductionValidationEngine:
@@ -25,7 +26,7 @@ class ProductionValidationEngine:
 
     def list_validation_rules(self, tenant_id, rule_type=None, is_active=None, limit=50):
         q = "SELECT id, rule_name, rule_type, check_command, expected_value, severity, is_active, last_run_at, last_status, created_at FROM dbp_validation_rules WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if rule_type:
             q += " AND rule_type=:rt"
             params["rt"] = rule_type
@@ -59,7 +60,7 @@ class ProductionValidationEngine:
     def update_validation_rule(self, tenant_id, rule_id, is_active=None, severity=None,
                                check_command=None):
         sets = ["updated_at=NOW()"]
-        params: Dict[str, Any] = {"id": rule_id, "tid": tenant_id}
+        params: dict[str, Any] = {"id": rule_id, "tid": tenant_id}
         if is_active is not None:
             sets.append("is_active=:ia")
             params["ia"] = is_active
@@ -94,7 +95,7 @@ class ProductionValidationEngine:
 
     def list_validation_results(self, tenant_id, check_type=None, status=None, limit=50):
         q = "SELECT id, rule_id, rule_name, check_type, status, actual_value, expected_value, message, execution_time_ms, validated_at FROM dbp_validation_results WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if check_type:
             q += " AND check_type=:ct"
             params["ct"] = check_type
@@ -130,7 +131,7 @@ class ProductionValidationEngine:
 
     def list_health_checks(self, tenant_id, check_type=None, status=None, limit=50):
         q = "SELECT id, check_name, check_type, target, status, response_time_ms, message, last_run_at, is_active, created_at FROM dbp_health_checks WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if check_type:
             q += " AND check_type=:ct"
             params["ct"] = check_type
@@ -171,7 +172,7 @@ class ProductionValidationEngine:
 
     def list_ssl_certificates(self, tenant_id, domain=None, status=None, limit=50):
         q = "SELECT id, domain, issuer, serial_number, not_before, not_after, status, auto_renew, created_at FROM dbp_ssl_certificates WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if domain:
             q += " AND domain=:do"
             params["do"] = domain
@@ -204,7 +205,7 @@ class ProductionValidationEngine:
 
     def update_ssl_certificate(self, tenant_id, cert_id, status=None, not_after=None):
         sets = ["updated_at=NOW()"]
-        params: Dict[str, Any] = {"id": cert_id, "tid": tenant_id}
+        params: dict[str, Any] = {"id": cert_id, "tid": tenant_id}
         if status is not None:
             sets.append("status=:st")
             params["st"] = status
@@ -240,7 +241,7 @@ class ProductionValidationEngine:
 
     def list_environment_configs(self, tenant_id, environment=None, limit=50):
         q = "SELECT id, environment, config_key, config_value, is_sensitive, description, created_at, updated_at FROM dbp_environment_configs WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if environment:
             q += " AND environment=:env"
             params["env"] = environment
@@ -273,7 +274,7 @@ class ProductionValidationEngine:
                              critical_count=None, high_count=None, medium_count=None,
                              low_count=None, report_url=None):
         sets = ["status=:st"]
-        params: Dict[str, Any] = {"id": scan_id, "tid": tenant_id, "st": status}
+        params: dict[str, Any] = {"id": scan_id, "tid": tenant_id, "st": status}
         if vulnerabilities_found is not None:
             sets.append("vulnerabilities_found=:vf")
             params["vf"] = vulnerabilities_found
@@ -301,7 +302,7 @@ class ProductionValidationEngine:
 
     def list_security_scans(self, tenant_id, scan_type=None, status=None, limit=20):
         q = "SELECT id, scan_type, target, status, vulnerabilities_found, critical_count, high_count, medium_count, low_count, report_url, started_at, completed_at, created_at FROM dbp_security_scans WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if scan_type:
             q += " AND scan_type=:st2"
             params["st2"] = scan_type

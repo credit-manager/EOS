@@ -1,7 +1,12 @@
 """
 P74.9 Two-Factor Authentication — Tests
 """
-import sys, io, json, uuid, urllib.request
+import io
+import json
+import sys
+import urllib.request
+import uuid
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 BASE = "http://127.0.0.1:8000"

@@ -1,14 +1,13 @@
 """
 P28 Project Management Router
 """
-from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import require_permission, get_current_user
-from core.rate_limit import read_limiter, write_limiter
+from core.auth import require_permission
 from core.project_engine import ProjectEngine
+from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic", tags=["Project Management"])
 
@@ -23,13 +22,13 @@ def _ensure_project(db: Session, pid: str, user: dict) -> dict:
 # ── PROJECTS ──
 
 @router.get("/companies/{cid}/projects", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_projects(cid: str, status: Optional[str] = None,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_projects(cid: str, status: str | None = None,
+                        user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": ProjectEngine(db).list_projects(cid, tenant_id=user.get("tenant_id"), status=status)}
 
 
 @router.post("/companies/{cid}/projects", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_project(cid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_project(cid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ("name", "start_date", "end_date"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -46,13 +45,13 @@ async def create_project(cid: str, body: dict, user: dict = Depends(get_current_
 
 
 @router.get("/projects/{pid}", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_project(pid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_project(pid: str, user: dict | None=None, db: Session = Depends(get_db)):
     proj = _ensure_project(db, pid, user)
     return {"status": "success", "data": proj}
 
 
 @router.put("/projects/{pid}", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def update_project(pid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def update_project(pid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     _ensure_project(db, pid, user)
     if not body:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": "At least one field required"}})
@@ -68,14 +67,14 @@ async def update_project(pid: str, body: dict, user: dict = Depends(get_current_
 # ── TASKS ──
 
 @router.get("/projects/{pid}/tasks", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_tasks(pid: str, status: Optional[str] = None, assigned_to: Optional[str] = None,
-                     user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_tasks(pid: str, status: str | None = None, assigned_to: str | None = None,
+                     user: dict | None=None, db: Session = Depends(get_db)):
     _ensure_project(db, pid, user)
     return {"status": "success", "data": ProjectEngine(db).list_tasks(pid, status=status, assigned_to=assigned_to)}
 
 
 @router.post("/projects/{pid}/tasks", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_task(pid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_task(pid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     if "name" not in body:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": "name required"}})
     try:
@@ -94,7 +93,7 @@ async def create_task(pid: str, body: dict, user: dict = Depends(get_current_use
 
 
 @router.put("/tasks/{tid}", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def update_task(tid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def update_task(tid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     if not body:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": "At least one field required"}})
     result = ProjectEngine(db).update_task(tid, tenant_guard=user.get("tenant_id"), **body)
@@ -107,7 +106,7 @@ async def update_task(tid: str, body: dict, user: dict = Depends(get_current_use
 
 
 @router.post("/projects/{pid}/tasks/reorder", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def reorder_tasks(pid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def reorder_tasks(pid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     _ensure_project(db, pid, user)
     task_ids = body.get("task_ids")
     if not isinstance(task_ids, list):
@@ -122,13 +121,13 @@ async def reorder_tasks(pid: str, body: dict, user: dict = Depends(get_current_u
 # ── MILESTONES ──
 
 @router.get("/projects/{pid}/milestones", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_milestones(pid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_milestones(pid: str, user: dict | None=None, db: Session = Depends(get_db)):
     _ensure_project(db, pid, user)
     return {"status": "success", "data": ProjectEngine(db).list_milestones(pid)}
 
 
 @router.post("/projects/{pid}/milestones", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_milestone(pid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_milestone(pid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ("name", "due_date"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -142,7 +141,7 @@ async def create_milestone(pid: str, body: dict, user: dict = Depends(get_curren
 
 
 @router.post("/milestones/{mid}/complete", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def complete_milestone(mid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def complete_milestone(mid: str, user: dict | None=None, db: Session = Depends(get_db)):
     result = ProjectEngine(db).complete_milestone(mid, tenant_guard=user.get("tenant_id"))
     if not result["success"]:
         if result["error"] == "Milestone not found":
@@ -155,14 +154,14 @@ async def complete_milestone(mid: str, user: dict = Depends(get_current_user), d
 # ── TIME ENTRIES ──
 
 @router.get("/projects/{pid}/time-entries", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_time_entries(pid: str, task_id: Optional[str] = None, employee_id: Optional[str] = None,
-                            user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_time_entries(pid: str, task_id: str | None = None, employee_id: str | None = None,
+                            user: dict | None=None, db: Session = Depends(get_db)):
     _ensure_project(db, pid, user)
     return {"status": "success", "data": ProjectEngine(db).get_time_entries(pid, task_id=task_id, employee_id=employee_id)}
 
 
 @router.post("/projects/{pid}/time-entries", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def log_time(pid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def log_time(pid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ("task_id", "employee_id", "work_date", "hours"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -180,6 +179,6 @@ async def log_time(pid: str, body: dict, user: dict = Depends(get_current_user),
 
 
 @router.get("/projects/{pid}/time-summary", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def time_summary(pid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def time_summary(pid: str, user: dict | None=None, db: Session = Depends(get_db)):
     _ensure_project(db, pid, user)
     return {"status": "success", "data": ProjectEngine(db).get_project_time_summary(pid)}

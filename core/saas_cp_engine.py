@@ -2,9 +2,10 @@
 P41 SaaS Control Plane Engine
 """
 import uuid
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class SaaSCPEngine:
@@ -26,7 +27,7 @@ class SaaSCPEngine:
 
     def list_tenants(self, status=None, limit=50):
         q = "SELECT id, tenant_id, name, slug, status, plan_id, max_users, max_companies, created_at FROM dbp_saas_tenants"
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if status:
             q += " WHERE status=:st"
             params["st"] = status
@@ -53,7 +54,7 @@ class SaaSCPEngine:
     def update_tenant(self, tenant_id, name=None, status=None, plan_id=None,
                       max_users=None, max_companies=None, settings=None):
         sets = ["updated_at=NOW()"]
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if name is not None:
             sets.append("name=:na")
             params["na"] = name
@@ -95,7 +96,7 @@ class SaaSCPEngine:
 
     def list_plans(self, tenant_id, is_active=None, limit=50):
         q = "SELECT id, plan_name, plan_code, price_monthly, price_yearly, max_users, max_companies, max_storage_gb, is_active, created_at FROM dbp_saas_plans WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if is_active is not None:
             q += " AND is_active=:ia"
             params["ia"] = is_active
@@ -125,7 +126,7 @@ class SaaSCPEngine:
     def update_plan(self, tenant_id, plan_id, is_active=None, price_monthly=None,
                     price_yearly=None):
         sets = ["updated_at=NOW()"]
-        params: Dict[str, Any] = {"id": plan_id, "tid": tenant_id}
+        params: dict[str, Any] = {"id": plan_id, "tid": tenant_id}
         if is_active is not None:
             sets.append("is_active=:ia")
             params["ia"] = is_active
@@ -154,7 +155,7 @@ class SaaSCPEngine:
 
     def list_features(self, category=None, limit=50):
         q = "SELECT id, feature_name, feature_code, description, category, is_default, created_at FROM dbp_saas_features"
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if category:
             q += " WHERE category=:ca"
             params["ca"] = category
@@ -211,7 +212,7 @@ class SaaSCPEngine:
              "FROM dbp_saas_tenant_features tf "
              "JOIN dbp_saas_features f ON tf.feature_id = f.id "
              "WHERE tf.tenant_id=:tid")
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if is_enabled is not None:
             q += " AND tf.is_enabled=:ie"
             params["ie"] = is_enabled
@@ -235,7 +236,7 @@ class SaaSCPEngine:
 
     def list_usage(self, tenant_id, usage_type=None, limit=50):
         q = "SELECT id, tenant_id, usage_type, usage_value, period_start, period_end, recorded_at FROM dbp_saas_usage WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if usage_type:
             q += " AND usage_type=:ut"
             params["ut"] = usage_type

@@ -1,10 +1,12 @@
 """
 P46 Compliance Automation & Policy Engine
 """
-import uuid, json
-from typing import Dict, Any
-from sqlalchemy.orm import Session
+import json
+import uuid
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class ComplianceEngine:
@@ -24,7 +26,7 @@ class ComplianceEngine:
 
     def list_policies(self, tenant_id, is_active=None):
         q = "SELECT id, policy_name, policy_type, severity, is_active, created_at FROM dbp_compliance_policies WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if is_active is not None:
             q += " AND is_active=:ia"
             params["ia"] = is_active
@@ -82,7 +84,7 @@ class ComplianceEngine:
 
     def list_checks(self, tenant_id, policy_id=None, status=None, limit=50):
         q = "SELECT id, policy_id, check_name, check_type, target_entity, status, result_detail, ran_at FROM dbp_compliance_checks WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if policy_id:
             q += " AND policy_id=:pi"
             params["pi"] = policy_id
@@ -114,7 +116,7 @@ class ComplianceEngine:
 
     def list_violations(self, tenant_id, status=None, severity=None, limit=50):
         q = "SELECT id, policy_id, entity_type, entity_id, violation_type, severity, status, assigned_to, created_at FROM dbp_compliance_violations WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if status:
             q += " AND status=:st"
             params["st"] = status
@@ -152,7 +154,7 @@ class ComplianceEngine:
 
     def list_audit_log(self, tenant_id, action=None, limit=50):
         q = "SELECT id, action, entity_type, entity_id, actor_id, details, created_at FROM dbp_compliance_audit_log WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if action:
             q += " AND action=:ac"
             params["ac"] = action
@@ -179,7 +181,7 @@ class ComplianceEngine:
 
     def list_frameworks(self, tenant_id, framework_type=None):
         q = "SELECT id, framework_name, framework_type, version, status, created_at FROM dbp_compliance_frameworks WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if framework_type:
             q += " AND framework_type=:ft"
             params["ft"] = framework_type

@@ -2,24 +2,24 @@
 P74.3 WebSocket Connection Manager
 Real-time notification delivery via WebSocket.
 """
-import sys, os, json
+import json
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
-from typing import Dict, Set, Optional
-import asyncio
 
-from core.auth import get_current_user
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 router = APIRouter(tags=["WebSocket"])
 
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: Dict[str, Set[WebSocket]] = {}
-        self.connection_info: Dict[WebSocket, dict] = {}
+        self.active_connections: dict[str, set[WebSocket]] = {}
+        self.connection_info: dict[WebSocket, dict] = {}
 
-    async def connect(self, websocket: WebSocket, user_id: str, tenant_id: str = None):
+    async def connect(self, websocket: WebSocket, user_id: str, tenant_id: str | None = None):
         await websocket.accept()
         if user_id not in self.active_connections:
             self.active_connections[user_id] = set()
@@ -44,7 +44,7 @@ class ConnectionManager:
             for ws in dead:
                 self.active_connections[user_id].discard(ws)
 
-    async def broadcast(self, message: dict, tenant_id: str = None):
+    async def broadcast(self, message: dict, tenant_id: str | None = None):
         dead = []
         for user_id, connections in self.active_connections.items():
             for ws in connections.copy():
@@ -69,7 +69,7 @@ manager = ConnectionManager()
 @router.websocket("/ws/notifications")
 async def websocket_notifications(
     websocket: WebSocket,
-    token: Optional[str] = Query(None),
+    token: str | None=None,
 ):
     user_id = None
     tenant_id = None

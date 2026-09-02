@@ -3,9 +3,9 @@ EOS Industry Engine — Industry Settings
 Currency, fiscal year, tax, and industry-specific configuration.
 """
 
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 
 class TaxSystem(str, Enum):
@@ -57,7 +57,7 @@ class IndustrySettings:
     industry: str
     # Currency
     base_currency: str = "SAR"
-    currencies: List[CurrencyConfig] = field(default_factory=list)
+    currencies: list[CurrencyConfig] = field(default_factory=list)
     # Tax
     tax: TaxConfig = field(default_factory=lambda: TaxConfig(tax_system=TaxSystem.VAT))
     # Fiscal Year
@@ -66,14 +66,14 @@ class IndustrySettings:
     number_format: str = "#,##0.00"
     date_format: str = "DD/MM/YYYY"
     # Features
-    features: Dict[str, bool] = field(default_factory=dict)
+    features: dict[str, bool] = field(default_factory=dict)
     # Defaults
-    defaults: Dict[str, Any] = field(default_factory=dict)
+    defaults: dict[str, Any] = field(default_factory=dict)
     # UI preferences
     rtl_default: bool = True
     theme: str = "light"
     # Industry-specific settings
-    industry_config: Dict[str, Any] = field(default_factory=dict)
+    industry_config: dict[str, Any] = field(default_factory=dict)
 
 
 class SettingsEngine:
@@ -83,7 +83,7 @@ class SettingsEngine:
     """
 
     def __init__(self):
-        self._settings: Dict[str, IndustrySettings] = {}
+        self._settings: dict[str, IndustrySettings] = {}
         self._register_builtins()
 
     def _register_builtins(self):
@@ -289,7 +289,7 @@ class SettingsEngine:
         """Register industry settings."""
         self._settings[settings.industry] = settings
 
-    def get(self, industry: str) -> Optional[IndustrySettings]:
+    def get(self, industry: str) -> IndustrySettings | None:
         """Get settings for an industry."""
         return self._settings.get(industry)
 
@@ -327,20 +327,20 @@ class SettingsEngine:
             return settings.tax
         return TaxConfig(tax_system=TaxSystem.VAT)
 
-    def get_industry_config(self, industry: str) -> Dict[str, Any]:
+    def get_industry_config(self, industry: str) -> dict[str, Any]:
         """Get industry-specific configuration."""
         settings = self._settings.get(industry)
         if settings:
             return settings.industry_config
         return {}
 
-    def update_industry_config(self, industry: str, updates: Dict[str, Any]):
+    def update_industry_config(self, industry: str, updates: dict[str, Any]):
         """Update industry-specific configuration."""
         settings = self._settings.get(industry)
         if settings:
             settings.industry_config.update(updates)
 
-    def export_settings(self, industry: str) -> Dict[str, Any]:
+    def export_settings(self, industry: str) -> dict[str, Any]:
         """Export settings for templates."""
         settings = self._settings.get(industry)
         if not settings:

@@ -1,25 +1,25 @@
 """
 P26 Sales & Invoicing Router
 """
-from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import require_permission, get_current_user
+from core.auth import require_permission
 from core.rate_limit import read_limiter, write_limiter
 from core.sales_engine import SalesEngine
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic", tags=["Sales & Invoicing"])
 
 
 @router.get("/companies/{cid}/customers", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_customers(cid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_customers(cid: str, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": SalesEngine(db).list_customers(cid, tenant_id=user.get("tenant_id"))}
 
 
 @router.post("/companies/{cid}/customers", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_customer(cid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_customer(cid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     if not body.get("name"):
         raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": "name required"}})
     cust_id = SalesEngine(db).create_customer(user.get("tenant_id"), cid, body["name"],
@@ -33,7 +33,7 @@ async def create_customer(cid: str, body: dict, user: dict = Depends(get_current
 
 
 @router.get("/companies/{cid}/quotations", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_quotations(cid: str, status: Optional[str] = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_quotations(cid: str, status: str | None = None, user: dict | None=None, db: Session = Depends(get_db)):
     conditions = ["company_id = :cid", "tenant_id = :tid"]
     params = {"cid": cid, "tid": user.get("tenant_id")}
     if status:
@@ -51,7 +51,7 @@ async def list_quotations(cid: str, status: Optional[str] = None, user: dict = D
 
 
 @router.post("/companies/{cid}/quotations", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_quotation(cid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_quotation(cid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ("customer_id", "quote_date", "lines"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -65,7 +65,7 @@ async def create_quotation(cid: str, body: dict, user: dict = Depends(get_curren
 
 
 @router.post("/quotations/{qid}/convert", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def convert_quotation(qid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def convert_quotation(qid: str, user: dict | None=None, db: Session = Depends(get_db)):
     from sqlalchemy import text as sa
     q = db.execute(sa("SELECT company_id FROM dbp_sales_quotations WHERE id = :qid AND tenant_id = :tid"),
                    {"qid": qid, "tid": user.get("tenant_id")}).fetchone()
@@ -80,12 +80,12 @@ async def convert_quotation(qid: str, user: dict = Depends(get_current_user), db
 
 
 @router.get("/companies/{cid}/sales-orders", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_sales_orders(cid: str, status: Optional[str] = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_sales_orders(cid: str, status: str | None = None, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": SalesEngine(db).list_sales_orders(cid, status=status, tenant_id=user.get("tenant_id"))}
 
 
 @router.post("/companies/{cid}/sales-orders", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_sales_order(cid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_sales_order(cid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ("customer_id", "order_date", "lines"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -99,7 +99,7 @@ async def create_sales_order(cid: str, body: dict, user: dict = Depends(get_curr
 
 
 @router.get("/sales-orders/{oid}", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_sales_order(oid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_sales_order(oid: str, user: dict | None=None, db: Session = Depends(get_db)):
     order = SalesEngine(db).get_sales_order(oid, user.get("tenant_id"))
     if not order:
         raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Order not found"}})
@@ -107,12 +107,12 @@ async def get_sales_order(oid: str, user: dict = Depends(get_current_user), db: 
 
 
 @router.get("/companies/{cid}/invoices", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_invoices(cid: str, status: Optional[str] = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_invoices(cid: str, status: str | None = None, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": SalesEngine(db).list_invoices(cid, status=status, tenant_id=user.get("tenant_id"))}
 
 
 @router.post("/companies/{cid}/invoices", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_invoice(cid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_invoice(cid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ("customer_id", "invoice_date", "lines"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -128,7 +128,7 @@ async def create_invoice(cid: str, body: dict, user: dict = Depends(get_current_
 
 
 @router.get("/invoices/{iid}", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_invoice(iid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_invoice(iid: str, user: dict | None=None, db: Session = Depends(get_db)):
     inv = SalesEngine(db).get_invoice(iid, user.get("tenant_id"))
     if not inv:
         raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Invoice not found"}})
@@ -136,7 +136,7 @@ async def get_invoice(iid: str, user: dict = Depends(get_current_user), db: Sess
 
 
 @router.post("/invoices/{iid}/payments", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def record_payment(iid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def record_payment(iid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     if "amount" not in body or body["amount"] <= 0:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "INVALID", "message": "Positive amount required"}})
     result = SalesEngine(db).record_payment(iid, body["amount"], body.get("payment_date", ""),

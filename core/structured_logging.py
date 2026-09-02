@@ -8,15 +8,14 @@ Usage in main.py:
     app.add_middleware(RequestIdMiddleware)
 """
 
-import logging
 import json
-import uuid
-import time
-import sys
+import logging
 import os
-from datetime import datetime, timezone
+import sys
+import time
+import uuid
 from contextvars import ContextVar
-from typing import Optional
+from datetime import datetime, timezone
 
 # ═══════════════════════════════════════════════
 # Context Variables
@@ -96,7 +95,7 @@ class HumanFormatter(logging.Formatter):
         request_id = request_id_var.get("-")
         rid = f"[{request_id[:8]}]" if request_id != "-" else ""
 
-        timestamp = datetime.now().strftime("%H:%M:%S")
+        timestamp = datetime.now(tz=timezone.utc).strftime("%H:%M:%S")
         return f"{color}{timestamp} {record.levelname:8s}{self.RESET} {rid:10s} {record.name}: {record.getMessage()}"
 
 
@@ -104,7 +103,7 @@ class HumanFormatter(logging.Formatter):
 # Setup Logging
 # ═══════════════════════════════════════════════
 
-def setup_logging(level: str = None, format_type: str = None):
+def setup_logging(level: str | None = None, format_type: str | None = None):
     """
     Configure structured logging for EOS.
 
@@ -179,7 +178,7 @@ class RequestIdMiddleware:
 
         # Extract tenant/user from headers (simplified)
         headers = dict(scope.get("headers", []))
-        auth_header = headers.get(b"authorization", b"").decode()
+        headers.get(b"authorization", b"").decode()
 
         logger = logging.getLogger("eos.request")
         start_time = time.time()
@@ -261,7 +260,7 @@ class AuditLogger:
         event: str,
         tenant_id: str = "-",
         user_id: str = "-",
-        details: dict = None,
+        details: dict | None = None,
         severity: str = "INFO"
     ):
         """Log a structured audit event."""

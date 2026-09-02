@@ -9,9 +9,10 @@ All storage is raw SQL against:
   - dbp_document_tags
 """
 import uuid
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 def _iso(value):
@@ -30,8 +31,8 @@ class DocumentEngine:
     # ──────────────────────────────────────────────────────────
 
     def create_folder(self, tenant_id: str, company_id: str, name: str,
-                      parent_id: Optional[str] = None,
-                      created_by: Optional[str] = None) -> str:
+                      parent_id: str | None = None,
+                      created_by: str | None = None) -> str:
         fid = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_doc_folders "
@@ -42,10 +43,10 @@ class DocumentEngine:
         self.db.flush()
         return fid
 
-    def list_folders(self, company_id: str, tenant_id: Optional[str] = None,
-                     parent_id: Optional[str] = None) -> List[Dict]:
+    def list_folders(self, company_id: str, tenant_id: str | None = None,
+                     parent_id: str | None = None) -> list[dict]:
         conditions = ["company_id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id}
+        params: dict[str, Any] = {"cid": company_id}
         if tenant_id:
             conditions.append("tenant_id = :tid")
             params["tid"] = tenant_id
@@ -61,7 +62,7 @@ class DocumentEngine:
                  "description": r[3], "created_by": r[4],
                  "created_at": _iso(r[5])} for r in rows]
 
-    def delete_folder(self, folder_id: str) -> Dict[str, Any]:
+    def delete_folder(self, folder_id: str) -> dict[str, Any]:
         row = self.db.execute(text(
             "SELECT id FROM dbp_doc_folders WHERE id = :fid"
         ), {"fid": folder_id}).fetchone()
@@ -132,9 +133,9 @@ class DocumentEngine:
         return did
 
     def get_document(self, doc_id: str,
-                     tenant_id: Optional[str] = None) -> Optional[Dict]:
+                     tenant_id: str | None = None) -> dict | None:
         conditions = ["id = :did"]
-        params: Dict[str, Any] = {"did": doc_id}
+        params: dict[str, Any] = {"did": doc_id}
         if tenant_id:
             conditions.append("tenant_id = :tid")
             params["tid"] = tenant_id
@@ -178,13 +179,13 @@ class DocumentEngine:
                 "created_at": _iso(row[16]), "updated_at": _iso(row[17]),
                 "tags": tags, "latest_version": latest_version}
 
-    def list_documents(self, company_id: str, tenant_id: Optional[str] = None,
-                       folder_id: Optional[str] = None,
-                       doc_type: Optional[str] = None,
-                       search: Optional[str] = None,
-                       tag: Optional[str] = None) -> List[Dict]:
+    def list_documents(self, company_id: str, tenant_id: str | None = None,
+                       folder_id: str | None = None,
+                       doc_type: str | None = None,
+                       search: str | None = None,
+                       tag: str | None = None) -> list[dict]:
         conditions = ["company_id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id}
+        params: dict[str, Any] = {"cid": company_id}
         if tenant_id:
             conditions.append("tenant_id = :tid")
             params["tid"] = tenant_id
@@ -215,7 +216,7 @@ class DocumentEngine:
                  "created_at": _iso(r[10]), "updated_at": _iso(r[11])}
                 for r in rows]
 
-    def update_document(self, doc_id: str, **kw) -> Dict[str, Any]:
+    def update_document(self, doc_id: str, **kw) -> dict[str, Any]:
         row = self.db.execute(text(
             "SELECT id FROM dbp_documents WHERE id = :did"
         ), {"did": doc_id}).fetchone()
@@ -239,7 +240,7 @@ class DocumentEngine:
         self.db.flush()
         return {"success": True, "id": doc_id}
 
-    def delete_document(self, doc_id: str) -> Dict[str, Any]:
+    def delete_document(self, doc_id: str) -> dict[str, Any]:
         row = self.db.execute(text(
             "SELECT id FROM dbp_documents WHERE id = :did"
         ), {"did": doc_id}).fetchone()
@@ -263,9 +264,9 @@ class DocumentEngine:
     # ──────────────────────────────────────────────────────────
 
     def add_version(self, doc_id: str, file_name: str,
-                    file_size: Optional[int] = None,
-                    change_notes: Optional[str] = None,
-                    uploaded_by: Optional[str] = None) -> Optional[str]:
+                    file_size: int | None = None,
+                    change_notes: str | None = None,
+                    uploaded_by: str | None = None) -> str | None:
         doc = self.db.execute(text(
             "SELECT tenant_id FROM dbp_documents WHERE id = :did"
         ), {"did": doc_id}).fetchone()
@@ -289,7 +290,7 @@ class DocumentEngine:
         self.db.flush()
         return vid
 
-    def get_versions(self, doc_id: str) -> List[Dict]:
+    def get_versions(self, doc_id: str) -> list[dict]:
         rows = self.db.execute(text(
             "SELECT id, document_id, version_number, file_name, file_size, "
             "change_notes, uploaded_by, created_at "
@@ -306,7 +307,7 @@ class DocumentEngine:
     # TAGS
     # ──────────────────────────────────────────────────────────
 
-    def add_tag(self, doc_id: str, tag: str) -> Optional[str]:
+    def add_tag(self, doc_id: str, tag: str) -> str | None:
         doc = self.db.execute(text(
             "SELECT tenant_id FROM dbp_documents WHERE id = :did"
         ), {"did": doc_id}).fetchone()
@@ -328,7 +329,7 @@ class DocumentEngine:
         self.db.flush()
         return tid
 
-    def remove_tag(self, doc_id: str, tag: str) -> Dict[str, Any]:
+    def remove_tag(self, doc_id: str, tag: str) -> dict[str, Any]:
         result = self.db.execute(text(
             "DELETE FROM dbp_document_tags "
             "WHERE document_id = :did AND tag = :tag"
@@ -338,7 +339,7 @@ class DocumentEngine:
         return {"success": removed,
                 "error": None if removed else "Tag not found on document"}
 
-    def get_tags(self, doc_id: str) -> List[str]:
+    def get_tags(self, doc_id: str) -> list[str]:
         rows = self.db.execute(text(
             "SELECT tag FROM dbp_document_tags WHERE document_id = :did "
             "ORDER BY tag"

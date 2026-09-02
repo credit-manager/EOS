@@ -3,7 +3,11 @@ P81 — PAYMENT GATEWAY INTEGRATION
 ==================================
 Tests: Gateways, Transactions, Refunds, Payment Links, Bank Transfer, Cash
 """
-import sys, io, json, uuid, time
+import io
+import json
+import sys
+import uuid
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import urllib.request
 

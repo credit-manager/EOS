@@ -9,16 +9,21 @@ Endpoints:
     GET  /api/v1/locale/terms       — Business terminology
 """
 
-from fastapi import APIRouter, Query, Body, Depends
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from typing import Optional
+
 from core.auth import get_current_user
 from core.i18n import (
-    t, get_locale, set_locale, is_rtl, get_direction,
-    get_locale_info, SUPPORTED_LOCALES, BUSINESS_TERMS,
-    format_date, format_number, format_currency, detect_locale
+    BUSINESS_TERMS,
+    format_currency,
+    format_date,
+    format_number,
+    get_locale,
+    get_locale_info,
+    set_locale,
 )
-from datetime import datetime
 
 router = APIRouter(prefix="/api/v1/locale", tags=["Locale"])
 
@@ -37,21 +42,21 @@ class LocaleInfoResponse(BaseModel):
 
 class FormatDateRequest(BaseModel):
     date: str  # ISO format
-    locale: Optional[str] = None
-    fmt: Optional[str] = None
+    locale: str | None = None
+    fmt: str | None = None
 
 
 class FormatNumberRequest(BaseModel):
     value: float
-    locale: Optional[str] = None
-    decimals: Optional[int] = 0
+    locale: str | None = None
+    decimals: int | None = 0
 
 
 class FormatCurrencyRequest(BaseModel):
     value: float
     currency: str = "SAR"
-    locale: Optional[str] = None
-    decimals: Optional[int] = 2
+    locale: str | None = None
+    decimals: int | None = 2
 
 
 # ═══════════════════════════════════════════════

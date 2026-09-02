@@ -2,17 +2,15 @@
 P13 Security Admin Router
 Endpoints for managing field-level security and row-level rules.
 """
-from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Query
+import re
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import text
-from database import get_db
-from core.auth import require_permission, get_current_user
+
+from core.auth import get_current_user, require_permission
 from core.rate_limit import read_limiter, write_limiter
 from models import DBPEntity, DBPField, DBPRowRule
-import uuid
-import re
-
 
 router = APIRouter(
     prefix="/api/v1/dynamic",
@@ -33,7 +31,7 @@ router = APIRouter(
 )
 async def get_field_security(
     entity_code: str,
-    db: Session = Depends(get_db),
+    db: Session=None,
     current_user: dict = Depends(get_current_user),
 ):
     entity = db.query(DBPEntity).filter(DBPEntity.code == entity_code).first()
@@ -66,7 +64,7 @@ async def update_field_security(
     entity_code: str,
     field_code: str,
     body: dict,
-    db: Session = Depends(get_db),
+    db: Session=None,
     current_user: dict = Depends(get_current_user),
 ):
     entity = db.query(DBPEntity).filter(DBPEntity.code == entity_code).first()
@@ -114,7 +112,7 @@ async def update_field_security(
 )
 async def list_row_rules(
     entity_code: str,
-    db: Session = Depends(get_db),
+    db: Session=None,
     current_user: dict = Depends(get_current_user),
 ):
     entity = db.query(DBPEntity).filter(DBPEntity.code == entity_code).first()
@@ -150,7 +148,7 @@ async def list_row_rules(
 async def create_row_rule(
     entity_code: str,
     body: dict,
-    db: Session = Depends(get_db),
+    db: Session=None,
     current_user: dict = Depends(get_current_user),
 ):
     entity = db.query(DBPEntity).filter(DBPEntity.code == entity_code).first()
@@ -197,7 +195,7 @@ async def create_row_rule(
 async def delete_row_rule(
     entity_code: str,
     rule_id: str,
-    db: Session = Depends(get_db),
+    db: Session=None,
     current_user: dict = Depends(get_current_user),
 ):
     entity = db.query(DBPEntity).filter(DBPEntity.code == entity_code).first()

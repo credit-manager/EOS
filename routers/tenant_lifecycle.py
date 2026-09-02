@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import require_permission, get_current_user
+from core.auth import require_permission
 from core.rate_limit import read_limiter, write_limiter
 from core.tenant_lifecycle import TenantLifecycleEngine
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic/tenant-lifecycle", tags=["Tenant Lifecycle"])
 
@@ -12,8 +12,8 @@ router = APIRouter(prefix="/api/v1/dynamic/tenant-lifecycle", tags=["Tenant Life
 # ------------------------------------------------ lifecycle events
 @router.get("/events",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_events(event_type: str = None, limit: int = 50,
-                     user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_events(event_type: str | None = None, limit: int = 50,
+                     user: dict | None=None, db: Session = Depends(get_db)):
     data = TenantLifecycleEngine(db).list_events(
         user["tenant_id"], event_type=event_type, limit=limit)
     return {"status": "success", "data": data}
@@ -22,7 +22,7 @@ async def list_events(event_type: str = None, limit: int = 50,
 @router.post("/events",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def record_event(body: dict,
-                     user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                     user: dict | None=None, db: Session = Depends(get_db)):
     required = ["event_type"]
     for f in required:
         if f not in body:
@@ -41,7 +41,7 @@ async def record_event(body: dict,
 @router.get("/events/{event_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_event(event_id: str,
-                   user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                   user: dict | None=None, db: Session = Depends(get_db)):
     data = TenantLifecycleEngine(db).get_event(user["tenant_id"], event_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -52,8 +52,8 @@ async def get_event(event_id: str,
 # ----------------------------------------------------- data exports
 @router.get("/data-exports",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_data_exports(status: str = None,
-                           user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_data_exports(status: str | None = None,
+                           user: dict | None=None, db: Session = Depends(get_db)):
     data = TenantLifecycleEngine(db).list_data_exports(
         user["tenant_id"], status=status)
     return {"status": "success", "data": data}
@@ -62,7 +62,7 @@ async def list_data_exports(status: str = None,
 @router.post("/data-exports",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_data_export(body: dict,
-                            user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                            user: dict | None=None, db: Session = Depends(get_db)):
     required = ["export_type"]
     for f in required:
         if f not in body:
@@ -79,7 +79,7 @@ async def create_data_export(body: dict,
 @router.put("/data-exports/{export_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_data_export(export_id: str, body: dict,
-                            user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                            user: dict | None=None, db: Session = Depends(get_db)):
     result = TenantLifecycleEngine(db).update_data_export(
         user["tenant_id"], export_id, body.get("status", "completed"),
         file_path=body.get("file_path"),
@@ -92,8 +92,8 @@ async def update_data_export(export_id: str, body: dict,
 # ----------------------------------------------------- invitations
 @router.get("/invitations",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_invitations(status: str = None,
-                          user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_invitations(status: str | None = None,
+                          user: dict | None=None, db: Session = Depends(get_db)):
     data = TenantLifecycleEngine(db).list_invitations(
         user["tenant_id"], status=status)
     return {"status": "success", "data": data}
@@ -102,7 +102,7 @@ async def list_invitations(status: str = None,
 @router.post("/invitations",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_invitation(body: dict,
-                           user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                           user: dict | None=None, db: Session = Depends(get_db)):
     required = ["email", "role"]
     for f in required:
         if f not in body:
@@ -118,7 +118,7 @@ async def create_invitation(body: dict,
 @router.put("/invitations/{invitation_id}/accept",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def accept_invitation(invitation_id: str,
-                           user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                           user: dict | None=None, db: Session = Depends(get_db)):
     result = TenantLifecycleEngine(db).accept_invitation(
         user["tenant_id"], invitation_id)
     db.commit()
@@ -128,7 +128,7 @@ async def accept_invitation(invitation_id: str,
 @router.put("/invitations/{invitation_id}/revoke",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def revoke_invitation(invitation_id: str,
-                           user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                           user: dict | None=None, db: Session = Depends(get_db)):
     result = TenantLifecycleEngine(db).revoke_invitation(
         user["tenant_id"], invitation_id)
     db.commit()
@@ -138,8 +138,8 @@ async def revoke_invitation(invitation_id: str,
 # ----------------------------------------------------- activity logs
 @router.get("/activity-logs",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_activity_logs(action: str = None, resource_type: str = None, limit: int = 50,
-                            user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_activity_logs(action: str | None = None, resource_type: str | None = None, limit: int = 50,
+                            user: dict | None=None, db: Session = Depends(get_db)):
     data = TenantLifecycleEngine(db).list_activity_logs(
         user["tenant_id"], action=action, resource_type=resource_type, limit=limit)
     return {"status": "success", "data": data}
@@ -148,7 +148,7 @@ async def list_activity_logs(action: str = None, resource_type: str = None, limi
 @router.post("/activity-logs",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def log_activity(body: dict,
-                      user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                      user: dict | None=None, db: Session = Depends(get_db)):
     required = ["action"]
     for f in required:
         if f not in body:
@@ -168,8 +168,8 @@ async def log_activity(body: dict,
 # --------------------------------------------------- notifications
 @router.get("/notifications",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_notifications(is_read: bool = None, severity: str = None, limit: int = 50,
-                            user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_notifications(is_read: bool | None = None, severity: str | None = None, limit: int = 50,
+                            user: dict | None=None, db: Session = Depends(get_db)):
     data = TenantLifecycleEngine(db).list_notifications(
         user["tenant_id"], is_read=is_read, severity=severity, limit=limit)
     return {"status": "success", "data": data}
@@ -178,7 +178,7 @@ async def list_notifications(is_read: bool = None, severity: str = None, limit: 
 @router.post("/notifications",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_notification(body: dict,
-                             user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                             user: dict | None=None, db: Session = Depends(get_db)):
     required = ["notification_type", "title"]
     for f in required:
         if f not in body:
@@ -195,7 +195,7 @@ async def create_notification(body: dict,
 @router.get("/notifications/{notification_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_notification(notification_id: str,
-                          user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                          user: dict | None=None, db: Session = Depends(get_db)):
     data = TenantLifecycleEngine(db).get_notification(user["tenant_id"], notification_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -206,7 +206,7 @@ async def get_notification(notification_id: str,
 @router.put("/notifications/{notification_id}/read",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def mark_notification_read(notification_id: str,
-                                user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                                user: dict | None=None, db: Session = Depends(get_db)):
     result = TenantLifecycleEngine(db).mark_notification_read(
         user["tenant_id"], notification_id)
     db.commit()
@@ -216,7 +216,7 @@ async def mark_notification_read(notification_id: str,
 @router.delete("/notifications/{notification_id}",
                dependencies=[Depends(require_permission("dynamic", "delete")), Depends(write_limiter.check)])
 async def delete_notification(notification_id: str,
-                             user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                             user: dict | None=None, db: Session = Depends(get_db)):
     result = TenantLifecycleEngine(db).delete_notification(
         user["tenant_id"], notification_id)
     if not result:

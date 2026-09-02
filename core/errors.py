@@ -5,10 +5,9 @@ Provides secure error responses that don't expose internal details.
 """
 
 import uuid
-import traceback
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List
-from fastapi import HTTPException, Request
+from typing import Any
+
 from fastapi.responses import JSONResponse
 
 
@@ -52,7 +51,7 @@ class ErrorCodes:
 
 
 # Bilingual error messages
-ERROR_MESSAGES: Dict[str, Dict[str, str]] = {
+ERROR_MESSAGES: dict[str, dict[str, str]] = {
     ErrorCodes.ENTITY_NOT_FOUND: {
         "message": "الكيان '{entity}' غير موجود",
         "message_en": "Entity '{entity}' not found",
@@ -100,7 +99,7 @@ ERROR_MESSAGES: Dict[str, Dict[str, str]] = {
 }
 
 
-def get_error_message(code: str, **kwargs) -> Dict[str, str]:
+def get_error_message(code: str, **kwargs) -> dict[str, str]:
     """Get bilingual error message with interpolation."""
     template = ERROR_MESSAGES.get(code, {
         "message": "خطأ غير معروف",
@@ -116,8 +115,8 @@ def get_error_message(code: str, **kwargs) -> Dict[str, str]:
 def create_error_response(
     status_code: int,
     code: str,
-    details: Optional[List[Dict[str, Any]]] = None,
-    request_id: Optional[str] = None,
+    details: list[dict[str, Any]] | None = None,
+    request_id: str | None = None,
     **kwargs
 ) -> JSONResponse:
     """
@@ -152,7 +151,7 @@ def create_error_response(
     )
 
 
-def secure_db_error(e: Exception, request_id: Optional[str] = None) -> JSONResponse:
+def secure_db_error(e: Exception, request_id: str | None = None) -> JSONResponse:
     """
     Convert database/internal errors to secure responses.
     
@@ -163,7 +162,7 @@ def secure_db_error(e: Exception, request_id: Optional[str] = None) -> JSONRespo
         request_id = str(uuid.uuid4())
     
     # Log the full error internally (in production, use proper logging)
-    error_type = type(e).__name__
+    type(e).__name__
     error_str = str(e)
     
     # Determine error code based on exception type

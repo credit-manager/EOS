@@ -4,20 +4,21 @@ Aggregates: company, onboarding, subscription, usage, marketplace,
 builder projects, notifications, support. Defensive per-section.
 """
 import uuid
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
-from sqlalchemy import text
+from typing import Any
 
-from core.onboarding_engine import OnboardingEngine
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
 from core.billing_flow import BillingFlowEngine
 from core.marketplace_engine import MarketplaceEngine
+from core.onboarding_engine import OnboardingEngine
 
 
 class CustomerPortalEngine:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_overview(self, tenant_id: str) -> Dict[str, Any]:
+    def get_overview(self, tenant_id: str) -> dict[str, Any]:
         return {
             "tenant_id": tenant_id,
             "company": self._section(self._company, tenant_id),
@@ -100,7 +101,7 @@ class CustomerPortalEngine:
     # ── SUPPORT TICKETS ──
 
     def create_ticket(self, tenant_id: str, subject: str, message: str,
-                      priority: str, created_by: str) -> Dict[str, Any]:
+                      priority: str, created_by: str) -> dict[str, Any]:
         if not subject:
             return {"success": False, "error": "subject required"}
         if priority not in ("low", "normal", "high", "urgent"):
@@ -120,7 +121,7 @@ class CustomerPortalEngine:
         return {"success": True, "ticket_id": tid, "ticket_number": tnum,
                 "status": "open"}
 
-    def list_tickets(self, tenant_id: str, status: Optional[str] = None) -> List[Dict]:
+    def list_tickets(self, tenant_id: str, status: str | None = None) -> list[dict]:
         cond, params = "", {"t": tenant_id}
         if status:
             cond = "AND status = :st"
@@ -134,7 +135,7 @@ class CustomerPortalEngine:
                  "created_at": str(r[5]) if r[5] else None,
                  "resolved_at": str(r[6]) if r[6] else None} for r in rows]
 
-    def close_ticket(self, tenant_id: str, ticket_id: str) -> Dict[str, Any]:
+    def close_ticket(self, tenant_id: str, ticket_id: str) -> dict[str, Any]:
         row = self.db.execute(text(
             "SELECT status FROM dbp_support_tickets WHERE id = :id AND tenant_id = :t"),
             {"id": ticket_id, "t": tenant_id}).fetchone()

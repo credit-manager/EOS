@@ -1,10 +1,12 @@
 """
 P44 Multi-Region & Edge Deployment Engine
 """
-import uuid, json
-from typing import Optional, Dict, Any
-from sqlalchemy.orm import Session
+import json
+import uuid
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class EdgeRegionEngine:
@@ -104,7 +106,7 @@ class EdgeRegionEngine:
 
     def update_sync_log(self, sync_id, status):
         sets = ["status=:st"]
-        params: Dict[str, Any] = {"id": sync_id, "st": status}
+        params: dict[str, Any] = {"id": sync_id, "st": status}
         if status in ("completed", "failed"):
             sets.append("completed_at=NOW()")
         self.db.execute(text(f"UPDATE dbp_edge_sync_log SET {', '.join(sets)} WHERE id=:id"), params)
@@ -112,7 +114,7 @@ class EdgeRegionEngine:
 
     def list_sync_logs(self, tenant_id, node_id=None, status=None, limit=50):
         q = "SELECT id, node_id, sync_type, entity_type, entity_id, status, retry_count, created_at, completed_at FROM dbp_edge_sync_log WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if node_id:
             q += " AND node_id=:ni"
             params["ni"] = node_id
@@ -142,7 +144,7 @@ class EdgeRegionEngine:
 
     def list_links(self, node_id=None):
         q = "SELECT id, node_id, peer_node_id, link_type, bandwidth_mbps, is_active FROM dbp_network_topology"
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if node_id:
             q += " WHERE node_id=:ni"
             params["ni"] = node_id
@@ -178,7 +180,7 @@ class EdgeRegionEngine:
 
     def list_failovers(self, tenant_id, status=None):
         q = "SELECT id, source_region, target_region, trigger_reason, status, activated_at, created_at FROM dbp_region_failover WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if status:
             q += " AND status=:st"
             params["st"] = status

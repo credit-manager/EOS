@@ -4,10 +4,12 @@ Manages entity relationships: creation, validation, nested reads.
 Separate from MetadataEngine (protected).
 """
 
-from typing import Any, Dict, List, Optional
-from sqlalchemy.orm import Session
+from typing import Any
+
 from sqlalchemy import text
-from models import DBPRelationship, DBPEntity
+from sqlalchemy.orm import Session
+
+from models import DBPEntity, DBPRelationship
 
 
 class RelationshipEngine:
@@ -37,7 +39,7 @@ class RelationshipEngine:
         junction_table: str = "",
         junction_source_col: str = "",
         junction_target_col: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a new relationship definition."""
         if relationship_type not in self.VALID_TYPES:
             raise ValueError(
@@ -49,11 +51,10 @@ class RelationshipEngine:
                 f"Invalid on_delete: {on_delete}. "
                 f"Must be one of: {', '.join(self.VALID_ON_DELETE)}"
             )
-        if relationship_type == "many_to_many":
-            if not junction_table:
-                raise ValueError(
-                    "many_to_many requires junction_table"
-                )
+        if relationship_type == "many_to_many" and not junction_table:
+            raise ValueError(
+                "many_to_many requires junction_table"
+            )
 
         # Validate source entity exists
         source_entity = self.db.query(DBPEntity).filter(
@@ -144,7 +145,7 @@ class RelationshipEngine:
             "junction_table": rel.junction_table or None,
         }
 
-    def get_relationships(self, entity_id: str) -> List[Dict[str, Any]]:
+    def get_relationships(self, entity_id: str) -> list[dict[str, Any]]:
         """Get all relationships for an entity."""
         rels = self.db.query(DBPRelationship).filter(
             DBPRelationship.entity_id == entity_id
@@ -164,7 +165,7 @@ class RelationshipEngine:
             for r in rels
         ]
 
-    def get_relationship(self, entity_id: str, code: str) -> Optional[Dict]:
+    def get_relationship(self, entity_id: str, code: str) -> dict | None:
         """Get a single relationship by code."""
         rel = self.db.query(DBPRelationship).filter(
             DBPRelationship.entity_id == entity_id,
@@ -205,7 +206,7 @@ class RelationshipEngine:
         source_entity_code: str,
         source_record_id: Any,
         relationship_code: str,
-        tenant_id: Optional[str] = None,
+        tenant_id: str | None = None,
     ) -> Any:
         """Fetch related records for a single relationship."""
         # Get source entity
@@ -281,7 +282,7 @@ class RelationshipEngine:
                     f"LIMIT 100"
                 )
                 rows = self.db.execute(query, params).fetchall()
-                columns = [col for col in rows[0].keys() if col != "tenant_id"] if rows else []
+                columns = [col for col in rows[0] if col != "tenant_id"] if rows else []
                 return [
                     {col: getattr(row, col) for col in columns}
                     for row in rows
@@ -320,14 +321,13 @@ class RelationshipEngine:
         entity_code: str,
         record_id: Any,
         depth: int = 1,
-        tenant_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        tenant_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Fetch a record with nested related records.
         Uses raw SQL for everything to avoid ORM session conflicts.
         """
-        if depth > self.MAX_DEPTH:
-            depth = self.MAX_DEPTH
+        depth = min(depth, self.MAX_DEPTH)
 
         # Get entity info via raw SQL
         entity_row = self.db.execute(
@@ -390,9 +390,9 @@ class RelationshipEngine:
 
     def _fetch_related_raw(
         self,
-        rel_data: Dict[str, Any],
-        source_record: Dict[str, Any],
-        tenant_id: Optional[str] = None,
+        rel_data: dict[str, Any],
+        source_record: dict[str, Any],
+        tenant_id: str | None = None,
     ) -> Any:
         """Fetch related records using raw SQL only."""
         target_code = rel_data["target_entity_code"]
@@ -409,7 +409,7 @@ class RelationshipEngine:
             return []
 
         where_parts = [f"{rel_data['target_column']} = :source_value"]
-        params: Dict[str, Any] = {"source_value": source_value}
+        params: dict[str, Any] = {"source_value": source_value}
 
         if rel_data["tenant_scope"] and tenant_id:
             where_parts.append("tenant_id = :tenant_id")
@@ -434,7 +434,7 @@ class RelationshipEngine:
             if not rows:
                 return []
             columns = [
-                c for c in rows[0].keys() if c != "tenant_id"
+                c for c in rows[0] if c != "tenant_id"
             ]
             return [
                 {col: row[col] for col in columns}
@@ -464,7 +464,7 @@ class RelationshipEngine:
             if not rows:
                 return []
             columns = [
-                c for c in rows[0].keys() if c != "tenant_id"
+                c for c in rows[0] if c != "tenant_id"
             ]
             return [
                 {col: row[col] for col in columns}
@@ -474,9 +474,9 @@ class RelationshipEngine:
     def validate_referential_integrity(
         self,
         entity_code: str,
-        data: Dict[str, Any],
-        tenant_id: Optional[str] = None,
-    ) -> List[str]:
+        data: dict[str, Any],
+        tenant_id: str | None = None,
+    ) -> list[str]:
         """
         Validate that all required relationship foreign keys
         point to existing records.
@@ -535,8 +535,8 @@ class RelationshipEngine:
         self,
         entity_code: str,
         record_id: Any,
-        tenant_id: Optional[str] = None,
-    ) -> List[str]:
+        tenant_id: str | None = None,
+    ) -> list[str]:
         """
         Check if a record can be deleted based on on_delete rules.
         Returns error messages if deletion is blocked.

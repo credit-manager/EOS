@@ -16,9 +16,9 @@ Rules:
 """
 
 import os
-from typing import Optional
+
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 
 def _is_production() -> bool:
@@ -31,6 +31,8 @@ def _get_production_auth():
     """Lazy import of production auth module."""
     from core.production_auth import (
         security as prod_security,
+    )
+    from core.production_auth import (
         verify_token as prod_verify_token,
     )
     return prod_security, prod_verify_token
@@ -40,6 +42,8 @@ def _get_test_auth():
     """Lazy import of test auth module."""
     from core.auth import (
         security as test_security,
+    )
+    from core.auth import (
         verify_token as test_verify_token,
     )
     return test_security, test_verify_token
@@ -69,7 +73,7 @@ async def get_current_user(
         )
 
     if _is_production():
-        from core.production_auth import verify_token, _get_secret_key
+        from core.production_auth import _get_secret_key, verify_token
 
         # Verify SECRET_KEY is set (will raise ValueError if not)
         try:
@@ -116,10 +120,10 @@ async def get_current_user(
 
 
 async def optional_get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(
+    credentials: HTTPAuthorizationCredentials | None = Depends(
         HTTPBearer(auto_error=False)
     )
-) -> Optional[dict]:
+) -> dict | None:
     """
     Optional version of get_current_user.
 

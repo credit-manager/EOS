@@ -2,10 +2,11 @@
 P29 Fixed Assets Management Engine
 """
 import uuid
-from datetime import datetime, date
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
+from datetime import datetime
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class FixedAssetEngine:
@@ -38,10 +39,10 @@ class FixedAssetEngine:
         self.db.flush()
         return aid
 
-    def list_assets(self, company_id: str, tenant_id: str = None,
-                    status: str = None) -> List[Dict]:
+    def list_assets(self, company_id: str, tenant_id: str | None = None,
+                    status: str | None = None) -> list[dict]:
         conditions = ["company_id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id}
+        params: dict[str, Any] = {"cid": company_id}
         if tenant_id:
             conditions.append("tenant_id = :tid")
             params["tid"] = tenant_id
@@ -59,7 +60,7 @@ class FixedAssetEngine:
                  "accumulated_depreciation": float(r[6]), "status": r[7],
                  "depreciation_method": r[8], "useful_life_years": r[9]} for r in rows]
 
-    def get_asset(self, asset_id: str) -> Optional[Dict]:
+    def get_asset(self, asset_id: str) -> dict | None:
         row = self.db.execute(text(
             "SELECT id, asset_code, name, description, category, acquisition_date, "
             "acquisition_cost, salvage_value, useful_life_years, depreciation_method, "
@@ -76,7 +77,7 @@ class FixedAssetEngine:
                 "book_value": float(row[11]), "location": row[12],
                 "employee_id": row[13], "status": row[14]}
 
-    def update_asset(self, asset_id: str, **kw) -> Dict[str, Any]:
+    def update_asset(self, asset_id: str, **kw) -> dict[str, Any]:
         row = self.db.execute(text("SELECT id FROM dbp_fixed_assets WHERE id = :aid"), {"aid": asset_id}).fetchone()
         if not row:
             return {"success": False, "error": "Asset not found"}
@@ -90,7 +91,7 @@ class FixedAssetEngine:
         self.db.flush()
         return {"success": True}
 
-    def calculate_depreciation(self, asset_id: str, period_start: str, period_end: str) -> Dict[str, Any]:
+    def calculate_depreciation(self, asset_id: str, period_start: str, period_end: str) -> dict[str, Any]:
         a = self.db.execute(text(
             "SELECT acquisition_cost, salvage_value, useful_life_years, "
             "depreciation_method, accumulated_depreciation, book_value, acquisition_date "
@@ -98,7 +99,7 @@ class FixedAssetEngine:
         ), {"aid": asset_id}).fetchone()
         if not a:
             return {"success": False, "error": "Asset not found"}
-        cost, salvage, life, method, acc_dep, bv, acq_date = (
+        cost, salvage, life, method, acc_dep, bv, _acq_date = (
             float(a[0]), float(a[1]), a[2], a[3], float(a[4]), float(a[5]), a[6])
         remaining_life = life - int(acc_dep / ((cost - salvage) / life)) if (cost - salvage) > 0 else 0
         if remaining_life <= 0:
@@ -123,7 +124,7 @@ class FixedAssetEngine:
                 "book_value_after": round(new_bv, 2), "remaining_useful_life": remaining_life}
 
     def run_depreciation(self, tenant_id: str, company_id: str, period_start: str,
-                         period_end: str, processed_by: str = None) -> str:
+                         period_end: str, processed_by: str | None = None) -> str:
         rid = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_asset_depreciation_runs (id, tenant_id, company_id, "
@@ -158,9 +159,9 @@ class FixedAssetEngine:
         self.db.flush()
         return rid
 
-    def list_depreciation_runs(self, company_id: str, tenant_id: str = None) -> List[Dict]:
+    def list_depreciation_runs(self, company_id: str, tenant_id: str | None = None) -> list[dict]:
         conditions = ["company_id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id}
+        params: dict[str, Any] = {"cid": company_id}
         if tenant_id:
             conditions.append("tenant_id = :tid")
             params["tid"] = tenant_id
@@ -173,7 +174,7 @@ class FixedAssetEngine:
                  "period_end": str(r[2]) if r[2] else None, "status": r[3],
                  "total_depreciation": float(r[4]) if r[4] else 0} for r in rows]
 
-    def get_depreciation_run(self, run_id: str) -> Optional[Dict]:
+    def get_depreciation_run(self, run_id: str) -> dict | None:
         row = self.db.execute(text(
             "SELECT id, period_start, period_end, status, total_depreciation "
             "FROM dbp_asset_depreciation_runs WHERE id = :rid"
@@ -195,7 +196,7 @@ class FixedAssetEngine:
                            "book_value_after": float(l[6])} for l in lines]}
 
     def dispose_asset(self, asset_id: str, disposal_date: str,
-                      disposal_amount: float = None, notes: str = None) -> Dict[str, Any]:
+                      disposal_amount: float | None = None, notes: str | None = None) -> dict[str, Any]:
         row = self.db.execute(text(
             "SELECT status, book_value, accumulated_depreciation FROM dbp_fixed_assets WHERE id = :aid"
         ), {"aid": asset_id}).fetchone()
@@ -211,7 +212,7 @@ class FixedAssetEngine:
                 "accumulated_depreciation": float(row[2])}
 
     def transfer_asset(self, asset_id: str, to_location: str, transfer_date: str,
-                       transferred_by: str, notes: str = None) -> str:
+                       transferred_by: str, notes: str | None = None) -> str:
         asset = self.db.execute(text(
             "SELECT location FROM dbp_fixed_assets WHERE id = :aid"
         ), {"aid": asset_id}).fetchone()
@@ -231,10 +232,10 @@ class FixedAssetEngine:
         self.db.flush()
         return tid
 
-    def list_asset_transfers(self, asset_id: str = None,
-                             company_id: str = None) -> List[Dict]:
+    def list_asset_transfers(self, asset_id: str | None = None,
+                             company_id: str | None = None) -> list[dict]:
         conditions = []
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if asset_id:
             conditions.append("t.asset_id = :aid")
             params["aid"] = asset_id

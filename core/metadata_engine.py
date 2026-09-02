@@ -1,7 +1,8 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from typing import Dict, Any, Optional
 import json
+from typing import Any
+
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from models import DBPEntity, DBPField
 
@@ -14,7 +15,7 @@ class MetadataEngine:
     def get_entity_by_code(
         self,
         code: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
 
         entity = (
             self.db.query(DBPEntity)
@@ -51,7 +52,7 @@ class MetadataEngine:
             for field in fields
         ]
 
-    def get_full_schema(self, code: str) -> Dict[str, Any]:
+    def get_full_schema(self, code: str) -> dict[str, Any]:
 
         entity = self.get_entity_by_code(code)
 
@@ -66,7 +67,7 @@ class MetadataEngine:
     def validate_data(
         self,
         code: str,
-        data: Dict[str, Any]
+        data: dict[str, Any]
     ):
 
         schema = self.get_full_schema(code)

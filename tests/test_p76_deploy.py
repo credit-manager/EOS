@@ -3,10 +3,15 @@ P76 PRODUCTION DEPLOYMENT & LAUNCH READINESS
 =============================================
 Complete deployment guide with verification steps.
 """
-import sys, io, json, os, subprocess
+import io
+import json
+import os
+import sys
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-import psycopg2
 import urllib.request
+
+import psycopg2
 
 BASE = "http://127.0.0.1:8000"
 passed = 0
@@ -43,19 +48,18 @@ test("P76.1 FastAPI importable", True)
 try:
     import fastapi
     test("P76.1 FastAPI version", fastapi.__version__ >= "0.100")
-except:
+except Exception:
     test("P76.1 FastAPI version", False)
 
 test("P76.1 uvicorn available", True)
 try:
-    import uvicorn
-except:
+    pass
+except Exception:
     test("P76.1 uvicorn available", False)
 
 try:
-    import gunicorn
     test("P76.1 gunicorn available", True)
-except:
+except Exception:
     test("P76.1 gunicorn available (optional)", True)
 
 # ═══ P76.2 POSTGRESQL PRODUCTION ═══
@@ -106,7 +110,7 @@ test("P76.4 Docker entrypoint exists", os.path.exists("nginx/docker-entrypoint.s
 try:
     dc = open("docker-compose.yml", encoding="utf-8").read() if os.path.exists("docker-compose.yml") else ""
     test("P76.4 Certbot configured", "certbot" in dc)
-except:
+except Exception:
     test("P76.4 Certbot configured", True)
 
 # ═══ P76.5 DOMAIN & DNS ═══
@@ -114,7 +118,7 @@ print("\n--- P76.5 Domain & DNS ---")
 test("P76.5 Deploy script exists", os.path.exists("scripts/deploy.sh"))
 try:
     deploy_content = open("scripts/deploy.sh", encoding="utf-8").read() if os.path.exists("scripts/deploy.sh") else ""
-except:
+except Exception:
     deploy_content = ""
 test("P76.5 Deploy handles domain param", "DOMAIN" in deploy_content or "domain" in deploy_content)
 
@@ -153,7 +157,7 @@ test("P76.10 Restore script exists", os.path.exists("scripts/restore.sh"))
 test("P76.10 Init DB script exists", os.path.exists("scripts/init-db.sh"))
 try:
     backup_content = open("scripts/backup.sh", encoding="utf-8").read() if os.path.exists("scripts/backup.sh") else ""
-except:
+except Exception:
     backup_content = ""
 test("P76.10 Backup uses pg_dump", "pg_dump" in backup_content)
 test("P76.10 Backup has retention", "retention" in backup_content or "find" in backup_content)
@@ -175,7 +179,7 @@ test("P76.12 Health check endpoint exists", os.path.exists("core/health_check.py
 print("\n--- P76.13 Security Headers ---")
 try:
     main_content = open("main.py", encoding="utf-8").read() if os.path.exists("main.py") else ""
-except:
+except Exception:
     main_content = ""
 test("P76.13 CORS configured", "CORS" in main_content)
 test("P76.13 TrustedHost configured", "TrustedHost" in main_content)
@@ -187,7 +191,7 @@ print("\n--- P76.14 Rate Limiting ---")
 test("P76.14 App-level rate limiter", os.path.exists("core/rate_limit.py"))
 try:
     nginx_conf = open("nginx/nginx.conf", encoding="utf-8").read() if os.path.exists("nginx/nginx.conf") else ""
-except:
+except Exception:
     nginx_conf = ""
 test("P76.14 Nginx rate limiting zones", "limit_req_zone" in nginx_conf)
 

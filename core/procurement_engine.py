@@ -2,9 +2,10 @@
 P24 Procurement & Purchase Orders Engine
 """
 import uuid
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class ProcurementEngine:
@@ -32,8 +33,8 @@ class ProcurementEngine:
         self.db.flush()
         return iid
 
-    def list_items(self, company_id: str, tenant_id: str = None) -> List[Dict]:
-        params: Dict[str, Any] = {"cid": company_id}
+    def list_items(self, company_id: str, tenant_id: str | None = None) -> list[dict]:
+        params: dict[str, Any] = {"cid": company_id}
         tenant_filter = ""
         if tenant_id:
             tenant_filter = " AND tenant_id = :tid"
@@ -64,8 +65,8 @@ class ProcurementEngine:
         self.db.flush()
         return sid
 
-    def list_suppliers(self, company_id: str, tenant_id: str = None) -> List[Dict]:
-        params: Dict[str, Any] = {"cid": company_id}
+    def list_suppliers(self, company_id: str, tenant_id: str | None = None) -> list[dict]:
+        params: dict[str, Any] = {"cid": company_id}
         tenant_filter = ""
         if tenant_id:
             tenant_filter = " AND tenant_id = :tid"
@@ -94,8 +95,8 @@ class ProcurementEngine:
         self.db.flush()
         return rid
 
-    def approve_purchase_request(self, request_id: str, approved_by: str, tenant_id: str = None) -> Dict[str, Any]:
-        params: Dict[str, Any] = {"rid": request_id}
+    def approve_purchase_request(self, request_id: str, approved_by: str, tenant_id: str | None = None) -> dict[str, Any]:
+        params: dict[str, Any] = {"rid": request_id}
         tscope = ""
         if tenant_id:
             tscope = " AND tenant_id = :tid"
@@ -113,9 +114,9 @@ class ProcurementEngine:
         self.db.flush()
         return {"success": True, "status": "approved"}
 
-    def list_purchase_requests(self, company_id: str, status: Optional[str] = None, tenant_id: str = None) -> List[Dict]:
+    def list_purchase_requests(self, company_id: str, status: str | None = None, tenant_id: str | None = None) -> list[dict]:
         conditions = ["company_id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id}
+        params: dict[str, Any] = {"cid": company_id}
         if tenant_id:
             conditions.append("tenant_id = :tid")
             params["tid"] = tenant_id
@@ -134,7 +135,7 @@ class ProcurementEngine:
     # ── PURCHASE ORDERS ──
 
     def create_purchase_order(self, tenant_id: str, company_id: str, supplier_id: str,
-                               order_date: str, lines: List[Dict], **kw) -> str:
+                               order_date: str, lines: list[dict], **kw) -> str:
         oid = str(uuid.uuid4())
         ocode = self._next_code("orders", company_id, "PO")
         total = sum(l.get("quantity", 0) * l.get("unit_price", 0) for l in lines)
@@ -166,8 +167,8 @@ class ProcurementEngine:
         self.db.flush()
         return oid
 
-    def get_purchase_order(self, order_id: str, tenant_id: str = None) -> Optional[Dict]:
-        params: Dict[str, Any] = {"oid": order_id}
+    def get_purchase_order(self, order_id: str, tenant_id: str | None = None) -> dict | None:
+        params: dict[str, Any] = {"oid": order_id}
         tscope = ""
         if tenant_id:
             tscope = " AND o.tenant_id = :tid"
@@ -198,8 +199,8 @@ class ProcurementEngine:
                        "tax_rate": float(l[9]) if l[9] else 0} for l in lines]
         }
 
-    def approve_purchase_order(self, order_id: str, approved_by: str, tenant_id: str = None) -> Dict[str, Any]:
-        params: Dict[str, Any] = {"oid": order_id}
+    def approve_purchase_order(self, order_id: str, approved_by: str, tenant_id: str | None = None) -> dict[str, Any]:
+        params: dict[str, Any] = {"oid": order_id}
         tscope = ""
         if tenant_id:
             tscope = " AND tenant_id = :tid"
@@ -217,9 +218,9 @@ class ProcurementEngine:
         self.db.flush()
         return {"success": True, "status": "approved"}
 
-    def list_purchase_orders(self, company_id: str, status: Optional[str] = None, tenant_id: str = None) -> List[Dict]:
+    def list_purchase_orders(self, company_id: str, status: str | None = None, tenant_id: str | None = None) -> list[dict]:
         conditions = ["o.company_id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id}
+        params: dict[str, Any] = {"cid": company_id}
         if tenant_id:
             conditions.append("o.tenant_id = :tid")
             params["tid"] = tenant_id
@@ -240,8 +241,8 @@ class ProcurementEngine:
     # ── GRN (Goods Received Note) ──
 
     def receive_goods(self, order_id: str, line_id: str, quantity: float,
-                      received_date: str, received_by: str, tenant_id: str = None, notes: str = None) -> Dict[str, Any]:
-        oparams: Dict[str, Any] = {"oid": order_id}
+                      received_date: str, received_by: str, tenant_id: str | None = None, notes: str | None = None) -> dict[str, Any]:
+        oparams: dict[str, Any] = {"oid": order_id}
         oscope = ""
         if tenant_id:
             oscope = " AND tenant_id = :tid"

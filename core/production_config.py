@@ -6,14 +6,13 @@ Blocks startup if critical settings are missing.
 import os
 import re
 import sys
-from typing import List, Tuple
 
 
 class ProductionConfigError(Exception):
     pass
 
 
-def validate_production_config() -> List[Tuple[str, str, bool]]:
+def validate_production_config() -> list[tuple[str, str, bool]]:
     """
     Validate all production configuration.
     Returns list of (setting, status, is_critical).
@@ -21,7 +20,7 @@ def validate_production_config() -> List[Tuple[str, str, bool]]:
     """
     checks = []
 
-    def check(name: str, value: str, pattern: str = None, critical: bool = True):
+    def check(name: str, value: str, pattern: str | None = None, critical: bool = True):
         if not value:
             checks.append((name, "MISSING", critical))
             return False

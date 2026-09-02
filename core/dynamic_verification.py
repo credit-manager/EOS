@@ -1,26 +1,27 @@
-from typing import Dict, Any, List, Optional
+import re
+import uuid
+from typing import Any
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-import uuid
-import re
 
-from models import DBPEntity, DBPField
 from core.metadata_engine import MetadataEngine
+from models import DBPEntity
 
 
 class DynamicVerificationEngine:
     """Conservative verification layer with tenant-scoped metadata lookup."""
 
-    def __init__(self, db: Session, entity_code: str, tenant_id: Optional[str] = None):
+    def __init__(self, db: Session, entity_code: str, tenant_id: str | None = None):
         self.db = db
         self.entity_code = entity_code
         self.tenant_id = tenant_id
 
-        self.entity_meta: Optional[Dict[str, Any]] = None
-        self.table_name: Optional[str] = None
+        self.entity_meta: dict[str, Any] | None = None
+        self.table_name: str | None = None
         self.table_valid: bool = False
-        self.real_columns: Dict[str, Any] = {}
-        self.not_null_columns: List[str] = []
+        self.real_columns: dict[str, Any] = {}
+        self.not_null_columns: list[str] = []
         self.tenant_capability = "NONE"
         self.pk_column: str = "id"
         self.pk_type: str = "uuid"
@@ -153,7 +154,7 @@ class DynamicVerificationEngine:
     def detect_tenant_handling(self) -> str:
         return self.tenant_capability
 
-    def validate_table_mapping(self) -> Optional[str]:
+    def validate_table_mapping(self) -> str | None:
         if not self.table_name:
             return "Table mapping غير موجود"
         if not self.table_valid:
@@ -162,33 +163,33 @@ class DynamicVerificationEngine:
             return f"اسم الجدول '{self.table_name}' يحتوي على أحرف غير آمنة"
         return None
 
-    def get_not_null_columns(self) -> List[str]:
+    def get_not_null_columns(self) -> list[str]:
         return list(self.not_null_columns)
 
-    def validate_not_null_columns(self, data: Dict[str, Any], exclude_cols: Optional[List[str]] = None) -> List[str]:
+    def validate_not_null_columns(self, data: dict[str, Any], exclude_cols: list[str] | None = None) -> list[str]:
         excluded = set(exclude_cols or []) | {"id"}
         return [f"{col}: الحقل مطلوب (NOT NULL في قاعدة البيانات)" for col in self.not_null_columns
                 if col not in excluded and (col not in data or data[col] is None)]
 
-    def get_table_columns(self) -> List[str]:
+    def get_table_columns(self) -> list[str]:
         return list(self.real_columns.values())
 
     def check_column_exists(self, column_name: str) -> bool:
         return bool(column_name) and column_name.lower() in self.real_columns
 
-    def get_valid_columns(self, payload: Dict[str, Any]) -> List[str]:
-        return [key for key in payload.keys() if self.check_column_exists(key)]
+    def get_valid_columns(self, payload: dict[str, Any]) -> list[str]:
+        return [key for key in payload if self.check_column_exists(key)]
 
-    def validate_data(self, data: Dict[str, Any]) -> bool:
+    def validate_data(self, data: dict[str, Any]) -> bool:
         if not self.entity_exists():
             raise ValueError(f"الكيان '{self.entity_code}' غير موجود")
         return MetadataEngine(self.db).validate_data(self.entity_code, data)
 
-    def validate_required_fields(self, data: Dict[str, Any]) -> None:
+    def validate_required_fields(self, data: dict[str, Any]) -> None:
         return MetadataEngine(self.db).validate_required_fields(self.entity_code, data)
 
-    def validate_enum_fields(self, data: Dict[str, Any]) -> None:
+    def validate_enum_fields(self, data: dict[str, Any]) -> None:
         return MetadataEngine(self.db).validate_enum_fields(self.entity_code, data)
 
-    def check_duplicate_by_unique_fields(self, data: Dict[str, Any], tenant_id: Optional[str] = None) -> List[str]:
+    def check_duplicate_by_unique_fields(self, data: dict[str, Any], tenant_id: str | None = None) -> list[str]:
         return MetadataEngine(self.db).check_duplicate_by_unique_fields(self.entity_code, data, tenant_id=tenant_id)

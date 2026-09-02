@@ -1,5 +1,6 @@
 import pytest
 from fastapi import HTTPException
+
 from security.tenant_scope import require_tenant_access
 
 

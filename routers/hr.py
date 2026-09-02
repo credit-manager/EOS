@@ -1,27 +1,27 @@
 """
 P27 Human Resources Router
 """
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import require_permission, get_current_user
-from core.rate_limit import read_limiter, write_limiter
+from core.auth import require_permission
 from core.hr_engine import HREngine
+from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic", tags=["Human Resources"])
 
 
 @router.get("/companies/{cid}/employees", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_employees(cid: str, department_id: Optional[str] = None,
-                         user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_employees(cid: str, department_id: str | None = None,
+                         user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": HREngine(db).list_employees(cid, tenant_id=user.get("tenant_id"),
                                                                       department_id=department_id)}
 
 
 @router.post("/companies/{cid}/employees", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_employee(cid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_employee(cid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ("first_name", "last_name", "hire_date"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -41,7 +41,7 @@ async def create_employee(cid: str, body: dict, user: dict = Depends(get_current
 
 
 @router.put("/employees/{eid}", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def update_employee(eid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def update_employee(eid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     if not body:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": "At least one field required"}})
     result = HREngine(db).update_employee(eid, tenant_id=user.get("tenant_id"), **body)
@@ -54,14 +54,14 @@ async def update_employee(eid: str, body: dict, user: dict = Depends(get_current
 
 
 @router.get("/companies/{cid}/leave-requests", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_leave_requests(cid: str, status: Optional[str] = None, employee_id: Optional[str] = None,
-                              user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_leave_requests(cid: str, status: str | None = None, employee_id: str | None = None,
+                              user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": HREngine(db).list_leave_requests(cid, tenant_id=user.get("tenant_id"),
                                                                            status=status, employee_id=employee_id)}
 
 
 @router.post("/companies/{cid}/leave-requests", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_leave_request(cid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_leave_request(cid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ("employee_id", "leave_type", "start_date", "end_date", "days"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -73,7 +73,7 @@ async def create_leave_request(cid: str, body: dict, user: dict = Depends(get_cu
 
 
 @router.post("/leave-requests/{rid}/approve", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def approve_leave_request(rid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def approve_leave_request(rid: str, user: dict | None=None, db: Session = Depends(get_db)):
     result = HREngine(db).approve_leave_request(rid, user.get("id") or "admin", user.get("tenant_id"))
     if not result["success"]:
         if result["error"] == "Leave request not found":
@@ -84,7 +84,7 @@ async def approve_leave_request(rid: str, user: dict = Depends(get_current_user)
 
 
 @router.post("/companies/{cid}/attendance", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def record_attendance(cid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def record_attendance(cid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ("employee_id", "work_date"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -97,8 +97,8 @@ async def record_attendance(cid: str, body: dict, user: dict = Depends(get_curre
 
 
 @router.get("/companies/{cid}/attendance", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_attendance(cid: str, employee_id: Optional[str] = None, start_date: Optional[str] = None,
-                         end_date: Optional[str] = None, user: dict = Depends(get_current_user),
+async def get_attendance(cid: str, employee_id: str | None = None, start_date: str | None = None,
+                         end_date: str | None = None, user: dict | None=None,
                          db: Session = Depends(get_db)):
     return {"status": "success", "data": HREngine(db).get_attendance(cid, tenant_id=user.get("tenant_id"),
                                                                       employee_id=employee_id,
@@ -106,12 +106,12 @@ async def get_attendance(cid: str, employee_id: Optional[str] = None, start_date
 
 
 @router.get("/companies/{cid}/payroll-runs", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_payroll_runs(cid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_payroll_runs(cid: str, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": HREngine(db).list_payroll_runs(cid, tenant_id=user.get("tenant_id"))}
 
 
 @router.post("/companies/{cid}/payroll-runs", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_payroll_run(cid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_payroll_run(cid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ("pay_period_start", "pay_period_end"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -122,7 +122,7 @@ async def create_payroll_run(cid: str, body: dict, user: dict = Depends(get_curr
 
 
 @router.get("/payroll-runs/{rid}", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_payroll_run(rid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_payroll_run(rid: str, user: dict | None=None, db: Session = Depends(get_db)):
     run = HREngine(db).get_payroll_run(rid, user.get("tenant_id"))
     if not run:
         raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Payroll run not found"}})
@@ -130,7 +130,7 @@ async def get_payroll_run(rid: str, user: dict = Depends(get_current_user), db: 
 
 
 @router.post("/payroll-runs/{rid}/lines", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def add_payroll_line(rid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def add_payroll_line(rid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ("employee_id", "basic_salary"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})

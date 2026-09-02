@@ -11,10 +11,10 @@ DO NOT hardcode secrets here.
 
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+
+from fastapi import HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 
 def _get_secret_key() -> str:
@@ -43,8 +43,8 @@ security = HTTPBearer()
 
 def create_access_token(
     subject: str,
-    expires_delta: Optional[timedelta] = None,
-    extra_data: Optional[dict] = None
+    expires_delta: timedelta | None = None,
+    extra_data: dict | None = None
 ) -> str:
     """Create a JWT access token for production use."""
     secret_key = _get_secret_key()
@@ -90,7 +90,7 @@ def verify_token(token: str) -> dict:
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    credentials: HTTPAuthorizationCredentials=None
 ) -> dict:
     """
     Get current authenticated user from production JWT token.

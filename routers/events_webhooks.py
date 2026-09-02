@@ -3,18 +3,18 @@ P12 Events & Webhooks Router
 
 Webhook CRUD + Event log read endpoints.
 """
-from typing import Optional
+import re
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from sqlalchemy import text
-from database import get_db
-from core.auth import require_permission, get_current_user
+from sqlalchemy.orm import Session
+
+from core.auth import get_current_user, require_permission
 from core.event_bus import EventBus
 from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 from models import DBPWebhook
-import uuid
-import re
-
 
 router = APIRouter(
     prefix="/api/v1/dynamic",
@@ -35,7 +35,7 @@ router = APIRouter(
 )
 async def create_webhook(
     body: dict,
-    db: Session = Depends(get_db),
+    db: Session=None,
     current_user: dict = Depends(get_current_user),
 ):
     required = ["code", "target_url", "entity_code", "event_types"]
@@ -90,7 +90,7 @@ async def create_webhook(
     ],
 )
 async def list_webhooks(
-    db: Session = Depends(get_db),
+    db: Session=None,
     current_user: dict = Depends(get_current_user),
 ):
     rows = db.execute(
@@ -125,7 +125,7 @@ async def list_webhooks(
 )
 async def get_webhook(
     webhook_code: str,
-    db: Session = Depends(get_db),
+    db: Session=None,
     current_user: dict = Depends(get_current_user),
 ):
     row = db.execute(
@@ -164,7 +164,7 @@ async def get_webhook(
 async def update_webhook(
     webhook_code: str,
     body: dict,
-    db: Session = Depends(get_db),
+    db: Session=None,
     current_user: dict = Depends(get_current_user),
 ):
     webhook = db.query(DBPWebhook).filter(DBPWebhook.code == webhook_code).first()
@@ -204,7 +204,7 @@ async def update_webhook(
 )
 async def delete_webhook(
     webhook_code: str,
-    db: Session = Depends(get_db),
+    db: Session=None,
     current_user: dict = Depends(get_current_user),
 ):
     webhook = db.query(DBPWebhook).filter(DBPWebhook.code == webhook_code).first()
@@ -229,8 +229,8 @@ async def delete_webhook(
     ],
 )
 async def list_events(
-    entity_code: Optional[str] = Query(None),
-    event_type: Optional[str] = Query(None),
+    entity_code: str | None=None,
+    event_type: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -256,7 +256,7 @@ async def list_events(
 )
 async def get_event(
     event_id: str,
-    db: Session = Depends(get_db),
+    db: Session=None,
     current_user: dict = Depends(get_current_user),
 ):
     bus = EventBus(db)
@@ -279,7 +279,7 @@ async def get_event(
 )
 async def list_webhook_deliveries(
     webhook_code: str,
-    limit: int = Query(50, ge=1, le=200),
+    limit: int | None=None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):

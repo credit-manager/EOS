@@ -3,10 +3,9 @@ EOS Industry Engine — Entity/Metadata Engine
 Defines entities, fields, and relationships per industry.
 """
 
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
-import json
+from typing import Any
 
 
 class FieldType(str, Enum):
@@ -44,12 +43,12 @@ class FieldCategory(str, Enum):
 @dataclass
 class FieldValidation:
     required: bool = False
-    min_value: Optional[float] = None
-    max_value: Optional[float] = None
-    min_length: Optional[int] = None
-    max_length: Optional[int] = None
-    pattern: Optional[str] = None
-    custom_rule: Optional[str] = None  # Name of custom validation rule
+    min_value: float | None = None
+    max_value: float | None = None
+    min_length: int | None = None
+    max_length: int | None = None
+    pattern: str | None = None
+    custom_rule: str | None = None  # Name of custom validation rule
 
 
 @dataclass
@@ -63,9 +62,9 @@ class FieldDefinition:
     placeholder: str = ""
     placeholder_ar: str = ""
     default_value: Any = None
-    options: List[Dict[str, str]] = field(default_factory=list)  # For SELECT
-    reference_entity: Optional[str] = None  # For REFERENCE type
-    formula: Optional[str] = None           # For FORMULA type
+    options: list[dict[str, str]] = field(default_factory=list)  # For SELECT
+    reference_entity: str | None = None  # For REFERENCE type
+    formula: str | None = None           # For FORMULA type
     validation: FieldValidation = field(default_factory=FieldValidation)
     is_visible: bool = True
     is_editable: bool = True
@@ -74,7 +73,7 @@ class FieldDefinition:
     is_sortable: bool = False
     display_order: int = 0
     group: str = "general"
-    width: Optional[int] = None  # Column width in pixels
+    width: int | None = None  # Column width in pixels
 
 
 @dataclass
@@ -82,8 +81,8 @@ class EntityRelationship:
     name: str
     type: str  # one_to_one, one_to_many, many_to_many
     target_entity: str
-    foreign_key: Optional[str] = None
-    join_table: Optional[str] = None
+    foreign_key: str | None = None
+    join_table: str | None = None
 
 
 @dataclass
@@ -94,15 +93,15 @@ class EntityDefinition:
     description: str = ""
     icon: str = "AppstoreOutlined"
     module: str = ""  # Which module this entity belongs to
-    fields: List[FieldDefinition] = field(default_factory=list)
-    relationships: List[EntityRelationship] = field(default_factory=list)
+    fields: list[FieldDefinition] = field(default_factory=list)
+    relationships: list[EntityRelationship] = field(default_factory=list)
     is_core: bool = False  # Core entities can't be deleted
     is_searchable: bool = True
     default_view: str = "list"  # list, grid, kanban, calendar
     default_sort: str = "-created_at"
     page_size: int = 20
-    permissions: Dict[str, str] = field(default_factory=dict)  # action -> permission code
-    actions: List[Dict[str, Any]] = field(default_factory=list)  # Custom actions
+    permissions: dict[str, str] = field(default_factory=dict)  # action -> permission code
+    actions: list[dict[str, Any]] = field(default_factory=list)  # Custom actions
 
 
 class EntityEngine:
@@ -112,7 +111,7 @@ class EntityEngine:
     """
 
     def __init__(self):
-        self._entities: Dict[str, EntityDefinition] = {}
+        self._entities: dict[str, EntityDefinition] = {}
         self._register_builtins()
 
     def _register_builtins(self):
@@ -346,34 +345,34 @@ class EntityEngine:
         """Register a new entity."""
         self._entities[entity.code] = entity
 
-    def get(self, code: str) -> Optional[EntityDefinition]:
+    def get(self, code: str) -> EntityDefinition | None:
         """Get entity definition by code."""
         return self._entities.get(code)
 
-    def get_all(self) -> Dict[str, EntityDefinition]:
+    def get_all(self) -> dict[str, EntityDefinition]:
         """Get all registered entities."""
         return dict(self._entities)
 
-    def get_by_module(self, module_code: str) -> List[EntityDefinition]:
+    def get_by_module(self, module_code: str) -> list[EntityDefinition]:
         """Get entities for a specific module."""
         return [e for e in self._entities.values() if e.module == module_code]
 
-    def get_fields(self, entity_code: str) -> List[FieldDefinition]:
+    def get_fields(self, entity_code: str) -> list[FieldDefinition]:
         """Get fields for an entity, sorted by display_order."""
         entity = self._entities.get(entity_code)
         if not entity:
             return []
         return sorted(entity.fields, key=lambda f: f.display_order)
 
-    def get_searchable_fields(self, entity_code: str) -> List[FieldDefinition]:
+    def get_searchable_fields(self, entity_code: str) -> list[FieldDefinition]:
         """Get searchable fields for an entity."""
         return [f for f in self.get_fields(entity_code) if f.is_searchable]
 
-    def get_filterable_fields(self, entity_code: str) -> List[FieldDefinition]:
+    def get_filterable_fields(self, entity_code: str) -> list[FieldDefinition]:
         """Get filterable fields for an entity."""
         return [f for f in self.get_fields(entity_code) if f.is_filterable]
 
-    def validate_entity_data(self, entity_code: str, data: Dict[str, Any]) -> List[str]:
+    def validate_entity_data(self, entity_code: str, data: dict[str, Any]) -> list[str]:
         """Validate data against entity field definitions. Returns list of errors."""
         errors = []
         entity = self._entities.get(entity_code)
@@ -432,7 +431,7 @@ class EntityEngine:
 
         return errors
 
-    def build_entity_schema(self, entity_code: str) -> Dict[str, Any]:
+    def build_entity_schema(self, entity_code: str) -> dict[str, Any]:
         """Build JSON schema for an entity (for forms/validation)."""
         entity = self._entities.get(entity_code)
         if not entity:

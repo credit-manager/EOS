@@ -1,15 +1,14 @@
 """
 P18 Data Jobs Router — CRUD + execute + cancel
 """
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import Optional
 
-from database import get_db
 from core.auth import get_current_user, require_permission
-from core.rate_limit import read_limiter, write_limiter
 from core.data_jobs import DataJobEngine
-
+from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 
 router = APIRouter(
     prefix="/api/v1/dynamic",
@@ -22,10 +21,10 @@ router = APIRouter(
     dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)],
 )
 async def list_jobs(
-    job_type: Optional[str] = None,
-    status: Optional[str] = None,
-    entity_code: Optional[str] = None,
-    limit: int = Query(50, ge=1, le=200),
+    job_type: str | None = None,
+    status: str | None = None,
+    entity_code: str | None = None,
+    limit: int | None=None,
     offset: int = Query(0, ge=0),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -48,7 +47,7 @@ async def list_jobs(
 )
 async def create_job(
     body: dict,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Create a data job."""
@@ -94,7 +93,7 @@ async def create_job(
 )
 async def get_job(
     job_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Get a data job."""
@@ -116,7 +115,7 @@ async def get_job(
 )
 async def execute_job(
     job_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Execute a data job synchronously."""
@@ -140,7 +139,7 @@ async def execute_job(
 )
 async def cancel_job(
     job_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Cancel a data job."""

@@ -2,8 +2,8 @@
 EOS Advanced Reporting Engine
 Financial, operational, and industry-specific reports
 """
-import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import text
 
 
@@ -20,8 +20,8 @@ class ReportingEngine:
         return row[0] if row else 0
 
     def profit_and_loss(self, tenant_id, start_date=None, end_date=None):
-        start = start_date or (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-        end = end_date or datetime.now().strftime("%Y-%m-%d")
+        start = start_date or (datetime.now(tz=timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+        end = end_date or datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
         revenue = self._scalar(
             "SELECT COALESCE(SUM(total),0) FROM dbp_trading_sales_orders "
             "WHERE tenant_id = :t AND status IN ('confirmed','completed','paid','invoiced') "
@@ -67,7 +67,7 @@ class ReportingEngine:
         }
 
     def cash_flow(self, tenant_id, days=30):
-        start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        start = (datetime.now(tz=timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
         inflows = self._scalar(
             "SELECT COALESCE(SUM(amount),0) FROM dbp_payment_transactions "
             "WHERE tenant_id = :t AND transaction_type = 'payment' AND status = 'completed' "
@@ -86,8 +86,8 @@ class ReportingEngine:
         }
 
     def sales_report(self, tenant_id, start_date=None, end_date=None):
-        start = start_date or (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-        end = end_date or datetime.now().strftime("%Y-%m-%d")
+        start = start_date or (datetime.now(tz=timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+        end = end_date or datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
         orders = self._query(
             "SELECT DATE(created_at) as date, COUNT(*) as count, COALESCE(SUM(total),0) as amount "
             "FROM dbp_trading_sales_orders WHERE tenant_id = :t "
@@ -176,4 +176,4 @@ class ReportingEngine:
         elif report_type == "sales": data = self.sales_report(tenant_id)
         elif report_type == "inventory": data = self.inventory_report(tenant_id)
         else: return {"error": f"Unknown report type: {report_type}"}
-        return {"report_type": report_type, "generated_at": datetime.now().isoformat(), "data": data}
+        return {"report_type": report_type, "generated_at": datetime.now(tz=timezone.utc).isoformat(), "data": data}

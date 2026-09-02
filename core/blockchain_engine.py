@@ -1,10 +1,13 @@
 """
 P49 Blockchain & Immutable Audit Trail Engine
 """
-import uuid, hashlib, json
-from typing import Dict, Any
-from sqlalchemy.orm import Session
+import hashlib
+import json
+import uuid
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class BlockchainEngine:
@@ -26,7 +29,7 @@ class BlockchainEngine:
 
     def list_chains(self, tenant_id, chain_type=None):
         q = "SELECT id, chain_name, chain_type, consensus, node_count, status, created_at FROM dbp_blockchain_chains WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if chain_type:
             q += " AND chain_type=:ct"
             params["ct"] = chain_type
@@ -61,7 +64,7 @@ class BlockchainEngine:
 
     def list_nodes(self, chain_id=None):
         q = "SELECT id, chain_id, node_name, node_url, role, status, last_sync_at FROM dbp_blockchain_nodes"
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if chain_id:
             q += " WHERE chain_id=:ci"
             params["ci"] = chain_id
@@ -109,7 +112,7 @@ class BlockchainEngine:
 
     def list_records(self, tenant_id, entity_type=None, limit=50):
         q = "SELECT id, entity_type, entity_id, content_hash, previous_hash, block_number, chain_id, recorded_at FROM dbp_blockchain_records WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if entity_type:
             q += " AND entity_type=:et"
             params["et"] = entity_type
@@ -123,7 +126,7 @@ class BlockchainEngine:
 
     def list_verifications(self, tenant_id, record_id=None):
         q = "SELECT id, record_id, verification_result, verified_by, verified_at FROM dbp_blockchain_verification WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if record_id:
             q += " AND record_id=:ri"
             params["ri"] = record_id
@@ -154,7 +157,7 @@ class BlockchainEngine:
     def list_immutable_audit(self, tenant_id, entity_type=None, entity_id=None,
                              limit=50):
         q = "SELECT id, entity_type, entity_id, action, actor_id, content_hash, created_at FROM dbp_immutable_audit WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if entity_type:
             q += " AND entity_type=:et"
             params["et"] = entity_type

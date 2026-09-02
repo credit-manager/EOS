@@ -24,10 +24,13 @@ Transaction model:
   metadata. A later schema garbage-collection process can remove them only
   after an explicit retention/safety policy.
 """
-import uuid, json, re
-from typing import Optional, List, Dict, Any
-from sqlalchemy.orm import Session
+import json
+import re
+import uuid
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from core.ai_composer import MODULE_DEPENDENCIES
 
@@ -44,7 +47,7 @@ FIELD_SQL_TYPES = {
 BUILDER_TABLE_PREFIX = "bld_"
 
 
-def _new_draft_from_composer(composer_config: Optional[Dict]) -> Dict[str, Any]:
+def _new_draft_from_composer(composer_config: dict | None) -> dict[str, Any]:
     composer_config = composer_config or {}
     return {
         "industry": composer_config.get("industry"),
@@ -62,8 +65,8 @@ class BuilderEngine:
         self.db = db
 
     def create_project(self, tenant_id: str, name: str,
-                       composer_session_id: Optional[str] = None,
-                       initial_config: Optional[Dict] = None) -> Dict[str, Any]:
+                       composer_session_id: str | None = None,
+                       initial_config: dict | None = None) -> dict[str, Any]:
         pid = str(uuid.uuid4())
         draft = _new_draft_from_composer(initial_config)
         if composer_session_id:
@@ -83,7 +86,7 @@ class BuilderEngine:
         self.db.flush()
         return {"success": True, "project_id": pid, "draft_config": draft}
 
-    def get_project(self, tenant_id: str, project_id: str) -> Optional[Dict]:
+    def get_project(self, tenant_id: str, project_id: str) -> dict | None:
         row = self.db.execute(text(
             "SELECT id,tenant_id,name,source_composer_session_id,status,draft_config,"
             "published_version_id,created_at,updated_at FROM dbp_builder_projects "
@@ -95,7 +98,7 @@ class BuilderEngine:
                 "status":row[4],"draft_config":cfg,"published_version_id":row[6],
                 "created_at":str(row[7]) if row[7] else None,"updated_at":str(row[8]) if row[8] else None}
 
-    def list_projects(self, tenant_id: str) -> List[Dict]:
+    def list_projects(self, tenant_id: str) -> list[dict]:
         rows = self.db.execute(text(
             "SELECT id,name,status,created_at,updated_at FROM dbp_builder_projects "
             "WHERE tenant_id=:tid ORDER BY created_at DESC"
@@ -103,14 +106,14 @@ class BuilderEngine:
         return [{"id":r[0],"name":r[1],"status":r[2],"created_at":str(r[3]) if r[3] else None,
                  "updated_at":str(r[4]) if r[4] else None} for r in rows]
 
-    def update_settings(self, tenant_id: str, pid: str, settings: Dict) -> bool:
+    def update_settings(self, tenant_id: str, pid: str, settings: dict) -> bool:
         proj=self.get_project(tenant_id,pid)
         if not proj:return False
         merged=dict(proj["draft_config"].get("settings",{})); merged.update(settings)
         proj["draft_config"]["settings"]=merged
         return self._save_draft(tenant_id,pid,proj["draft_config"])
 
-    def set_modules(self, tenant_id: str, pid: str, modules: List[Dict]) -> Dict[str,Any]:
+    def set_modules(self, tenant_id: str, pid: str, modules: list[dict]) -> dict[str,Any]:
         proj=self.get_project(tenant_id,pid)
         if not proj:return {"success":False,"error":"Project not found"}
         seen={}
@@ -123,7 +126,7 @@ class BuilderEngine:
         existing.update(seen); proj["draft_config"]["modules"]= [{"code":c,"enabled":e} for c,e in sorted(existing.items())]
         return {"success":self._save_draft(tenant_id,pid,proj["draft_config"])}
 
-    def add_entity(self, tenant_id: str, pid: str, entity_def: Dict) -> Dict[str,Any]:
+    def add_entity(self, tenant_id: str, pid: str, entity_def: dict) -> dict[str,Any]:
         proj=self.get_project(tenant_id,pid)
         if not proj:return {"success":False,"error":"Project not found"}
         ecode=entity_def.get("entity_code")
@@ -146,7 +149,7 @@ class BuilderEngine:
         cfg["custom_entities"]=list(entities.values()); self._save_draft(tenant_id,pid,cfg)
         return {"success":True,"entity_code":ecode}
 
-    def remove_entity(self, tenant_id: str, pid: str, ecode: str) -> Dict[str,Any]:
+    def remove_entity(self, tenant_id: str, pid: str, ecode: str) -> dict[str,Any]:
         proj=self.get_project(tenant_id,pid)
         if not proj:return {"success":False,"error":"Project not found"}
         cfg=proj["draft_config"]; before=len(cfg.get("custom_entities",[]))
@@ -154,30 +157,30 @@ class BuilderEngine:
         if len(cfg["custom_entities"])==before:return {"success":False,"error":f"Entity '{ecode}' not in draft"}
         self._save_draft(tenant_id,pid,cfg); return {"success":True}
 
-    def add_relationship(self, tenant_id: str, pid: str, rel: Dict) -> Dict[str,Any]:
+    def add_relationship(self, tenant_id: str, pid: str, rel: dict) -> dict[str,Any]:
         proj=self.get_project(tenant_id,pid)
         if not proj:return {"success":False,"error":"Project not found"}
         if not rel.get("from_entity") or not rel.get("to_entity"):return {"success":False,"error":"from_entity and to_entity required"}
         proj["draft_config"].setdefault("relationships",[]).append(rel); self._save_draft(tenant_id,pid,proj["draft_config"]); return {"success":True}
 
-    def set_roles(self, tenant_id: str, pid: str, roles: Dict) -> bool:
+    def set_roles(self, tenant_id: str, pid: str, roles: dict) -> bool:
         proj=self.get_project(tenant_id,pid)
         if not proj:return False
         proj["draft_config"]["roles"]=roles; return self._save_draft(tenant_id,pid,proj["draft_config"])
 
-    def add_workflow(self, tenant_id: str, pid: str, wf: Dict) -> Dict[str,Any]:
+    def add_workflow(self, tenant_id: str, pid: str, wf: dict) -> dict[str,Any]:
         proj=self.get_project(tenant_id,pid)
         if not proj:return {"success":False,"error":"Project not found"}
         if not wf.get("name"):return {"success":False,"error":"Workflow name required"}
         proj["draft_config"].setdefault("workflows",[]).append(wf); self._save_draft(tenant_id,pid,proj["draft_config"]); return {"success":True}
 
-    def add_kpi(self, tenant_id: str, pid: str, kpi: Dict) -> Dict[str,Any]:
+    def add_kpi(self, tenant_id: str, pid: str, kpi: dict) -> dict[str,Any]:
         proj=self.get_project(tenant_id,pid)
         if not proj:return {"success":False,"error":"Project not found"}
         if not kpi.get("name"):return {"success":False,"error":"KPI name required"}
         proj["draft_config"].setdefault("kpis",[]).append(kpi); self._save_draft(tenant_id,pid,proj["draft_config"]); return {"success":True}
 
-    def validate_draft(self,cfg:Dict)->Dict[str,Any]:
+    def validate_draft(self,cfg:dict)->dict[str,Any]:
         errors=[]; warnings=[]; enabled=[m["code"] for m in cfg.get("modules",[]) if m.get("enabled")]
         for mod in enabled:
             for dep in MODULE_DEPENDENCIES.get(mod,[]):
@@ -208,12 +211,12 @@ class BuilderEngine:
             "custom_entities":len(cfg.get("custom_entities",[])),"total_fields":sum(len(e.get("fields",[])) for e in cfg.get("custom_entities",[])),
             "relationships":len(cfg.get("relationships",[])),"roles":len(cfg.get("roles",{})),"workflows":len(cfg.get("workflows",[])),"kpis":len(cfg.get("kpis",[]))}}
 
-    def preview(self,tenant_id:str,pid:str)->Dict[str,Any]:
+    def preview(self,tenant_id:str,pid:str)->dict[str,Any]:
         proj=self.get_project(tenant_id,pid)
         if not proj:return None
         return {"project_id":pid,"project_name":proj["name"],"status":proj["status"],"config":proj["draft_config"],"validation":self.validate_draft(proj["draft_config"])}
 
-    def publish(self, tenant_id: str, pid: str, published_by: str, confirmed: bool, change_summary: str = "") -> Dict[str,Any]:
+    def publish(self, tenant_id: str, pid: str, published_by: str, confirmed: bool, change_summary: str = "") -> dict[str,Any]:
         proj=self.get_project(tenant_id,pid)
         if not proj:return {"success":False,"error":"Project not found"}
         if not confirmed:return {"success":False,"error":"Explicit approval required: pass confirmed=true to publish"}
@@ -238,17 +241,17 @@ class BuilderEngine:
             self.db.rollback()
             return {"success":False,"error":f"Activation failed; transaction rolled back: {exc}"}
 
-    def get_active_config(self,tenant_id:str)->Optional[Dict]:
+    def get_active_config(self,tenant_id:str)->dict | None:
         row=self.db.execute(text("SELECT v.id,v.project_id,v.version_number,v.config,v.published_by,v.published_at FROM dbp_builder_versions v JOIN dbp_builder_projects p ON p.id=v.project_id WHERE v.tenant_id=:tid AND v.is_active=true ORDER BY v.published_at DESC LIMIT 1"),{"tid":tenant_id}).fetchone()
         if not row:return None
         cfg=row[3] if isinstance(row[3],dict) else json.loads(row[3])
         return {"version_id":row[0],"project_id":row[1],"version_number":row[2],"config":cfg,"published_by":row[4],"published_at":str(row[5]) if row[5] else None}
 
-    def list_versions(self,tenant_id:str,pid:str)->List[Dict]:
+    def list_versions(self,tenant_id:str,pid:str)->list[dict]:
         rows=self.db.execute(text("SELECT id,version_number,change_summary,published_by,published_at,is_active FROM dbp_builder_versions WHERE project_id=:pid AND tenant_id=:tid ORDER BY version_number DESC"),{"pid":pid,"tid":tenant_id}).fetchall()
         return [{"id":r[0],"version_number":r[1],"change_summary":r[2],"published_by":r[3],"published_at":str(r[4]) if r[4] else None,"is_active":r[5]} for r in rows]
 
-    def rollback(self,tenant_id:str,pid:str,version_id:str,rolled_back_by:str)->Dict[str,Any]:
+    def rollback(self,tenant_id:str,pid:str,version_id:str,rolled_back_by:str)->dict[str,Any]:
         proj=self.get_project(tenant_id,pid)
         if not proj:return {"success":False,"error":"Project not found"}
         try:
@@ -277,11 +280,11 @@ class BuilderEngine:
         except Exception as exc:
             self.db.rollback(); return {"success":False,"error":f"Rollback failed; transaction rolled back: {exc}"}
 
-    def _save_draft(self,tenant_id:str,pid:str,cfg:Dict)->bool:
+    def _save_draft(self,tenant_id:str,pid:str,cfg:dict)->bool:
         self.db.execute(text("UPDATE dbp_builder_projects SET draft_config=:cfg,updated_at=NOW() WHERE id=:pid AND tenant_id=:tid"),{"cfg":json.dumps(cfg),"pid":pid,"tid":tenant_id})
         self.db.commit(); return True
 
-    def _ensure_physical_table(self,table_name:str,fields:List[Dict]):
+    def _ensure_physical_table(self,table_name:str,fields:list[dict]):
         """Apply schema changes inside the caller's transaction. Never commit here."""
         if not re.match(r"^[a-z][a-z0-9_]{0,62}$",table_name): raise ValueError("Unsafe table name")
         col_defs=["id VARCHAR(36) PRIMARY KEY","tenant_id VARCHAR(100) NOT NULL"]
@@ -296,7 +299,7 @@ class BuilderEngine:
             code=fld["code"]; sqltype=FIELD_SQL_TYPES[fld["field_type"]]
             self.db.execute(text(f"ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS {code} {sqltype}"))
 
-    def _register_entity(self,tenant_id:str,table_name:str,ent:Dict):
+    def _register_entity(self,tenant_id:str,table_name:str,ent:dict):
         # Entity codes are tenant-scoped. A global/system entity is never
         # implicitly reused by a tenant custom entity.
         existing=self.db.execute(text("SELECT id,tenant_id,is_system FROM dbp_entities WHERE code=:code AND tenant_id=:tid"),{"code":ent["entity_code"],"tid":tenant_id}).fetchone()
@@ -308,7 +311,7 @@ class BuilderEngine:
                          {"id":eid,"tid":tenant_id,"code":ent["entity_code"],"nen":ent["name_en"],"nar":ent.get("name_ar"),"fac":ent.get("faculty","operations"),"tbl":table_name})
         self._sync_fields(eid,ent)
 
-    def _sync_fields(self,entity_id:str,ent:Dict):
+    def _sync_fields(self,entity_id:str,ent:dict):
         desired={f["code"]:f for f in ent.get("fields",[])}
         current=self.db.execute(text("SELECT id,code FROM dbp_fields WHERE entity_id=:eid"),{"eid":entity_id}).fetchall()
         current_map={r[1]:r[0] for r in current}

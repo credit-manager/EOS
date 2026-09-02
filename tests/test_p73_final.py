@@ -3,7 +3,13 @@ P73.27-40 FINAL PRODUCTION CERTIFICATION
 ==========================================
 Documentation, Smoke Tests, Regression, Security, Final Audit.
 """
-import sys, io, json, uuid, os, time
+import io
+import json
+import os
+import sys
+import time
+import uuid
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import urllib.request
 
@@ -190,6 +196,7 @@ test(f"P73.36 Auth rate limiting responsive ({elapsed:.2f}s)", elapsed < 10)
 print("\n--- P73.37-38 Full System Audit ---")
 
 import psycopg2
+
 conn = psycopg2.connect('postgresql://eos:0100@127.0.0.1:5432/eos_main')
 cur = conn.cursor()
 

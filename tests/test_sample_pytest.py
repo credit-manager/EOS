@@ -8,7 +8,6 @@ This replaces the old HTTP script-style tests with proper
 pytest fixtures, isolation, and assertions.
 """
 import pytest
-from fastapi.testclient import TestClient
 
 
 class TestHealthCheck:
@@ -74,7 +73,7 @@ class TestMultiTenancy:
         context1 = tenant_context
         
         # Create another tenant
-        from models import Tenant, Company
+        from models import Company, Tenant
         tenant2 = Tenant(name="Tenant 2", slug="tenant-2", is_active=True)
         db_session.add(tenant2)
         db_session.commit()

@@ -12,13 +12,13 @@ Job types:
 All operations are synchronous (same transaction) for now.
 Async/queued execution deferred to P20+.
 """
-import uuid
 import json
 import time
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
+import uuid
+from typing import Any
+
 from sqlalchemy import text
-from datetime import datetime, timezone
+from sqlalchemy.orm import Session
 
 
 class DataJobEngine:
@@ -39,14 +39,14 @@ class DataJobEngine:
         code: str,
         name_en: str,
         job_type: str,
-        tenant_id: Optional[str] = None,
-        name_ar: Optional[str] = None,
-        entity_code: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None,
+        tenant_id: str | None = None,
+        name_ar: str | None = None,
+        entity_code: str | None = None,
+        config: dict[str, Any] | None = None,
         priority: int = 0,
-        scheduled_at: Optional[str] = None,
-        created_by: Optional[str] = None,
-    ) -> Optional[str]:
+        scheduled_at: str | None = None,
+        created_by: str | None = None,
+    ) -> str | None:
         """Create a data job."""
         if job_type not in self.VALID_JOB_TYPES:
             return None
@@ -73,7 +73,7 @@ class DataJobEngine:
         self.db.flush()
         return job_id
 
-    def execute_job(self, job_id: str) -> Dict[str, Any]:
+    def execute_job(self, job_id: str) -> dict[str, Any]:
         """
         Execute a data job synchronously.
         Returns {success, rows_processed, errors, duration_ms}.
@@ -148,7 +148,7 @@ class DataJobEngine:
 
             return {"success": False, "error": error_msg}
 
-    def cancel_job(self, job_id: str) -> Dict[str, Any]:
+    def cancel_job(self, job_id: str) -> dict[str, Any]:
         """Cancel a pending or running job."""
         row = self.db.execute(
             text("SELECT status FROM dbp_data_jobs WHERE id = :jid"),
@@ -167,10 +167,10 @@ class DataJobEngine:
         self.db.flush()
         return {"success": True}
 
-    def get_job(self, job_id: str, tenant_id: Optional[str] = None) -> Optional[Dict]:
+    def get_job(self, job_id: str, tenant_id: str | None = None) -> dict | None:
         """Get a single job."""
         conditions = ["id = :jid"]
-        params: Dict[str, Any] = {"jid": job_id}
+        params: dict[str, Any] = {"jid": job_id}
         if tenant_id:
             conditions.append("(tenant_id = :tid OR tenant_id IS NULL)")
             params["tid"] = tenant_id
@@ -202,16 +202,16 @@ class DataJobEngine:
 
     def list_jobs(
         self,
-        tenant_id: Optional[str] = None,
-        job_type: Optional[str] = None,
-        status: Optional[str] = None,
-        entity_code: Optional[str] = None,
+        tenant_id: str | None = None,
+        job_type: str | None = None,
+        status: str | None = None,
+        entity_code: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """List data jobs with filters."""
         conditions = []
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         if tenant_id:
             conditions.append("(tenant_id = :tid OR tenant_id IS NULL)")
@@ -311,7 +311,7 @@ class DataJobEngine:
         filters = config.get("filters", {})
 
         where_parts = ["1=1"]
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         if filters.get("tenant_id"):
             where_parts.append("tenant_id = :tid")
@@ -353,7 +353,7 @@ class DataJobEngine:
         for i, upd in enumerate(updates):
             try:
                 set_parts = []
-                params: Dict[str, Any] = {}
+                params: dict[str, Any] = {}
                 for j, (k, v) in enumerate(upd.get("set", {}).items()):
                     set_parts.append(f"{k} = :sv{j}")
                     params[f"sv{j}"] = v
@@ -461,7 +461,7 @@ class DataJobEngine:
                     "errors": ["Target entity not found"]}
 
         source_table = source_entity[0]
-        target_table = target_entity[0]
+        target_entity[0]
         limit = config.get("limit", 500)
 
         rows = self.db.execute(

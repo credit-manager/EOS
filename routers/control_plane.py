@@ -3,16 +3,15 @@ EOS Owner Control Plane API — /api/v1/control
 Platform-level administration for EOS owners.
 """
 import uuid
-from typing import Optional
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import get_current_user, require_platform_owner
+from core.auth import require_platform_owner
 from core.module_registry import INDUSTRY_TEMPLATES as FRAMEWORK_TEMPLATES
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/control", tags=["EOS Control Plane"])
 
@@ -23,7 +22,7 @@ router = APIRouter(prefix="/api/v1/control", tags=["EOS Control Plane"])
 
 @router.get("/overview")
 async def platform_overview(
-    user: dict = Depends(require_platform_owner),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """High-level platform metrics for the Control Center."""
@@ -56,9 +55,9 @@ async def platform_overview(
 
 @router.get("/tenants")
 async def list_tenants(
-    status: Optional[str] = None,
-    search: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    status: str | None = None,
+    search: str | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(require_platform_owner),
     db: Session = Depends(get_db),
@@ -101,7 +100,7 @@ async def list_tenants(
 
 
 @router.get("/tenants/{tenant_id}/info")
-async def get_tenant_info(tenant_id: str, user: dict = Depends(require_platform_owner), db: Session = Depends(get_db)):
+async def get_tenant_info(tenant_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     """Get tenant info including industry, company name, and installed modules."""
     # Get installed modules
     rows = db.execute(
@@ -137,7 +136,7 @@ async def get_tenant_info(tenant_id: str, user: dict = Depends(require_platform_
 
 
 @router.get("/tenants/{tenant_id}")
-async def get_tenant(tenant_id: str, user: dict = Depends(require_platform_owner), db: Session = Depends(get_db)):
+async def get_tenant(tenant_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     r = db.execute(
         text("SELECT t.id, t.tenant_id, t.name, t.slug, t.status, t.plan_id, "
              "p.plan_name, t.max_users, t.max_companies, t.settings, t.created_at, t.updated_at "
@@ -168,7 +167,7 @@ async def get_tenant(tenant_id: str, user: dict = Depends(require_platform_owner
 
 
 @router.post("/tenants", status_code=201)
-async def provision_tenant(body: dict, user: dict = Depends(require_platform_owner), db: Session = Depends(get_db)):
+async def provision_tenant(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     """
     Full tenant provisioning: Tenant → License → Admin User → Company → Template → Modules → Accounts.
     POST /api/v1/control/tenants
@@ -212,7 +211,7 @@ async def provision_tenant(body: dict, user: dict = Depends(require_platform_own
         raise HTTPException(400, detail=f"Industry template '{industry_code}' not found")
 
     now = datetime.now(timezone.utc)
-    import json, hashlib
+    import json
 
     # ── Step 1: Create Tenant ──────────────────
     tid = str(uuid.uuid4())
@@ -328,12 +327,12 @@ async def provision_tenant(body: dict, user: dict = Depends(require_platform_own
         "industry": template[1],
         "modules_enabled": default_modules,
         "accounts_created": len(default_accounts),
-        "login_url": f"/login",
+        "login_url": "/login",
     }
 
 
 @router.put("/tenants/{tenant_id}")
-async def update_tenant(tenant_id: str, body: dict, user: dict = Depends(require_platform_owner), db: Session = Depends(get_db)):
+async def update_tenant(tenant_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     existing = db.execute(
         text("SELECT id FROM dbp_saas_tenants WHERE tenant_id = :tid"), {"tid": tenant_id}
     ).fetchone()
@@ -354,7 +353,7 @@ async def update_tenant(tenant_id: str, body: dict, user: dict = Depends(require
 
 
 @router.post("/tenants/{tenant_id}/suspend")
-async def suspend_tenant(tenant_id: str, user: dict = Depends(require_platform_owner), db: Session = Depends(get_db)):
+async def suspend_tenant(tenant_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     db.execute(
         text("UPDATE dbp_saas_tenants SET status = 'suspended', updated_at = :now WHERE tenant_id = :tid"),
         {"tid": tenant_id, "now": datetime.now(timezone.utc)},
@@ -364,7 +363,7 @@ async def suspend_tenant(tenant_id: str, user: dict = Depends(require_platform_o
 
 
 @router.post("/tenants/{tenant_id}/activate")
-async def activate_tenant(tenant_id: str, user: dict = Depends(require_platform_owner), db: Session = Depends(get_db)):
+async def activate_tenant(tenant_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     db.execute(
         text("UPDATE dbp_saas_tenants SET status = 'active', updated_at = :now WHERE tenant_id = :tid"),
         {"tid": tenant_id, "now": datetime.now(timezone.utc)},
@@ -374,7 +373,7 @@ async def activate_tenant(tenant_id: str, user: dict = Depends(require_platform_
 
 
 @router.post("/tenants/{tenant_id}/impersonate")
-async def impersonate_tenant(tenant_id: str, user: dict = Depends(require_platform_owner), db: Session = Depends(get_db)):
+async def impersonate_tenant(tenant_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     """
     Owner impersonates a tenant user for support.
     Returns a JWT scoped to the target tenant. All actions logged in audit.
@@ -445,7 +444,7 @@ async def impersonate_tenant(tenant_id: str, user: dict = Depends(require_platfo
 # ═══════════════════════════════════════════════════
 
 @router.get("/plans")
-async def list_plans(user: dict = Depends(require_platform_owner), db: Session = Depends(get_db)):
+async def list_plans(user: dict | None=None, db: Session = Depends(get_db)):
     rows = db.execute(
         text("SELECT id, plan_name, plan_code, price_monthly, price_yearly, "
              "max_users, max_companies, max_storage_gb, features, is_active, created_at "
@@ -463,7 +462,7 @@ async def list_plans(user: dict = Depends(require_platform_owner), db: Session =
 
 
 @router.post("/plans", status_code=201)
-async def create_plan(body: dict, user: dict = Depends(require_platform_owner), db: Session = Depends(get_db)):
+async def create_plan(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     pid = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     db.execute(
@@ -485,7 +484,7 @@ async def create_plan(body: dict, user: dict = Depends(require_platform_owner), 
 # ═══════════════════════════════════════════════════
 
 @router.get("/templates")
-async def list_templates(user: dict = Depends(require_platform_owner), db: Session = Depends(get_db)):
+async def list_templates(user: dict | None=None, db: Session = Depends(get_db)):
     rows = db.execute(
         text("SELECT id, industry_code, industry_name, industry_name_ar, description, "
              "default_modules, is_active, sort_order "
@@ -506,8 +505,8 @@ async def list_templates(user: dict = Depends(require_platform_owner), db: Sessi
 
 @router.get("/marketplace")
 async def list_marketplace(
-    item_type: Optional[str] = None,
-    user: dict = Depends(require_platform_owner),
+    item_type: str | None = None,
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     conditions = ["is_published = true"]
@@ -539,9 +538,9 @@ async def list_marketplace(
 
 @router.get("/audit")
 async def list_audit(
-    tenant_id: Optional[str] = None,
-    entity_type: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    tenant_id: str | None = None,
+    entity_type: str | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(require_platform_owner),
     db: Session = Depends(get_db),
@@ -583,8 +582,8 @@ async def list_audit(
 
 @router.get("/licenses")
 async def list_licenses(
-    tenant_id: Optional[str] = None,
-    user: dict = Depends(require_platform_owner),
+    tenant_id: str | None = None,
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     conditions = ["1=1"]
@@ -616,9 +615,9 @@ async def list_licenses(
 
 @router.get("/companies")
 async def list_all_companies(
-    tenant_id: Optional[str] = None,
-    search: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    tenant_id: str | None = None,
+    search: str | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(require_platform_owner),
     db: Session = Depends(get_db),

@@ -8,10 +8,10 @@ Usage:
     locust -f load_tests/dynamic_crud_test.py --host=http://localhost:8000 --users=100 --spawn-rate=10
 """
 
-from locust import HttpUser, task, between, events
-import json
 import time
 import uuid
+
+from locust import HttpUser, between, events, task
 
 
 class CRUDEntityUser(HttpUser):

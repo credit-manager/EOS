@@ -1,7 +1,8 @@
 """
 EOS Monitoring Service — Health, Metrics, Alerts
 """
-import time, os
+import os
+import time
 from datetime import datetime
 
 try:

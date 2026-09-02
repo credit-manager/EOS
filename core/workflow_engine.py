@@ -8,11 +8,12 @@ Design:
   - Actions: audit trail of every state change
   - Notifications + Events on state changes
 """
-from typing import Dict, Any, List, Optional
-from sqlalchemy.orm import Session
-from sqlalchemy import text
 import uuid
 from datetime import datetime, timezone
+from typing import Any
+
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class WorkflowEngine:
@@ -35,10 +36,10 @@ class WorkflowEngine:
         code: str,
         name_en: str,
         entity_code: str,
-        tenant_id: Optional[str] = None,
-        name_ar: Optional[str] = None,
-        description: Optional[str] = None,
-        sla_hours: Optional[int] = None,
+        tenant_id: str | None = None,
+        name_ar: str | None = None,
+        description: str | None = None,
+        sla_hours: int | None = None,
     ) -> str:
         """Create a workflow definition with initial state."""
         wf_id = str(uuid.uuid4())
@@ -113,8 +114,8 @@ class WorkflowEngine:
         name_en: str,
         state_type: str = "pending",
         is_final: bool = False,
-        name_ar: Optional[str] = None,
-        allowed_roles: Optional[List[str]] = None,
+        name_ar: str | None = None,
+        allowed_roles: list[str] | None = None,
     ) -> str:
         """Add a state to a workflow."""
         state_id = str(uuid.uuid4())
@@ -144,8 +145,8 @@ class WorkflowEngine:
         from_state_id: str,
         to_state_id: str,
         action: str = "approve",
-        required_roles: Optional[List[str]] = None,
-        conditions: Optional[List[Dict]] = None,
+        required_roles: list[str] | None = None,
+        conditions: list[dict] | None = None,
     ) -> str:
         """Add a transition between states."""
         trans_id = str(uuid.uuid4())
@@ -168,7 +169,7 @@ class WorkflowEngine:
         self.db.flush()
         return trans_id
 
-    def get_workflow_detail(self, workflow_id: str) -> Optional[Dict[str, Any]]:
+    def get_workflow_detail(self, workflow_id: str) -> dict[str, Any] | None:
         """Get full workflow definition with states and transitions."""
         wf = self.db.execute(
             text(
@@ -243,9 +244,9 @@ class WorkflowEngine:
         entity_code: str,
         record_id: str,
         initiated_by: str,
-        tenant_id: Optional[str] = None,
+        tenant_id: str | None = None,
         priority: int = 0,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Start a new workflow instance for a record."""
         wf = self.db.execute(
             text(
@@ -302,9 +303,9 @@ class WorkflowEngine:
         instance_id: str,
         action: str,
         performed_by: str,
-        comment: Optional[str] = None,
-        user_roles: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        comment: str | None = None,
+        user_roles: list[str] | None = None,
+    ) -> dict[str, Any]:
         """
         Execute a transition on a workflow instance.
         Returns {success, from_state, to_state, error?}
@@ -370,7 +371,7 @@ class WorkflowEngine:
         # Update instance
         now = datetime.now(timezone.utc)
         update_fields = "current_state_id = :csid"
-        params: Dict[str, Any] = {"csid": to_state_id, "id": instance_id}
+        params: dict[str, Any] = {"csid": to_state_id, "id": instance_id}
 
         if to_state and to_state[0] in ("approved", "rejected", "cancelled"):
             update_fields += ", status = :status, completed_at = :now"
@@ -398,7 +399,7 @@ class WorkflowEngine:
             "status": params.get("status", "active"),
         }
 
-    def cancel_instance(self, instance_id: str, performed_by: str) -> Dict[str, Any]:
+    def cancel_instance(self, instance_id: str, performed_by: str) -> dict[str, Any]:
         """Cancel a workflow instance."""
         inst = self.db.execute(
             text("SELECT status FROM dbp_workflow_instances WHERE id = :id"),
@@ -424,7 +425,7 @@ class WorkflowEngine:
         self.db.flush()
         return {"success": True, "status": "cancelled"}
 
-    def get_instance(self, instance_id: str) -> Optional[Dict[str, Any]]:
+    def get_instance(self, instance_id: str) -> dict[str, Any] | None:
         """Get workflow instance with history."""
         inst = self.db.execute(
             text(
@@ -482,16 +483,16 @@ class WorkflowEngine:
 
     def list_instances(
         self,
-        workflow_id: Optional[str] = None,
-        entity_code: Optional[str] = None,
-        status: Optional[str] = None,
-        tenant_id: Optional[str] = None,
+        workflow_id: str | None = None,
+        entity_code: str | None = None,
+        status: str | None = None,
+        tenant_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """List workflow instances with filters."""
         conditions = []
-        params: Dict[str, Any] = {"limit": limit, "offset": offset}
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
 
         if workflow_id:
             conditions.append("i.workflow_id = :wid")
@@ -536,12 +537,12 @@ class WorkflowEngine:
     def _log_action(
         self,
         instance_id: str,
-        transition_id: Optional[str],
+        transition_id: str | None,
         action: str,
-        from_state: Optional[str],
-        to_state: Optional[str],
+        from_state: str | None,
+        to_state: str | None,
         performed_by: str,
-        comment: Optional[str] = None,
+        comment: str | None = None,
     ):
         """Log a workflow action (audit trail)."""
         self.db.execute(

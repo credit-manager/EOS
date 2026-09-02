@@ -1,7 +1,11 @@
 """
 P73.21-26 PROVISIONING, ROLES, INDUSTRY, RTL, UX, REPORTS
 """
-import sys, io, json, uuid
+import io
+import json
+import sys
+import uuid
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import urllib.request
 
@@ -40,7 +44,10 @@ print(f"=== P73.21-26 PROVISIONING & UX ({_rid}) ===\n")
 # ═══ P73.21 COMPANY/TENANT PROVISIONING ═══
 print("--- P73.21 Tenant & Company ---")
 
-import base64, psycopg2
+import base64
+
+import psycopg2
+
 payload = token.split('.')[1]
 if len(payload) % 4: payload += '=' * (4 - len(payload) % 4)
 decoded = json.loads(base64.urlsafe_b64decode(payload))
@@ -134,6 +141,7 @@ print("\n--- P73.26 Reports ---")
 
 # Reports module exists
 import os
+
 test("P73.26 Reports router exists", os.path.exists("routers/reports.py"))
 
 # Dashboard serves as primary reporting

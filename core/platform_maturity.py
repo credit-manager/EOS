@@ -1,10 +1,12 @@
 """
 P50 Platform Maturity & Certification Engine
 """
-import uuid, json
-from typing import Dict, Any
-from sqlalchemy.orm import Session
+import json
+import uuid
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class PlatformMaturityEngine:
@@ -26,7 +28,7 @@ class PlatformMaturityEngine:
 
     def list_scores(self, tenant_id, status=None):
         q = "SELECT id, certification_level, total_score, max_score, status, assessed_at, expires_at, created_at FROM dbp_certification_scores WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if status:
             q += " AND status=:st"
             params["st"] = status
@@ -67,7 +69,7 @@ class PlatformMaturityEngine:
 
     def list_metrics(self, tenant_id, metric_category=None):
         q = "SELECT id, metric_category, metric_name, metric_value, target_value, status, measured_at FROM dbp_maturity_metrics WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if metric_category:
             q += " AND metric_category=:mc"
             params["mc"] = metric_category
@@ -93,7 +95,7 @@ class PlatformMaturityEngine:
 
     def list_features(self, feature_category=None, is_stable=None):
         q = "SELECT id, feature_name, feature_category, version_added, is_stable, created_at FROM dbp_platform_features WHERE 1=1"
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if feature_category:
             q += " AND feature_category=:fc"
             params["fc"] = feature_category
@@ -131,7 +133,7 @@ class PlatformMaturityEngine:
 
     def list_upgrades(self, tenant_id, upgrade_type=None):
         q = "SELECT id, from_version, to_version, upgrade_type, status, notes, completed_at FROM dbp_upgrade_history WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if upgrade_type:
             q += " AND upgrade_type=:ut"
             params["ut"] = upgrade_type
@@ -157,7 +159,7 @@ class PlatformMaturityEngine:
 
     def list_health(self, tenant_id, component_name=None):
         q = "SELECT id, component_name, health_score, status, details, checked_at FROM dbp_platform_health WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if component_name:
             q += " AND component_name=:cn"
             params["cn"] = component_name

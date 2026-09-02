@@ -3,9 +3,9 @@ EOS Industry Engine — Module Engine
 Registers, activates, and queries modules per tenant.
 """
 
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 
 class ModuleCategory(str, Enum):
@@ -46,13 +46,13 @@ class ModuleDefinition:
     icon: str
     description: str = ""
     version: str = "1.0.0"
-    capabilities: List[ModuleCapability] = field(default_factory=list)
-    dependencies: List[str] = field(default_factory=list)
-    entities: List[str] = field(default_factory=list)
-    permissions: List[str] = field(default_factory=list)
-    menu_items: List[Dict[str, Any]] = field(default_factory=list)
-    dashboard_widgets: List[str] = field(default_factory=list)
-    settings: Dict[str, Any] = field(default_factory=dict)
+    capabilities: list[ModuleCapability] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)
+    entities: list[str] = field(default_factory=list)
+    permissions: list[str] = field(default_factory=list)
+    menu_items: list[dict[str, Any]] = field(default_factory=list)
+    dashboard_widgets: list[str] = field(default_factory=list)
+    settings: dict[str, Any] = field(default_factory=dict)
 
 
 class ModuleEngine:
@@ -62,7 +62,7 @@ class ModuleEngine:
     """
 
     def __init__(self):
-        self._modules: Dict[str, ModuleDefinition] = {}
+        self._modules: dict[str, ModuleDefinition] = {}
         self._register_builtins()
 
     def _register_builtins(self):
@@ -292,15 +292,15 @@ class ModuleEngine:
         """Register a new module."""
         self._modules[module.code] = module
 
-    def get(self, code: str) -> Optional[ModuleDefinition]:
+    def get(self, code: str) -> ModuleDefinition | None:
         """Get module definition by code."""
         return self._modules.get(code)
 
-    def get_all(self) -> Dict[str, ModuleDefinition]:
+    def get_all(self) -> dict[str, ModuleDefinition]:
         """Get all registered modules."""
         return dict(self._modules)
 
-    def get_by_category(self, category: ModuleCategory) -> List[ModuleDefinition]:
+    def get_by_category(self, category: ModuleCategory) -> list[ModuleDefinition]:
         """Get modules by category."""
         return [m for m in self._modules.values() if m.category == category]
 
@@ -311,7 +311,7 @@ class ModuleEngine:
             return False
         return any(c.code == capability for c in mod.capabilities)
 
-    def validate_dependencies(self, module_codes: List[str]) -> List[str]:
+    def validate_dependencies(self, module_codes: list[str]) -> list[str]:
         """Return list of missing dependencies."""
         missing = []
         codes_set = set(module_codes)
@@ -323,7 +323,7 @@ class ModuleEngine:
                         missing.append(f"{code} requires {dep}")
         return missing
 
-    def get_menu_for_modules(self, module_codes: List[str]) -> List[Dict[str, Any]]:
+    def get_menu_for_modules(self, module_codes: list[str]) -> list[dict[str, Any]]:
         """Build menu from list of active module codes."""
         menu = []
         for code in module_codes:
@@ -333,7 +333,7 @@ class ModuleEngine:
                     menu.append({**item, "module": code})
         return menu
 
-    def get_dashboard_widgets(self, module_codes: List[str]) -> List[str]:
+    def get_dashboard_widgets(self, module_codes: list[str]) -> list[str]:
         """Get all dashboard widget codes for active modules."""
         widgets = []
         for code in module_codes:
@@ -342,7 +342,7 @@ class ModuleEngine:
                 widgets.extend(mod.dashboard_widgets)
         return widgets
 
-    def get_permissions(self, module_codes: List[str]) -> List[str]:
+    def get_permissions(self, module_codes: list[str]) -> list[str]:
         """Get all permissions for active modules."""
         perms = []
         for code in module_codes:

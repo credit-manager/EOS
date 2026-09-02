@@ -2,9 +2,10 @@
 P42 Tenant Lifecycle Engine
 """
 import uuid
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class TenantLifecycleEngine:
@@ -26,7 +27,7 @@ class TenantLifecycleEngine:
 
     def list_events(self, tenant_id, event_type=None, limit=50):
         q = "SELECT id, tenant_id, event_type, event_data, actor_id, actor_email, reason, created_at FROM dbp_tenant_lifecycle_events WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if event_type:
             q += " AND event_type=:et"
             params["et"] = event_type
@@ -64,7 +65,7 @@ class TenantLifecycleEngine:
     def update_data_export(self, tenant_id, export_id, status, file_path=None,
                            file_size_bytes=None, record_count=None):
         sets = ["status=:st"]
-        params: Dict[str, Any] = {"id": export_id, "tid": tenant_id, "st": status}
+        params: dict[str, Any] = {"id": export_id, "tid": tenant_id, "st": status}
         if file_path:
             sets.append("file_path=:fp")
             params["fp"] = file_path
@@ -85,7 +86,7 @@ class TenantLifecycleEngine:
 
     def list_data_exports(self, tenant_id, status=None, limit=20):
         q = "SELECT id, export_type, entity_types, status, file_path, file_size_bytes, record_count, requested_by, started_at, completed_at, created_at FROM dbp_tenant_data_exports WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if status:
             q += " AND status=:st"
             params["st"] = status
@@ -125,7 +126,7 @@ class TenantLifecycleEngine:
 
     def list_invitations(self, tenant_id, status=None, limit=50):
         q = "SELECT id, email, role, status, invited_by, accepted_at, created_at FROM dbp_tenant_invitations WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if status:
             q += " AND status=:st"
             params["st"] = status
@@ -153,7 +154,7 @@ class TenantLifecycleEngine:
 
     def list_activity_logs(self, tenant_id, action=None, resource_type=None, limit=50):
         q = "SELECT id, tenant_id, user_id, action, resource_type, resource_id, details, ip_address, created_at FROM dbp_tenant_activity_logs WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if action:
             q += " AND action=:ac"
             params["ac"] = action
@@ -189,7 +190,7 @@ class TenantLifecycleEngine:
 
     def list_notifications(self, tenant_id, is_read=None, severity=None, limit=50):
         q = "SELECT id, notification_type, title, message, severity, is_read, action_url, created_at FROM dbp_tenant_notifications WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if is_read is not None:
             q += " AND is_read=:ir"
             params["ir"] = is_read

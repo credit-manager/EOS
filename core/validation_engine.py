@@ -9,12 +9,13 @@ Provides:
   - Validation rule CRUD (store rules in DB per entity/field)
   - Batch validation for bulk operations
 """
-import re
 import json
-from typing import Any, Dict, List, Optional, Callable
-from sqlalchemy.orm import Session
-from sqlalchemy import text
+import re
 import uuid
+from typing import Any
+
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class ValidationEngine:
@@ -53,15 +54,15 @@ class ValidationEngine:
     def create_rule(
         self,
         entity_id: str,
-        field_code: Optional[str],
+        field_code: str | None,
         rule_type: str,
-        rule_config: Dict[str, Any],
-        name_en: Optional[str] = None,
-        name_ar: Optional[str] = None,
+        rule_config: dict[str, Any],
+        name_en: str | None = None,
+        name_ar: str | None = None,
         severity: str = "error",
-        tenant_id: Optional[str] = None,
-        condition: Optional[Dict[str, Any]] = None,
-    ) -> Optional[str]:
+        tenant_id: str | None = None,
+        condition: dict[str, Any] | None = None,
+    ) -> str | None:
         """Create a validation rule."""
         if rule_type not in self.BUILTIN_VALIDATORS and rule_type != "conditional":
             return None
@@ -88,12 +89,12 @@ class ValidationEngine:
     def get_rules(
         self,
         entity_id: str,
-        field_code: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-    ) -> List[Dict]:
+        field_code: str | None = None,
+        tenant_id: str | None = None,
+    ) -> list[dict]:
         """Get validation rules for an entity."""
         conditions = ["entity_id = :eid", "is_active = true"]
-        params: Dict[str, Any] = {"eid": entity_id}
+        params: dict[str, Any] = {"eid": entity_id}
 
         if field_code:
             conditions.append("field_code = :fc")
@@ -140,10 +141,10 @@ class ValidationEngine:
     def validate_record(
         self,
         entity_id: str,
-        data: Dict[str, Any],
-        existing_data: Optional[Dict[str, Any]] = None,
-        tenant_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        data: dict[str, Any],
+        existing_data: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Validate a single record against all rules.
         Returns: {valid: bool, errors: [...], warnings: [...]}
@@ -191,9 +192,9 @@ class ValidationEngine:
     def validate_batch(
         self,
         entity_id: str,
-        records: List[Dict[str, Any]],
-        tenant_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        records: list[dict[str, Any]],
+        tenant_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Validate a batch of records.
         Returns: {valid: bool, results: [{index, valid, errors, warnings}, ...]}
@@ -221,11 +222,11 @@ class ValidationEngine:
 
     def _apply_rule(
         self,
-        rule: Dict[str, Any],
-        data: Dict[str, Any],
-        existing_data: Optional[Dict[str, Any]],
-        field_map: Dict[str, Dict],
-    ) -> Optional[str]:
+        rule: dict[str, Any],
+        data: dict[str, Any],
+        existing_data: dict[str, Any] | None,
+        field_map: dict[str, dict],
+    ) -> str | None:
         """Apply a single validation rule. Returns error message or None."""
         field_code = rule["field_code"]
         config = rule["rule_config"]
@@ -359,7 +360,7 @@ class ValidationEngine:
     # TYPE VALIDATION
     # ──────────────────────────────────────────────────────
 
-    def _validate_types(self, data: Dict[str, Any], field_map: Dict[str, Dict]) -> List[Dict]:
+    def _validate_types(self, data: dict[str, Any], field_map: dict[str, dict]) -> list[dict]:
         """Validate field types."""
         errors = []
 
@@ -380,7 +381,7 @@ class ValidationEngine:
 
         return errors
 
-    def _check_type(self, field_code: str, value: Any, expected_type: str) -> Optional[str]:
+    def _check_type(self, field_code: str, value: Any, expected_type: str) -> str | None:
         """Check a single value matches expected type."""
         if expected_type in ("string", "text", "email", "phone", "url"):
             if not isinstance(value, str):
@@ -401,9 +402,8 @@ class ValidationEngine:
         elif expected_type == "json":
             if not isinstance(value, (dict, list)):
                 return f"{field_code} must be JSON"
-        elif expected_type == "enum":
-            if not isinstance(value, str):
-                return f"{field_code} must be a string"
+        elif expected_type == "enum" and not isinstance(value, str):
+            return f"{field_code} must be a string"
         return None
 
     # ──────────────────────────────────────────────────────
@@ -412,9 +412,9 @@ class ValidationEngine:
 
     def _evaluate_condition(
         self,
-        condition: Dict[str, Any],
-        data: Dict[str, Any],
-        existing_data: Optional[Dict[str, Any]],
+        condition: dict[str, Any],
+        data: dict[str, Any],
+        existing_data: dict[str, Any] | None,
     ) -> bool:
         """Evaluate a condition dict. Returns True if rule should run."""
         cond_type = condition.get("type", "field_equals")
@@ -453,7 +453,7 @@ class ValidationEngine:
     # HELPERS
     # ──────────────────────────────────────────────────────
 
-    def _get_entity_fields(self, entity_id: str) -> List[Dict]:
+    def _get_entity_fields(self, entity_id: str) -> list[dict]:
         """Get field definitions for an entity."""
         rows = self.db.execute(
             text("SELECT code, field_type, is_required, ui_config, enum_values "
@@ -475,8 +475,8 @@ class ValidationEngine:
         entity_id: str,
         field_code: str,
         value: Any,
-        exclude_id: Optional[str] = None,
-        tenant_id: Optional[str] = None,
+        exclude_id: str | None = None,
+        tenant_id: str | None = None,
     ) -> bool:
         """Check if a value is unique for a field in the entity's table."""
         entity = self.db.execute(
@@ -489,7 +489,7 @@ class ValidationEngine:
 
         table = entity[0]
         conditions = [f"{field_code} = :val"]
-        params: Dict[str, Any] = {"val": value}
+        params: dict[str, Any] = {"val": value}
 
         if exclude_id:
             conditions.append("id != :eid")

@@ -5,7 +5,6 @@ when the application runtime dependencies/configuration are unavailable in CI.
 They must never replace a real integration assertion with a hand-created table.
 """
 import inspect
-import pytest
 
 
 def test_composer_and_builder_entrypoints_exist():

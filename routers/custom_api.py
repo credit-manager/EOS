@@ -3,20 +3,26 @@ P71.5 Dynamic Customization Layer — API
 =========================================
 Custom fields, modules, records, and workflows.
 """
-import sys, os, json
+import json
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Any
 
-from database import get_db
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import text
-from core.auth import get_current_user
+
 from core.industry_security import (
-    now, uid, check_permission, audit_log,
-    success_response, list_response,
+    audit_log,
+    check_permission,
+    list_response,
+    success_response,
+    uid,
 )
+from database import get_db
 
 router = APIRouter(prefix="/custom", tags=["Dynamic Customization"])
 
@@ -31,12 +37,12 @@ class FieldCreate(BaseModel):
     field_label: str
     field_type: str = "text"
     is_required: bool = False
-    default_value: Optional[str] = None
-    enum_values: Optional[str] = None
+    default_value: str | None = None
+    enum_values: str | None = None
     sort_order: int = 0
 
 @router.post("/fields")
-def create_field(body: FieldCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_field(body: FieldCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     valid_types = {"text", "number", "date", "boolean", "select", "multiselect", "email", "phone", "url", "currency", "textarea"}
@@ -59,10 +65,10 @@ def create_field(body: FieldCreate, user: dict = Depends(get_current_user), db=D
     return success_response("Field created", {"id": fid})
 
 @router.get("/fields")
-def list_fields(entity_type: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_fields(entity_type: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     where = "WHERE tenant_id=:t AND is_active=TRUE"
-    params: Dict[str, Any] = {"t": t}
+    params: dict[str, Any] = {"t": t}
     if entity_type:
         where += " AND entity_type=:et"
         params["et"] = entity_type
@@ -75,7 +81,7 @@ def list_fields(entity_type: Optional[str] = None, user: dict = Depends(get_curr
     return list_response(data, len(data))
 
 @router.delete("/fields/{field_id}")
-def delete_field(field_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def delete_field(field_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "delete")
     t = user["tenant_id"]
     f = db.execute(text("SELECT id FROM dbp_custom_fields WHERE id=:id AND tenant_id=:t"),
@@ -100,7 +106,7 @@ class FieldValueSet(BaseModel):
     field_value: str
 
 @router.post("/fields/values")
-def set_field_value(body: FieldValueSet, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def set_field_value(body: FieldValueSet, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     field = db.execute(text("SELECT id FROM dbp_custom_fields WHERE id=:fid AND tenant_id=:t AND is_active=TRUE"),
                        {"fid": body.field_id, "t": t}).fetchone()
@@ -123,7 +129,7 @@ def set_field_value(body: FieldValueSet, user: dict = Depends(get_current_user),
     return success_response("Field value set", {"entity_type": body.entity_type, "entity_id": body.entity_id})
 
 @router.get("/fields/values")
-def get_field_values(entity_type: str, entity_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_field_values(entity_type: str, entity_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text(
         "SELECT f.field_code, f.field_label, f.field_type, v.field_value "
@@ -141,13 +147,13 @@ def get_field_values(entity_type: str, entity_id: str, user: dict = Depends(get_
 class ModuleCreate(BaseModel):
     module_code: str
     module_name: str
-    description: Optional[str] = None
-    icon: Optional[str] = None
-    color: Optional[str] = None
-    fields: Optional[List[Dict[str, Any]]] = None
+    description: str | None = None
+    icon: str | None = None
+    color: str | None = None
+    fields: list[dict[str, Any]] | None = None
 
 @router.post("/modules")
-def create_module(body: ModuleCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_module(body: ModuleCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     existing = db.execute(text("SELECT id FROM dbp_custom_modules WHERE tenant_id=:t AND module_code=:mc"),
@@ -174,7 +180,7 @@ def create_module(body: ModuleCreate, user: dict = Depends(get_current_user), db
     return success_response("Module created", {"id": mid})
 
 @router.get("/modules")
-def list_modules(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_modules(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text(
         "SELECT id,module_code,module_name,description,icon,color,is_active "
@@ -195,7 +201,7 @@ def list_modules(user: dict = Depends(get_current_user), db=Depends(get_db)):
     return list_response(data, len(data))
 
 @router.get("/modules/{module_id}")
-def get_module(module_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_module(module_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     r = db.execute(text(
         "SELECT id,module_code,module_name,description,icon,color,is_active "
@@ -213,7 +219,7 @@ def get_module(module_id: str, user: dict = Depends(get_current_user), db=Depend
     })
 
 @router.delete("/modules/{module_id}")
-def delete_module(module_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def delete_module(module_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "delete")
     t = user["tenant_id"]
     m = db.execute(text("SELECT id FROM dbp_custom_modules WHERE id=:id AND tenant_id=:t"),
@@ -233,11 +239,11 @@ def delete_module(module_id: str, user: dict = Depends(get_current_user), db=Dep
 # ═══════════════════════════════════════════════════
 
 class RecordCreate(BaseModel):
-    record_code: Optional[str] = None
-    data: Dict[str, Any]
+    record_code: str | None = None
+    data: dict[str, Any]
 
 @router.post("/modules/{module_id}/records")
-def create_record(module_id: str, body: RecordCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_record(module_id: str, body: RecordCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     m = db.execute(text("SELECT id FROM dbp_custom_modules WHERE id=:id AND tenant_id=:t AND is_active=TRUE"),
@@ -255,7 +261,7 @@ def create_record(module_id: str, body: RecordCreate, user: dict = Depends(get_c
     return success_response("Record created", {"id": rid})
 
 @router.get("/modules/{module_id}/records")
-def list_records(module_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_records(module_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text(
         "SELECT id,record_code,data,status,created_by,created_at "
@@ -269,7 +275,7 @@ def list_records(module_id: str, user: dict = Depends(get_current_user), db=Depe
 
 @router.put("/modules/{module_id}/records/{record_id}")
 def update_record(module_id: str, record_id: str, body: RecordCreate,
-                  user: dict = Depends(get_current_user), db=Depends(get_db)):
+                  user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     r = db.execute(text("SELECT id FROM dbp_custom_module_records WHERE id=:rid AND module_id=:mid AND tenant_id=:t"),
@@ -283,7 +289,7 @@ def update_record(module_id: str, record_id: str, body: RecordCreate,
     return success_response("Record updated", {"id": record_id})
 
 @router.delete("/modules/{module_id}/records/{record_id}")
-def delete_record(module_id: str, record_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def delete_record(module_id: str, record_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "delete")
     t = user["tenant_id"]
     db.execute(text("UPDATE dbp_custom_module_records SET status='deleted', updated_at=NOW() "
@@ -300,11 +306,11 @@ def delete_record(module_id: str, record_id: str, user: dict = Depends(get_curre
 class WorkflowCreate(BaseModel):
     workflow_name: str
     entity_type: str
-    description: Optional[str] = None
-    steps: List[Dict[str, Any]]
+    description: str | None = None
+    steps: list[dict[str, Any]]
 
 @router.post("/workflows")
-def create_workflow(body: WorkflowCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_workflow(body: WorkflowCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     wid = uid()
@@ -329,10 +335,10 @@ def create_workflow(body: WorkflowCreate, user: dict = Depends(get_current_user)
     return success_response("Workflow created", {"id": wid})
 
 @router.get("/workflows")
-def list_workflows(entity_type: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_workflows(entity_type: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     where = "WHERE tenant_id=:t AND is_active=TRUE"
-    params: Dict[str, Any] = {"t": t}
+    params: dict[str, Any] = {"t": t}
     if entity_type:
         where += " AND entity_type=:et"
         params["et"] = entity_type
@@ -343,7 +349,7 @@ def list_workflows(entity_type: Optional[str] = None, user: dict = Depends(get_c
     return list_response(data, len(data))
 
 @router.get("/workflows/{workflow_id}")
-def get_workflow(workflow_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_workflow(workflow_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     r = db.execute(text(
         "SELECT id,workflow_name,entity_type,description,is_active "
@@ -367,7 +373,7 @@ def get_workflow(workflow_id: str, user: dict = Depends(get_current_user), db=De
     })
 
 @router.delete("/workflows/{workflow_id}")
-def delete_workflow(workflow_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def delete_workflow(workflow_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "delete")
     t = user["tenant_id"]
     w = db.execute(text("SELECT id FROM dbp_custom_workflows WHERE id=:id AND tenant_id=:t"),
@@ -398,7 +404,7 @@ class WorkflowStart(BaseModel):
     entity_id: str
 
 @router.post("/workflows/start")
-def start_workflow(body: WorkflowStart, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def start_workflow(body: WorkflowStart, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     w = db.execute(text("SELECT id FROM dbp_custom_workflows WHERE id=:wid AND tenant_id=:t AND is_active=TRUE"),
                    {"wid": body.workflow_id, "t": t}).fetchone()
@@ -415,11 +421,11 @@ def start_workflow(body: WorkflowStart, user: dict = Depends(get_current_user), 
 
 class WorkflowStepAction(BaseModel):
     action: str  # "approve" or "reject"
-    comment: Optional[str] = None
+    comment: str | None = None
 
 @router.post("/workflows/instances/{instance_id}/step")
 def execute_step(instance_id: str, body: WorkflowStepAction,
-                 user: dict = Depends(get_current_user), db=Depends(get_db)):
+                 user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     inst = db.execute(text(
         "SELECT id,workflow_id,current_step,status FROM dbp_workflow_instances_v2 WHERE id=:id AND tenant_id=:t"),
@@ -459,7 +465,7 @@ def execute_step(instance_id: str, body: WorkflowStepAction,
     return success_response("Step executed", {"action": body.action, "next_step": next_step})
 
 @router.get("/workflows/instances/{instance_id}")
-def get_instance(instance_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_instance(instance_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     r = db.execute(text(
         "SELECT id,workflow_id,entity_type,entity_id,current_step,status,started_at,completed_at "
@@ -486,7 +492,7 @@ def get_instance(instance_id: str, user: dict = Depends(get_current_user), db=De
 # ═══════════════════════════════════════════════════
 
 @router.get("/stats")
-def customization_stats(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def customization_stats(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     fields = db.execute(text("SELECT COUNT(*) FROM dbp_custom_fields WHERE tenant_id=:t"), {"t": t}).fetchone()[0] or 0
     modules = db.execute(text("SELECT COUNT(*) FROM dbp_custom_modules WHERE tenant_id=:t"), {"t": t}).fetchone()[0] or 0

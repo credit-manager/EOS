@@ -4,7 +4,10 @@ P80.5C — HIGH ISSUES REMEDIATION TESTS (17 issues)
 Each H-fix is verified either by code-level inspection of the Release
 copy or by a live API call against the running server.
 """
-import sys, os, json, urllib.request, urllib.error
+import json
+import sys
+import urllib.error
+import urllib.request
 
 BASE = "http://127.0.0.1:8000"
 passed = 0
@@ -147,6 +150,7 @@ check("H14: trading audit reads same table audit_log writes",
 # ─── H15: Inconsistent stock tables ─────────────
 print("\n--- H15: Stock table consolidation ---")
 import re
+
 bare = [l for l in trading.split("\n")
         if re.search(r"dbp_trading_stock(\s|$)", l) and "adjustment" not in l and "transfer" not in l]
 check("H15: No bare dbp_trading_stock stock ops remain", len(bare) == 0)

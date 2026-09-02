@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import require_permission, get_current_user
-from core.rate_limit import read_limiter, write_limiter
 from core.analytics_engine import AnalyticsEngine
+from core.auth import require_permission
+from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic/analytics", tags=["Analytics & Pipelines"])
 
@@ -12,8 +12,8 @@ router = APIRouter(prefix="/api/v1/dynamic/analytics", tags=["Analytics & Pipeli
 # ------------------------------------------------ dashboards
 @router.get("/dashboards",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_dashboards(dashboard_type: str = None,
-                         user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_dashboards(dashboard_type: str | None = None,
+                         user: dict | None=None, db: Session = Depends(get_db)):
     data = AnalyticsEngine(db).list_dashboards(user["tenant_id"], dashboard_type=dashboard_type)
     return {"status": "success", "data": data}
 
@@ -21,7 +21,7 @@ async def list_dashboards(dashboard_type: str = None,
 @router.post("/dashboards",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_dashboard(body: dict,
-                         user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                         user: dict | None=None, db: Session = Depends(get_db)):
     required = ["dashboard_name", "dashboard_type"]
     for f in required:
         if f not in body:
@@ -39,7 +39,7 @@ async def create_dashboard(body: dict,
 @router.get("/dashboards/{dashboard_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_dashboard(dashboard_id: str,
-                      user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                      user: dict | None=None, db: Session = Depends(get_db)):
     data = AnalyticsEngine(db).get_dashboard(user["tenant_id"], dashboard_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -50,7 +50,7 @@ async def get_dashboard(dashboard_id: str,
 @router.delete("/dashboards/{dashboard_id}",
                dependencies=[Depends(require_permission("dynamic", "delete")), Depends(write_limiter.check)])
 async def delete_dashboard(dashboard_id: str,
-                         user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                         user: dict | None=None, db: Session = Depends(get_db)):
     result = AnalyticsEngine(db).delete_dashboard(user["tenant_id"], dashboard_id)
     if not result:
         raise HTTPException(404, detail={"status": "error",
@@ -63,7 +63,7 @@ async def delete_dashboard(dashboard_id: str,
 @router.get("/dashboards/{dashboard_id}/widgets",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def list_widgets(dashboard_id: str,
-                     user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                     user: dict | None=None, db: Session = Depends(get_db)):
     data = AnalyticsEngine(db).list_widgets(dashboard_id)
     return {"status": "success", "data": data}
 
@@ -71,7 +71,7 @@ async def list_widgets(dashboard_id: str,
 @router.post("/dashboards/{dashboard_id}/widgets",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_widget(dashboard_id: str, body: dict,
-                      user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                      user: dict | None=None, db: Session = Depends(get_db)):
     if "widget_type" not in body:
         raise HTTPException(400, detail={"status": "error",
             "error": {"code": "MISSING", "message": "widget_type required"}})
@@ -88,7 +88,7 @@ async def create_widget(dashboard_id: str, body: dict,
 @router.delete("/widgets/{widget_id}",
                dependencies=[Depends(require_permission("dynamic", "delete")), Depends(write_limiter.check)])
 async def delete_widget(widget_id: str,
-                      user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                      user: dict | None=None, db: Session = Depends(get_db)):
     result = AnalyticsEngine(db).delete_widget(widget_id)
     if not result:
         raise HTTPException(404, detail={"status": "error",
@@ -100,8 +100,8 @@ async def delete_widget(widget_id: str,
 # ------------------------------------------------ pipelines
 @router.get("/pipelines",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_pipelines(status: str = None,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_pipelines(status: str | None = None,
+                        user: dict | None=None, db: Session = Depends(get_db)):
     data = AnalyticsEngine(db).list_pipelines(user["tenant_id"], status=status)
     return {"status": "success", "data": data}
 
@@ -109,7 +109,7 @@ async def list_pipelines(status: str = None,
 @router.post("/pipelines",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_pipeline(body: dict,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                        user: dict | None=None, db: Session = Depends(get_db)):
     required = ["pipeline_name", "source_type", "target_type"]
     for f in required:
         if f not in body:
@@ -126,7 +126,7 @@ async def create_pipeline(body: dict,
 @router.get("/pipelines/{pipeline_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_pipeline(pipeline_id: str,
-                     user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                     user: dict | None=None, db: Session = Depends(get_db)):
     data = AnalyticsEngine(db).get_pipeline(user["tenant_id"], pipeline_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -137,7 +137,7 @@ async def get_pipeline(pipeline_id: str,
 @router.put("/pipelines/{pipeline_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_pipeline(pipeline_id: str, body: dict,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                        user: dict | None=None, db: Session = Depends(get_db)):
     result = AnalyticsEngine(db).update_pipeline(user["tenant_id"], pipeline_id, **body)
     db.commit()
     return {"status": "success", "data": result}
@@ -146,8 +146,8 @@ async def update_pipeline(pipeline_id: str, body: dict,
 # -------------------------------------------------- pipeline runs
 @router.get("/pipeline-runs",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_pipeline_runs(pipeline_id: str = None, status: str = None, limit: int = 20,
-                            user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_pipeline_runs(pipeline_id: str | None = None, status: str | None = None, limit: int = 20,
+                            user: dict | None=None, db: Session = Depends(get_db)):
     data = AnalyticsEngine(db).list_pipeline_runs(
         user["tenant_id"], pipeline_id=pipeline_id, status=status, limit=limit)
     return {"status": "success", "data": data}
@@ -156,7 +156,7 @@ async def list_pipeline_runs(pipeline_id: str = None, status: str = None, limit:
 @router.post("/pipeline-runs",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_pipeline_run(body: dict,
-                            user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                            user: dict | None=None, db: Session = Depends(get_db)):
     if "pipeline_id" not in body:
         raise HTTPException(400, detail={"status": "error",
             "error": {"code": "MISSING", "message": "pipeline_id required"}})
@@ -169,7 +169,7 @@ async def create_pipeline_run(body: dict,
 @router.put("/pipeline-runs/{run_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def complete_pipeline_run(run_id: str, body: dict,
-                             user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                             user: dict | None=None, db: Session = Depends(get_db)):
     result = AnalyticsEngine(db).complete_pipeline_run(
         run_id,
         records_processed=body.get("records_processed", 0),
@@ -182,8 +182,8 @@ async def complete_pipeline_run(run_id: str, body: dict,
 # ------------------------------------------------ analytics alerts
 @router.get("/alerts",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_alerts(is_active: bool = None,
-                     user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_alerts(is_active: bool | None = None,
+                     user: dict | None=None, db: Session = Depends(get_db)):
     data = AnalyticsEngine(db).list_alerts(user["tenant_id"], is_active=is_active)
     return {"status": "success", "data": data}
 
@@ -191,7 +191,7 @@ async def list_alerts(is_active: bool = None,
 @router.post("/alerts",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_alert(body: dict,
-                     user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                     user: dict | None=None, db: Session = Depends(get_db)):
     required = ["alert_name", "metric_name", "condition", "threshold_value"]
     for f in required:
         if f not in body:
@@ -208,7 +208,7 @@ async def create_alert(body: dict,
 @router.put("/alerts/{alert_id}/trigger",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def trigger_alert(alert_id: str,
-                       user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                       user: dict | None=None, db: Session = Depends(get_db)):
     result = AnalyticsEngine(db).trigger_alert(user["tenant_id"], alert_id)
     db.commit()
     return {"status": "success", "data": result}
@@ -217,7 +217,7 @@ async def trigger_alert(alert_id: str,
 @router.delete("/alerts/{alert_id}",
                dependencies=[Depends(require_permission("dynamic", "delete")), Depends(write_limiter.check)])
 async def delete_alert(alert_id: str,
-                     user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                     user: dict | None=None, db: Session = Depends(get_db)):
     result = AnalyticsEngine(db).delete_alert(user["tenant_id"], alert_id)
     if not result:
         raise HTTPException(404, detail={"status": "error",

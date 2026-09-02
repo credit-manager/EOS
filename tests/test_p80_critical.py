@@ -7,8 +7,14 @@ P80 — CRITICAL PRODUCTION FIXES
 80.4 Monitoring Activation
 80.5 Production Re-certification
 """
-import sys, io, json, uuid, time, os, subprocess
-from datetime import datetime
+import io
+import json
+import os
+import subprocess
+import sys
+import time
+import uuid
+from datetime import datetime, timezone
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import urllib.request
@@ -148,7 +154,7 @@ PG_DUMP = r"C:\Program Files\PostgreSQL\18\bin\pg_dump.exe"
 try:
     result = subprocess.run([PG_DUMP, "--version"], capture_output=True, text=True, timeout=10)
     test("80.3.3 pg_dump available", result.returncode == 0)
-except:
+except Exception:
     test("80.3.3 pg_dump available", False)
 
 backup_dir = os.path.join(".", "backups")
@@ -156,7 +162,7 @@ os.makedirs(backup_dir, exist_ok=True)
 test("80.3.4 Backup directory exists", os.path.isdir(backup_dir))
 
 try:
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
     backup_file = os.path.join(backup_dir, f"eos_backup_{timestamp}.sql")
     result = subprocess.run(
         [PG_DUMP, "-h", "127.0.0.1", "-U", "eos", "-d", "eos_main",

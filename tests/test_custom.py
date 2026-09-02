@@ -1,4 +1,8 @@
-import sys, io, json, uuid
+import io
+import json
+import sys
+import uuid
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import urllib.request
 
@@ -146,7 +150,7 @@ upd = api("PUT", f"/custom/modules/{module_id}/records/{rec_id}", {
 test("4.5 Record updated", "_err" not in upd)
 
 rec_detail = api("GET", f"/custom/modules/{module_id}/records", token=token)
-updated_rec = [r for r in rec_detail["data"] if r["id"] == rec_id][0]
+updated_rec = next(r for r in rec_detail["data"] if r["id"] == rec_id)
 test("4.6 Mileage updated to 50000", updated_rec["data"]["mileage"] == 50000)
 
 del_rec = api("DELETE", f"/custom/modules/{module_id}/records/{rec_id}", token=token)

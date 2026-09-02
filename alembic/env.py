@@ -1,8 +1,10 @@
-from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
-from alembic import context
-import sys
 import os
+import sys
+from logging.config import fileConfig
+
+from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -17,14 +19,14 @@ if config.config_file_name is not None:
 
 # Import all models to ensure they are registered with Base.metadata
 try:
-    from models import Base
     # Import all model modules to register them with Base.metadata
     # This ensures Alembic can detect all tables for migrations
     import models  # noqa: F401
+    from models import Base
     
     # Try to import core engines that might define additional models
     try:
-        from core import builder_engine, ai_composer, metadata_engine  # noqa: F401
+        from core import ai_composer, builder_engine, metadata_engine  # noqa: F401
     except ImportError:
         pass
     

@@ -2,7 +2,10 @@
 P80.5B — Critical Remediation Tests (9/9)
 Tests that verify each critical issue is actually fixed.
 """
-import sys, io, json, uuid
+import io
+import json
+import sys
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import urllib.request
 
@@ -121,7 +124,7 @@ test("C5: Create entry validates debit == credit",
 
 # ─── Summary ────────────────────────────────────
 print(f"\n{'='*60}")
-print(f"  P80.5B CRITICAL REMEDIATION TESTS")
+print("  P80.5B CRITICAL REMEDIATION TESTS")
 print(f"{'='*60}")
 print(f"  Passed: {passed}")
 print(f"  Failed: {failed}")

@@ -2,11 +2,12 @@
 EOS Email Service — SMTP Integration
 Supports: SendGrid, Gmail SMTP, custom SMTP
 """
-import smtplib, ssl, os
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import os
+import smtplib
+import ssl
 from email.mime.application import MIMEApplication
-from datetime import datetime
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 
 class EmailService:

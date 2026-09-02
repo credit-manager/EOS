@@ -1,10 +1,12 @@
 """
 P43 Subscription & Licensing Engine
 """
-import uuid, json
-from typing import Optional, Dict, Any
-from sqlalchemy.orm import Session
+import json
+import uuid
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class SubscriptionEngine:
@@ -48,7 +50,7 @@ class SubscriptionEngine:
 
     def list_subscriptions(self, status=None, limit=50):
         q = "SELECT id, tenant_id, plan_id, status, billing_cycle, created_at FROM dbp_subscriptions"
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if status:
             q += " WHERE status=:st"
             params["st"] = status
@@ -89,7 +91,7 @@ class SubscriptionEngine:
 
     def update_invoice_status(self, tenant_id, invoice_id, status):
         sets = ["status=:st"]
-        params: Dict[str, Any] = {"id": invoice_id, "tid": tenant_id, "st": status}
+        params: dict[str, Any] = {"id": invoice_id, "tid": tenant_id, "st": status}
         if status == "paid":
             sets.append("paid_at=NOW()")
         self.db.execute(text(
@@ -99,7 +101,7 @@ class SubscriptionEngine:
 
     def list_invoices(self, tenant_id, status=None, limit=20):
         q = "SELECT id, invoice_number, amount, currency, status, due_date, paid_at, created_at FROM dbp_invoices_saas WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if status:
             q += " AND status=:st"
             params["st"] = status
@@ -167,7 +169,7 @@ class SubscriptionEngine:
         if not kwargs:
             return None
         sets = [f"{k}=:{k}" for k in kwargs]
-        params: Dict[str, Any] = {"id": license_id, "tid": tenant_id, **kwargs}
+        params: dict[str, Any] = {"id": license_id, "tid": tenant_id, **kwargs}
         self.db.execute(text(
             f"UPDATE dbp_licenses SET {', '.join(sets)}, updated_at=NOW() "
             "WHERE id=:id AND tenant_id=:tid"
@@ -176,7 +178,7 @@ class SubscriptionEngine:
 
     def list_licenses(self, tenant_id, status=None):
         q = "SELECT id, license_key, license_type, max_seats, status, created_at FROM dbp_licenses WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if status:
             q += " AND status=:st"
             params["st"] = status
@@ -200,7 +202,7 @@ class SubscriptionEngine:
 
     def get_usage(self, tenant_id, meter_name=None, limit=50):
         q = "SELECT id, meter_name, meter_value, unit, period_start, period_end, overage_rate, recorded_at FROM dbp_usage_meters WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if meter_name:
             q += " AND meter_name=:mn"
             params["mn"] = meter_name

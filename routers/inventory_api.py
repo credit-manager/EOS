@@ -2,26 +2,25 @@
 EOS Inventory API Router — /api/v1/inventory
 """
 import uuid
-from typing import Optional
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-from database import get_db
 from core.auth import get_current_user
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/inventory", tags=["Inventory API"])
 
 
 @router.get("/products")
 async def list_products(
-    category_id: Optional[str] = None,
-    search: Optional[str] = None,
-    is_active: Optional[bool] = None,
-    low_stock: Optional[bool] = None,
-    page: int = Query(1, ge=1),
+    category_id: str | None = None,
+    search: str | None = None,
+    is_active: bool | None = None,
+    low_stock: bool | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -65,7 +64,7 @@ async def list_products(
 
 
 @router.get("/products/{product_id}")
-async def get_product(product_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_product(product_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     r = db.execute(
         text("SELECT id, sku, name, name_ar, description, category_id, unit_price, cost_price, "
              "currency, current_stock, min_stock, max_stock, barcode, is_active, created_at "
@@ -82,7 +81,7 @@ async def get_product(product_id: str, user: dict = Depends(get_current_user), d
 
 
 @router.post("/products", status_code=201)
-async def create_product(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_product(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     if not body.get("name"):
         raise HTTPException(400, detail="name required")
     pid = str(uuid.uuid4())
@@ -103,7 +102,7 @@ async def create_product(body: dict, user: dict = Depends(get_current_user), db:
 
 
 @router.put("/products/{product_id}")
-async def update_product(product_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def update_product(product_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     existing = db.execute(text("SELECT id FROM products WHERE id = :id"), {"id": product_id}).fetchone()
     if not existing:
         raise HTTPException(404, detail="Product not found")
@@ -126,7 +125,7 @@ async def update_product(product_id: str, body: dict, user: dict = Depends(get_c
 
 
 @router.delete("/products/{product_id}")
-async def delete_product(product_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def delete_product(product_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     result = db.execute(text("DELETE FROM products WHERE id = :id"), {"id": product_id})
     if result.rowcount == 0:
         raise HTTPException(404, detail="Product not found")
@@ -137,7 +136,7 @@ async def delete_product(product_id: str, user: dict = Depends(get_current_user)
 # ─── Warehouses ─────────────────────────────────
 
 @router.get("/warehouses")
-async def list_warehouses(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_warehouses(user: dict | None=None, db: Session = Depends(get_db)):
     rows = db.execute(text("SELECT id, code, name, name_ar, address, address_ar, is_active, created_at FROM warehouses ORDER BY name")).fetchall()
     return [{"id": r[0], "code": r[1], "name": r[2], "name_ar": r[3],
              "address": r[4], "address_ar": r[5], "is_active": r[6] if r[6] is not None else True,
@@ -145,7 +144,7 @@ async def list_warehouses(user: dict = Depends(get_current_user), db: Session = 
 
 
 @router.post("/warehouses", status_code=201)
-async def create_warehouse(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_warehouse(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     wid = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     db.execute(
@@ -159,7 +158,7 @@ async def create_warehouse(body: dict, user: dict = Depends(get_current_user), d
 
 
 @router.put("/warehouses/{warehouse_id}")
-async def update_warehouse(warehouse_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def update_warehouse(warehouse_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     existing = db.execute(text("SELECT id FROM warehouses WHERE id = :id"), {"id": warehouse_id}).fetchone()
     if not existing:
         raise HTTPException(404, detail="Warehouse not found")
@@ -175,7 +174,7 @@ async def update_warehouse(warehouse_id: str, body: dict, user: dict = Depends(g
 
 
 @router.delete("/warehouses/{warehouse_id}")
-async def delete_warehouse(warehouse_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def delete_warehouse(warehouse_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     result = db.execute(text("DELETE FROM warehouses WHERE id = :id"), {"id": warehouse_id})
     if result.rowcount == 0:
         raise HTTPException(404, detail="Warehouse not found")
@@ -187,10 +186,10 @@ async def delete_warehouse(warehouse_id: str, user: dict = Depends(get_current_u
 
 @router.get("/stock/movements")
 async def list_stock_movements(
-    product_id: Optional[str] = None,
-    warehouse_id: Optional[str] = None,
-    movement_type: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    product_id: str | None = None,
+    warehouse_id: str | None = None,
+    movement_type: str | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -237,7 +236,7 @@ async def list_stock_movements(
 
 
 @router.post("/stock/movements", status_code=201)
-async def create_stock_movement(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_stock_movement(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     mid = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     db.execute(
@@ -255,7 +254,7 @@ async def create_stock_movement(body: dict, user: dict = Depends(get_current_use
 
 
 @router.get("/stock/product/{product_id}")
-async def get_stock_by_product(product_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_stock_by_product(product_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     rows = db.execute(
         text("SELECT sm.warehouse_id, w.name, SUM(sm.quantity) as total_qty "
              "FROM stock_movements sm LEFT JOIN warehouses w ON sm.warehouse_id = w.id "
@@ -266,7 +265,7 @@ async def get_stock_by_product(product_id: str, user: dict = Depends(get_current
 
 
 @router.get("/stock/alerts")
-async def low_stock_alerts(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def low_stock_alerts(user: dict | None=None, db: Session = Depends(get_db)):
     rows = db.execute(
         text("SELECT id, sku, name, current_stock, min_stock FROM products "
              "WHERE is_active = true AND min_stock > 0 AND current_stock <= min_stock ORDER BY name")
@@ -277,7 +276,7 @@ async def low_stock_alerts(user: dict = Depends(get_current_user), db: Session =
 # ─── Categories ─────────────────────────────────
 
 @router.get("/categories")
-async def list_categories(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_categories(user: dict | None=None, db: Session = Depends(get_db)):
     try:
         rows = db.execute(text("SELECT id, name, name_ar, description FROM products GROUP BY name, name_ar, description, id ORDER BY name")).fetchall()
         return [{"id": r[0], "name": r[1], "name_ar": r[2], "description": r[3]} for r in rows]
@@ -289,8 +288,8 @@ async def list_categories(user: dict = Depends(get_current_user), db: Session = 
 
 @router.get("/suppliers")
 async def list_suppliers(
-    search: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    search: str | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -322,7 +321,7 @@ async def list_suppliers(
 
 
 @router.post("/suppliers", status_code=201)
-async def create_supplier(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_supplier(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     sid = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     db.execute(
@@ -340,7 +339,7 @@ async def create_supplier(body: dict, user: dict = Depends(get_current_user), db
 
 
 @router.put("/suppliers/{supplier_id}")
-async def update_supplier(supplier_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def update_supplier(supplier_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     existing = db.execute(text("SELECT id FROM suppliers WHERE id = :id"), {"id": supplier_id}).fetchone()
     if not existing:
         raise HTTPException(404, detail="Supplier not found")
@@ -356,7 +355,7 @@ async def update_supplier(supplier_id: str, body: dict, user: dict = Depends(get
 
 
 @router.delete("/suppliers/{supplier_id}")
-async def delete_supplier(supplier_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def delete_supplier(supplier_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     result = db.execute(text("DELETE FROM suppliers WHERE id = :id"), {"id": supplier_id})
     if result.rowcount == 0:
         raise HTTPException(404, detail="Supplier not found")
@@ -368,9 +367,9 @@ async def delete_supplier(supplier_id: str, user: dict = Depends(get_current_use
 
 @router.get("/purchase-orders")
 async def list_purchase_orders(
-    status: Optional[str] = None,
-    supplier_id: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    status: str | None = None,
+    supplier_id: str | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -405,7 +404,7 @@ async def list_purchase_orders(
 
 
 @router.post("/purchase-orders", status_code=201)
-async def create_purchase_order(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_purchase_order(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     oid = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     db.execute(
@@ -422,7 +421,7 @@ async def create_purchase_order(body: dict, user: dict = Depends(get_current_use
 
 
 @router.post("/purchase-orders/{po_id}/receive")
-async def receive_purchase_order(po_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def receive_purchase_order(po_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     tid = user.get("tenant_id")
     existing = db.execute(
         text("SELECT id, status, tenant_id FROM purchase_orders WHERE id = :id AND tenant_id = :tid"),

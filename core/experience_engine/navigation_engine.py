@@ -3,9 +3,9 @@ EOS Experience Engine — Navigation Engine
 Sidebar, favorites, recent items, role-based visibility.
 """
 
-from typing import Dict, List, Any, Optional, Set
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 
 class NavItemType(str, Enum):
@@ -32,14 +32,14 @@ class NavItem:
     path: str = ""
     nav_type: NavItemType = NavItemType.ITEM
     visibility: NavVisibility = NavVisibility.ALWAYS
-    visible_roles: List[str] = field(default_factory=list)
-    visible_industries: List[str] = field(default_factory=list)
-    required_features: List[str] = field(default_factory=list)
-    badge: Optional[str] = None  # e.g. "5" or "new"
+    visible_roles: list[str] = field(default_factory=list)
+    visible_industries: list[str] = field(default_factory=list)
+    required_features: list[str] = field(default_factory=list)
+    badge: str | None = None  # e.g. "5" or "new"
     badge_color: str = "#ff4d4f"
     parent: str = ""  # Parent section code
     order: int = 0
-    children: List['NavItem'] = field(default_factory=list)
+    children: list['NavItem'] = field(default_factory=list)
     is_external: bool = False
     tooltip: str = ""
     tooltip_ar: str = ""
@@ -51,7 +51,7 @@ class NavigationSection:
     label: str
     label_ar: str
     icon: str
-    items: List[NavItem] = field(default_factory=list)
+    items: list[NavItem] = field(default_factory=list)
     order: int = 0
     is_collapsible: bool = True
     is_default_open: bool = True
@@ -61,8 +61,8 @@ class NavigationSection:
 class NavigationConfig:
     """Complete navigation configuration for an industry."""
     industry: str
-    sections: List[NavigationSection] = field(default_factory=list)
-    quick_actions: List[NavItem] = field(default_factory=list)
+    sections: list[NavigationSection] = field(default_factory=list)
+    quick_actions: list[NavItem] = field(default_factory=list)
     favorites_enabled: bool = True
     recent_enabled: bool = True
     search_enabled: bool = True
@@ -94,9 +94,9 @@ class NavigationEngine:
     """
 
     def __init__(self):
-        self._configs: Dict[str, NavigationConfig] = {}
-        self._favorites: Dict[str, List[UserFavorite]] = {}
-        self._recent: Dict[str, List[RecentItem]] = {}
+        self._configs: dict[str, NavigationConfig] = {}
+        self._favorites: dict[str, list[UserFavorite]] = {}
+        self._recent: dict[str, list[RecentItem]] = {}
         self._register_builtins()
 
     def _register_builtins(self):
@@ -337,11 +337,11 @@ class NavigationEngine:
         """Register navigation config for an industry."""
         self._configs[config.industry] = config
 
-    def get_config(self, industry: str) -> Optional[NavigationConfig]:
+    def get_config(self, industry: str) -> NavigationConfig | None:
         """Get navigation config for an industry."""
         return self._configs.get(industry)
 
-    def get_menu(self, industry: str, user_role: str = "", features: List[str] = None) -> List[Dict[str, Any]]:
+    def get_menu(self, industry: str, user_role: str = "", features: list[str] | None = None) -> list[dict[str, Any]]:
         """
         Get filtered menu for a user based on industry, role, and features.
         Returns list of sections with items.
@@ -381,7 +381,7 @@ class NavigationEngine:
 
         return result
 
-    def get_flat_menu(self, industry: str, user_role: str = "", features: List[str] = None) -> List[Dict[str, Any]]:
+    def get_flat_menu(self, industry: str, user_role: str = "", features: list[str] | None = None) -> list[dict[str, Any]]:
         """Get flat menu list (for sidebar)."""
         sections = self.get_menu(industry, user_role, features)
         flat = []
@@ -390,7 +390,7 @@ class NavigationEngine:
                 flat.append({**item, "section": section["code"]})
         return flat
 
-    def _is_visible(self, item: NavItem, user_role: str, features: List[str]) -> bool:
+    def _is_visible(self, item: NavItem, user_role: str, features: list[str]) -> bool:
         """Check if a nav item should be visible."""
         if item.visibility == NavVisibility.ALWAYS:
             return True
@@ -416,7 +416,7 @@ class NavigationEngine:
         if user_id in self._favorites:
             self._favorites[user_id] = [f for f in self._favorites[user_id] if f.item_code != item_code]
 
-    def get_favorites(self, user_id: str) -> List[str]:
+    def get_favorites(self, user_id: str) -> list[str]:
         """Get user's favorite item codes."""
         return [f.item_code for f in self._favorites.get(user_id, [])]
 
@@ -444,7 +444,7 @@ class NavigationEngine:
         max_recent = config.max_recent if config else 10
         self._recent[user_id] = self._recent[user_id][:max_recent]
 
-    def get_recent(self, user_id: str) -> List[Dict[str, Any]]:
+    def get_recent(self, user_id: str) -> list[dict[str, Any]]:
         """Get user's recent items."""
         return [{
             "item_code": r.item_code, "entity": r.entity,
@@ -452,7 +452,7 @@ class NavigationEngine:
             "timestamp": r.timestamp, "module": r.module,
         } for r in self._recent.get(user_id, [])]
 
-    def get_quick_actions(self, industry: str) -> List[Dict[str, Any]]:
+    def get_quick_actions(self, industry: str) -> list[dict[str, Any]]:
         """Get quick action buttons for an industry."""
         config = self._configs.get(industry)
         if not config:
@@ -462,7 +462,7 @@ class NavigationEngine:
             "icon": a.icon, "path": a.path,
         } for a in config.quick_actions]
 
-    def export_navigation(self, industry: str) -> Dict[str, Any]:
+    def export_navigation(self, industry: str) -> dict[str, Any]:
         """Export navigation config for templates."""
         config = self._configs.get(industry)
         if not config:

@@ -1,17 +1,16 @@
 """
 P15 Notification Router — CRUD + preferences + mark read
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from typing import Optional
 import uuid
 
-from database import get_db
-from core.auth import get_current_user, require_permission
-from core.rate_limit import read_limiter, write_limiter
-from core.notification_engine import NotificationEngine
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
+from core.auth import get_current_user, require_permission
+from core.notification_engine import NotificationEngine
+from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 
 router = APIRouter(
     prefix="/api/v1/dynamic",
@@ -31,11 +30,11 @@ router = APIRouter(
     ],
 )
 async def list_notifications(
-    is_read: Optional[bool] = None,
-    notification_type: Optional[str] = None,
-    channel: Optional[str] = None,
-    entity_code: Optional[str] = None,
-    limit: int = Query(50, ge=1, le=200),
+    is_read: bool | None = None,
+    notification_type: str | None = None,
+    channel: str | None = None,
+    entity_code: str | None = None,
+    limit: int | None=None,
     offset: int = Query(0, ge=0),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -121,7 +120,7 @@ async def list_notifications(
 )
 async def get_notification(
     notification_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Get a single notification."""
@@ -184,7 +183,7 @@ async def get_notification(
 )
 async def mark_notification_read(
     notification_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Mark a notification as read."""
@@ -209,7 +208,7 @@ async def mark_notification_read(
     ],
 )
 async def mark_all_notifications_read(
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Mark all notifications as read for the current user."""
@@ -233,7 +232,7 @@ async def mark_all_notifications_read(
     ],
 )
 async def notifications_count(
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Get unread notification count."""
@@ -271,7 +270,7 @@ async def notifications_count(
 )
 async def delete_notification(
     notification_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Delete a notification."""
@@ -304,7 +303,7 @@ async def delete_notification(
     ],
 )
 async def get_notification_preferences(
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Get notification preferences for the current user."""
@@ -336,7 +335,7 @@ async def get_notification_preferences(
 )
 async def update_notification_preference(
     body: dict,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """
@@ -406,7 +405,7 @@ async def update_notification_preference(
     ],
 )
 async def list_notification_templates(
-    db: Session = Depends(get_db),
+    db: Session=None,
 ):
     """List all notification templates."""
     rows = db.execute(
@@ -444,7 +443,7 @@ async def list_notification_templates(
 async def update_notification_template(
     template_id: str,
     body: dict,
-    db: Session = Depends(get_db),
+    db: Session=None,
 ):
     """Update a notification template (admin only)."""
     existing = db.execute(

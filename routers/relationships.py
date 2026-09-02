@@ -3,21 +3,18 @@ P9 Relationship Router
 API endpoints for managing entity relationships and nested reads.
 """
 
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
-from database import get_db
-from core.auth import (
-    require_permission, optional_get_current_user, get_current_user
-)
-from core.dynamic_verification import DynamicVerificationEngine
+from sqlalchemy.orm import Session
+
+from core.auth import get_current_user, optional_get_current_user, require_permission
+from core.event_bus import EventBus
+from core.rate_limit import read_limiter, write_limiter
 from core.relationship_engine import RelationshipEngine
 from core.versioning_engine import VersioningEngine
-from core.rate_limit import read_limiter, write_limiter
-from core.event_bus import EventBus
+from database import get_db
 from models import DBPEntity
-import uuid
 
 router = APIRouter(
     prefix="/api/v1/dynamic",
@@ -38,7 +35,7 @@ router = APIRouter(
 async def create_relationship(
     entity_code: str,
     body: dict,
-    db: Session = Depends(get_db),
+    db: Session=None,
     current_user: dict = Depends(get_current_user)
 ):
     """Create a new relationship definition for an entity."""
@@ -103,7 +100,7 @@ async def create_relationship(
 )
 async def list_relationships(
     entity_code: str,
-    db: Session = Depends(get_db),
+    db: Session=None,
     current_user: dict = Depends(require_permission("dynamic", "read"))
 ):
     """List all relationships for an entity."""
@@ -128,7 +125,7 @@ async def list_relationships(
 async def get_relationship(
     entity_code: str,
     relationship_code: str,
-    db: Session = Depends(get_db),
+    db: Session=None,
     current_user: dict = Depends(require_permission("dynamic", "read"))
 ):
     """Get a single relationship by code."""
@@ -155,7 +152,7 @@ async def get_relationship(
 async def delete_relationship(
     entity_code: str,
     relationship_code: str,
-    db: Session = Depends(get_db),
+    db: Session=None,
     current_user: dict = Depends(get_current_user)
 ):
     """Delete a relationship definition."""
@@ -199,7 +196,7 @@ async def delete_relationship(
 async def get_record_nested(
     entity_code: str,
     record_id: str,
-    depth: int = Query(1, ge=0, le=3),
+    depth: int | None=None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(optional_get_current_user)
 ):
@@ -249,7 +246,7 @@ async def get_record_nested(
 async def get_relationship_lookup(
     entity_code: str,
     relationship_code: str,
-    q: Optional[str] = Query(None),
+    q: str | None=None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(optional_get_current_user)
 ):

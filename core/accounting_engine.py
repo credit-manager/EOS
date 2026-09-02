@@ -2,10 +2,11 @@
 P22 Accounting Engine — Chart of Accounts, Journal Entries, Double-Entry Bookkeeping, GL, Trial Balance
 """
 import uuid
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
-from sqlalchemy import text
 from decimal import Decimal
+from typing import Any
+
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class AccountingEngine:
@@ -38,7 +39,7 @@ class AccountingEngine:
     # ── CHART OF ACCOUNTS ──
 
     def create_account(self, tenant_id: str, company_id: str, code: str, name_en: str,
-                       account_type: str, **kw) -> Optional[str]:
+                       account_type: str, **kw) -> str | None:
         if account_type not in self.ACCOUNT_TYPES:
             return None
         self._verify_company_tenant(company_id, tenant_id)
@@ -60,7 +61,7 @@ class AccountingEngine:
         self.db.flush()
         return aid
 
-    def get_accounts(self, company_id: str, tenant_id: str) -> List[Dict]:
+    def get_accounts(self, company_id: str, tenant_id: str) -> list[dict]:
         rows = self.db.execute(text(
             "SELECT id, parent_id, code, name_en, name_ar, account_type, "
             "currency_code, is_active, current_balance, opening_balance "
@@ -71,7 +72,7 @@ class AccountingEngine:
                  "is_active": bool(r[7]), "current_balance": float(r[8]) if r[8] else 0,
                  "opening_balance": float(r[9]) if r[9] else 0} for r in rows]
 
-    def get_account_tree(self, company_id: str, tenant_id: str) -> List[Dict]:
+    def get_account_tree(self, company_id: str, tenant_id: str) -> list[dict]:
         accounts = self.get_accounts(company_id, tenant_id)
         by_parent = {}
         for a in accounts:
@@ -86,9 +87,9 @@ class AccountingEngine:
 
     def create_journal_entry(self, tenant_id: str, company_id: str,
                              entry_date: str, entry_type: str,
-                             description: str = None, reference: str = None,
-                             fiscal_year_id: str = None,
-                             created_by: str = None) -> Optional[str]:
+                             description: str | None = None, reference: str | None = None,
+                             fiscal_year_id: str | None = None,
+                             created_by: str | None = None) -> str | None:
         if entry_type not in self.JOURNAL_ENTRY_TYPES:
             return None
         self._verify_company_tenant(company_id, tenant_id)
@@ -108,8 +109,8 @@ class AccountingEngine:
 
     def add_journal_line(self, journal_entry_id: str, account_id: str, tenant_id: str,
                          debit: float = 0, credit: float = 0,
-                         description: str = None,
-                         cost_center_id: str = None) -> Optional[str]:
+                         description: str | None = None,
+                         cost_center_id: str | None = None) -> str | None:
         if debit < 0 or credit < 0 or (debit == 0 and credit == 0):
             return None
 
@@ -137,7 +138,7 @@ class AccountingEngine:
         self.db.flush()
         return lid
 
-    def post_journal_entry(self, je_id: str, tenant_id: str) -> Dict[str, Any]:
+    def post_journal_entry(self, je_id: str, tenant_id: str) -> dict[str, Any]:
         """Post a journal entry (validate balance, update GL)."""
         entry = self.db.execute(text(
             "SELECT id, status, company_id FROM dbp_journal_entries "
@@ -183,7 +184,7 @@ class AccountingEngine:
         return {"success": True, "total_debit": float(total_debit), "total_credit": float(total_credit),
                 "lines_count": len(lines)}
 
-    def get_journal_entry(self, je_id: str, tenant_id: str) -> Optional[Dict]:
+    def get_journal_entry(self, je_id: str, tenant_id: str) -> dict | None:
         r = self.db.execute(text(
             "SELECT id, entry_number, entry_date, entry_type, description, reference, "
             "status, total_debit, total_credit, is_posted, created_by, created_at "
@@ -217,10 +218,10 @@ class AccountingEngine:
             ],
         }
 
-    def list_journal_entries(self, company_id: str, tenant_id: str, status: Optional[str] = None,
-                             limit: int = 50, offset: int = 0) -> List[Dict]:
+    def list_journal_entries(self, company_id: str, tenant_id: str, status: str | None = None,
+                             limit: int = 50, offset: int = 0) -> list[dict]:
         conditions = ["company_id = :cid", "tenant_id = :t"]
-        params: Dict[str, Any] = {"cid": company_id, "t": tenant_id, "lim": limit, "off": offset}
+        params: dict[str, Any] = {"cid": company_id, "t": tenant_id, "lim": limit, "off": offset}
         if status:
             conditions.append("status = :st")
             params["st"] = status
@@ -242,7 +243,7 @@ class AccountingEngine:
 
     # ── TRIAL BALANCE ──
 
-    def get_trial_balance(self, company_id: str, tenant_id: str) -> Dict[str, Any]:
+    def get_trial_balance(self, company_id: str, tenant_id: str) -> dict[str, Any]:
         accounts = self.db.execute(text(
             "SELECT id, code, name_en, account_type, current_balance "
             "FROM dbp_accounts WHERE company_id = :cid AND tenant_id = :t "

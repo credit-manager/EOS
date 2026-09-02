@@ -2,9 +2,10 @@
 P25 Inventory Management Engine
 """
 import uuid
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class InventoryEngine:
@@ -29,8 +30,8 @@ class InventoryEngine:
         self.db.flush()
         return wid
 
-    def list_warehouses(self, company_id: str, tenant_id: str = None) -> List[Dict]:
-        params: Dict[str, Any] = {"cid": company_id}
+    def list_warehouses(self, company_id: str, tenant_id: str | None = None) -> list[dict]:
+        params: dict[str, Any] = {"cid": company_id}
         tf = ""
         if tenant_id:
             tf = " AND tenant_id = :tid"
@@ -44,10 +45,10 @@ class InventoryEngine:
 
     # ── STOCK ──
 
-    def get_stock(self, company_id: str, item_id: str = None, warehouse_id: str = None,
-                  tenant_id: str = None) -> List[Dict]:
+    def get_stock(self, company_id: str, item_id: str | None = None, warehouse_id: str | None = None,
+                  tenant_id: str | None = None) -> list[dict]:
         conditions = ["s.company_id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id}
+        params: dict[str, Any] = {"cid": company_id}
         if tenant_id:
             conditions.append("s.tenant_id = :tid")
             params["tid"] = tenant_id
@@ -92,8 +93,8 @@ class InventoryEngine:
 
     def _record_movement(self, tenant_id: str, company_id: str, item_id: str,
                          warehouse_id: str, movement_type: str, quantity: float,
-                         reference_type: str = None, reference_id: str = None,
-                         notes: str = None, moved_by: str = None) -> str:
+                         reference_type: str | None = None, reference_id: str | None = None,
+                         notes: str | None = None, moved_by: str | None = None) -> str:
         mid = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_stock_movements (id, tenant_id, company_id, item_id, warehouse_id, "
@@ -106,8 +107,8 @@ class InventoryEngine:
 
     def receive_stock(self, company_id: str, tenant_id: str, item_id: str, warehouse_id: str,
                       quantity: float, movement_type: str = "purchase_receive",
-                      reference_type: str = None, reference_id: str = None,
-                      notes: str = None, moved_by: str = None) -> Dict[str, Any]:
+                      reference_type: str | None = None, reference_id: str | None = None,
+                      notes: str | None = None, moved_by: str | None = None) -> dict[str, Any]:
         if quantity <= 0:
             return {"success": False, "error": "Quantity must be positive"}
         self._upsert_stock(company_id, tenant_id, item_id, warehouse_id, quantity)
@@ -118,8 +119,8 @@ class InventoryEngine:
 
     def issue_stock(self, company_id: str, tenant_id: str, item_id: str, warehouse_id: str,
                     quantity: float, movement_type: str = "sales_issue",
-                    reference_type: str = None, reference_id: str = None,
-                    notes: str = None, moved_by: str = None) -> Dict[str, Any]:
+                    reference_type: str | None = None, reference_id: str | None = None,
+                    notes: str | None = None, moved_by: str | None = None) -> dict[str, Any]:
         if quantity <= 0:
             return {"success": False, "error": "Quantity must be positive"}
         current = self.db.execute(text(
@@ -136,7 +137,7 @@ class InventoryEngine:
 
     def transfer_stock(self, company_id: str, tenant_id: str, item_id: str,
                        from_warehouse_id: str, to_warehouse_id: str,
-                       quantity: float, notes: str = None, moved_by: str = None) -> Dict[str, Any]:
+                       quantity: float, notes: str | None = None, moved_by: str | None = None) -> dict[str, Any]:
         if quantity <= 0:
             return {"success": False, "error": "Quantity must be positive"}
         if from_warehouse_id == to_warehouse_id:
@@ -150,11 +151,11 @@ class InventoryEngine:
         self.db.flush()
         return {"success": True}
 
-    def list_movements(self, company_id: str, item_id: str = None, warehouse_id: str = None,
-                       movement_type: str = None, limit: int = 100,
-                       tenant_id: str = None) -> List[Dict]:
+    def list_movements(self, company_id: str, item_id: str | None = None, warehouse_id: str | None = None,
+                       movement_type: str | None = None, limit: int = 100,
+                       tenant_id: str | None = None) -> list[dict]:
         conditions = ["company_id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id, "lim": limit}
+        params: dict[str, Any] = {"cid": company_id, "lim": limit}
         if tenant_id:
             conditions.append("tenant_id = :tid")
             params["tid"] = tenant_id
@@ -177,8 +178,8 @@ class InventoryEngine:
                  "quantity": float(r[4]), "reference_type": r[5], "reference_id": r[6],
                  "notes": r[7], "created_at": r[8].isoformat() if r[8] else None} for r in rows]
 
-    def get_low_stock_alerts(self, company_id: str, tenant_id: str = None) -> List[Dict]:
-        params: Dict[str, Any] = {"cid": company_id}
+    def get_low_stock_alerts(self, company_id: str, tenant_id: str | None = None) -> list[dict]:
+        params: dict[str, Any] = {"cid": company_id}
         tf = ""
         if tenant_id:
             tf = " AND s.tenant_id = :tid"

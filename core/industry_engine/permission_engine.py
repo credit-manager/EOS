@@ -3,9 +3,9 @@ EOS Industry Engine — Permission Engine
 RBAC per module, entity, and action.
 """
 
-from typing import Dict, List, Any, Optional, Set
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 
 class PermissionAction(str, Enum):
@@ -48,7 +48,7 @@ class Role:
     name: str
     name_ar: str
     description: str = ""
-    permissions: List[str] = field(default_factory=list)  # Permission codes
+    permissions: list[str] = field(default_factory=list)  # Permission codes
     is_system: bool = False  # System roles can't be deleted
     hierarchy_level: int = 0  # Higher = more authority
 
@@ -72,9 +72,9 @@ class PermissionEngine:
     """
 
     def __init__(self):
-        self._permissions: Dict[str, Permission] = {}
-        self._roles: Dict[str, Role] = {}
-        self._grants: Dict[str, PermissionGrant] = {}
+        self._permissions: dict[str, Permission] = {}
+        self._roles: dict[str, Role] = {}
+        self._grants: dict[str, PermissionGrant] = {}
         self._register_builtins()
 
     def _register_builtins(self):
@@ -113,26 +113,26 @@ class PermissionEngine:
         """Register a role."""
         self._roles[role.code] = role
 
-    def get_permission(self, code: str) -> Optional[Permission]:
+    def get_permission(self, code: str) -> Permission | None:
         return self._permissions.get(code)
 
-    def get_role(self, code: str) -> Optional[Role]:
+    def get_role(self, code: str) -> Role | None:
         return self._roles.get(code)
 
-    def get_all_permissions(self) -> Dict[str, Permission]:
+    def get_all_permissions(self) -> dict[str, Permission]:
         return dict(self._permissions)
 
-    def get_all_roles(self) -> Dict[str, Role]:
+    def get_all_roles(self) -> dict[str, Role]:
         return dict(self._roles)
 
-    def get_permissions_for_role(self, role_code: str) -> List[Permission]:
+    def get_permissions_for_role(self, role_code: str) -> list[Permission]:
         """Get all permissions assigned to a role."""
         role = self._roles.get(role_code)
         if not role:
             return []
         return [self._permissions[p] for p in role.permissions if p in self._permissions]
 
-    def get_permissions_for_module(self, module_code: str) -> List[Permission]:
+    def get_permissions_for_module(self, module_code: str) -> list[Permission]:
         """Get all permissions for a module."""
         return [p for p in self._permissions.values() if p.module == module_code]
 
@@ -184,7 +184,7 @@ class PermissionEngine:
         key = f"{user_id}:{permission_code}:{entity_code}:{entity_id}"
         self._grants.pop(key, None)
 
-    def get_user_grants(self, user_id: str) -> List[PermissionGrant]:
+    def get_user_grants(self, user_id: str) -> list[PermissionGrant]:
         """Get all permission grants for a user."""
         return [g for g in self._grants.values() if g.user_id == user_id]
 
@@ -205,7 +205,7 @@ class PermissionEngine:
                 if code not in admin_role.permissions:
                     admin_role.permissions.append(code)
 
-    def export_roles(self) -> List[Dict[str, Any]]:
+    def export_roles(self) -> list[dict[str, Any]]:
         """Export roles for templates."""
         return [{
             "code": r.code, "name": r.name, "name_ar": r.name_ar,

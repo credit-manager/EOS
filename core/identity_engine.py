@@ -1,10 +1,13 @@
 """
 P47 Identity Federation & SSO Engine
 """
-import uuid, hashlib, secrets
-from typing import Dict, Any
-from sqlalchemy.orm import Session
+import hashlib
+import secrets
+import uuid
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class IdentityEngine:
@@ -26,7 +29,7 @@ class IdentityEngine:
 
     def list_providers(self, tenant_id, is_active=None):
         q = "SELECT id, provider_name, provider_type, client_id, is_active, created_at FROM dbp_sso_providers WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if is_active is not None:
             q += " AND is_active=:ia"
             params["ia"] = is_active
@@ -60,7 +63,7 @@ class IdentityEngine:
 
     def list_sessions(self, tenant_id, user_id=None):
         q = "SELECT id, user_id, provider_id, sso_session_id, ip_address, created_at FROM dbp_sso_sessions WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if user_id:
             q += " AND user_id=:ui"
             params["ui"] = user_id
@@ -90,7 +93,7 @@ class IdentityEngine:
 
     def list_mfa(self, tenant_id, user_id=None):
         q = "SELECT id, user_id, mfa_type, is_enabled, last_used_at, created_at FROM dbp_mfa_configs WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if user_id:
             q += " AND user_id=:ui"
             params["ui"] = user_id
@@ -120,7 +123,7 @@ class IdentityEngine:
 
     def list_role_mappings(self, tenant_id, provider_id=None):
         q = "SELECT id, provider_id, external_role, internal_role, created_at FROM dbp_role_mappings WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if provider_id:
             q += " AND provider_id=:pi"
             params["pi"] = provider_id
@@ -152,7 +155,7 @@ class IdentityEngine:
 
     def list_api_keys(self, tenant_id, is_active=None):
         q = "SELECT id, key_name, key_hash, permissions, is_active, last_used_at, expires_at, created_at FROM dbp_api_keys WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if is_active is not None:
             q += " AND is_active=:ia"
             params["ia"] = is_active

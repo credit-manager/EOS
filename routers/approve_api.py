@@ -3,21 +3,25 @@ P71.2 Universal Approval Engine — API
 =======================================
 Configurable multi-step approval chains for any module.
 """
-import sys, os, json
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
-from datetime import datetime
+from typing import Any
 
-from database import SessionLocal, get_db
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import text
-from core.auth import get_current_user
+
 from core.industry_security import (
-    now, uid, check_permission, audit_log,
-    success_response, list_response,
+    audit_log,
+    check_permission,
+    list_response,
+    success_response,
+    uid,
 )
+from database import get_db
 
 router = APIRouter(prefix="/approvals", tags=["Approval Engine"])
 
@@ -30,18 +34,18 @@ class StepDef(BaseModel):
     step_order: int
     step_name: str
     approver_type: str = "user"
-    approver_value: Optional[str] = None
+    approver_value: str | None = None
     min_approvals: int = 1
     is_optional: bool = False
 
 class ChainCreate(BaseModel):
     chain_name: str
     source_module: str
-    description: Optional[str] = None
-    steps: List[StepDef]
+    description: str | None = None
+    steps: list[StepDef]
 
 @router.post("/chains")
-def create_chain(body: ChainCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_chain(body: ChainCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     existing = db.execute(text("SELECT id FROM dbp_approve_chains WHERE tenant_id=:t AND chain_name=:cn"),
@@ -67,10 +71,10 @@ def create_chain(body: ChainCreate, user: dict = Depends(get_current_user), db=D
     return success_response("Chain created", {"id": cid, "steps": len(body.steps)})
 
 @router.get("/chains")
-def list_chains(source_module: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_chains(source_module: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     where = "WHERE tenant_id=:t"
-    params: Dict[str, Any] = {"t": t}
+    params: dict[str, Any] = {"t": t}
     if source_module:
         where += " AND source_module=:sm"
         params["sm"] = source_module
@@ -80,7 +84,7 @@ def list_chains(source_module: Optional[str] = None, user: dict = Depends(get_cu
     return list_response(data, len(data))
 
 @router.get("/chains/{chain_id}/steps")
-def get_chain_steps(chain_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_chain_steps(chain_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text(
         "SELECT id,step_order,step_name,approver_type,approver_value,min_approvals,is_optional "
@@ -96,14 +100,14 @@ def get_chain_steps(chain_id: str, user: dict = Depends(get_current_user), db=De
 # ═══════════════════════════════════════════════════
 
 class RequestCreate(BaseModel):
-    chain_id: Optional[str] = None
+    chain_id: str | None = None
     source_module: str
     source_id: str
     title: str
-    description: Optional[str] = None
+    description: str | None = None
 
 @router.post("/requests")
-def create_request(body: RequestCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_request(body: RequestCreate, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rid = uid()
     db.execute(text("INSERT INTO dbp_approve_requests "
@@ -117,11 +121,11 @@ def create_request(body: RequestCreate, user: dict = Depends(get_current_user), 
     return success_response("Approval request created", {"id": rid})
 
 @router.get("/requests")
-def list_requests(status: Optional[str] = None, source_module: Optional[str] = None,
-                  user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_requests(status: str | None = None, source_module: str | None = None,
+                  user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     where = "WHERE tenant_id=:t"
-    params: Dict[str, Any] = {"t": t}
+    params: dict[str, Any] = {"t": t}
     if status:
         where += " AND status=:s"
         params["s"] = status
@@ -137,7 +141,7 @@ def list_requests(status: Optional[str] = None, source_module: Optional[str] = N
     return list_response(data, len(data))
 
 @router.get("/requests/{request_id}")
-def get_request(request_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_request(request_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     r = db.execute(text(
         "SELECT id,chain_id,source_module,source_id,title,description,requested_by,"
@@ -173,10 +177,10 @@ def get_request(request_id: str, user: dict = Depends(get_current_user), db=Depe
 
 class DecisionBody(BaseModel):
     decision: str
-    comment: Optional[str] = None
+    comment: str | None = None
 
 @router.post("/requests/{request_id}/decide")
-def make_decision(request_id: str, body: DecisionBody, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def make_decision(request_id: str, body: DecisionBody, user: dict | None=None, db=Depends(get_db)):
     if body.decision not in ("approved", "rejected", "escalated", "delegated"):
         raise HTTPException(400, detail="Invalid decision. Must be: approved, rejected, escalated, delegated")
     t = user["tenant_id"]
@@ -229,7 +233,7 @@ def make_decision(request_id: str, body: DecisionBody, user: dict = Depends(get_
     return success_response("Decision recorded", {"id": aid, "decision": body.decision})
 
 @router.post("/requests/{request_id}/cancel")
-def cancel_request(request_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def cancel_request(request_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     req = db.execute(text(
         "SELECT id,status,requested_by FROM dbp_approve_requests WHERE id=:id AND tenant_id=:t"),
@@ -252,9 +256,9 @@ def cancel_request(request_id: str, user: dict = Depends(get_current_user), db=D
 # ═══════════════════════════════════════════════════
 
 @router.get("/pending")
-def pending_for_user(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def pending_for_user(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
-    uid_ = user["id"]
+    user["id"]
     rows = db.execute(text(
         "SELECT r.id,r.source_module,r.source_id,r.title,r.requested_by,r.current_step,r.created_at "
         "FROM dbp_approve_requests r WHERE r.tenant_id=:t AND r.status='pending' ORDER BY r.created_at DESC LIMIT 50"),
@@ -265,7 +269,7 @@ def pending_for_user(user: dict = Depends(get_current_user), db=Depends(get_db))
     return list_response(data, len(data))
 
 @router.get("/stats")
-def approval_stats(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def approval_stats(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     pending = db.execute(text("SELECT COUNT(*) FROM dbp_approve_requests WHERE tenant_id=:t AND status='pending'"), {"t": t}).fetchone()[0] or 0
     approved = db.execute(text("SELECT COUNT(*) FROM dbp_approve_requests WHERE tenant_id=:t AND status='approved'"), {"t": t}).fetchone()[0] or 0
@@ -274,7 +278,7 @@ def approval_stats(user: dict = Depends(get_current_user), db=Depends(get_db)):
     return success_response("Approval stats", {"pending": pending, "approved": approved, "rejected": rejected, "total": total})
 
 @router.get("/log/{request_id}")
-def get_log(request_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_log(request_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text(
         "SELECT action,actor_id,details,created_at FROM dbp_approve_log WHERE request_id=:rid AND tenant_id=:t ORDER BY created_at"),

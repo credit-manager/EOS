@@ -13,11 +13,18 @@ Features:
   - Brute force protection (max 5 attempts per 15 min)
   - Audit logging for all 2FA events
 """
-import sys, os, hashlib, hmac, time, secrets, struct, base64
+import base64
+import hashlib
+import hmac
+import os
+import secrets
+import struct
+import sys
+import time
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from datetime import datetime, timedelta
-from typing import Optional, Dict, List, Tuple
+from datetime import datetime, timedelta, timezone
 
 try:
     import pyotp
@@ -32,7 +39,8 @@ except ImportError:
     Fernet = None
 
 from sqlalchemy import text
-from core.industry_security import uid, now
+
+from core.industry_security import now, uid
 
 # Get encryption key from environment (MUST be set for production)
 ENCRYPTION_KEY = os.getenv("EOS_2FA_ENCRYPTION_KEY")
@@ -54,7 +62,7 @@ if not ENCRYPTION_KEY:
     else:
         print("⚠️  WARNING: cryptography library not available. 2FA secrets will NOT be encrypted.")
 
-def _get_cipher() -> Optional[Fernet]:
+def _get_cipher() -> Fernet | None:
     """Get Fernet cipher instance for encrypting/decrypting 2FA secrets."""
     if not CRYPTO_AVAILABLE or not ENCRYPTION_KEY:
         return None
@@ -87,7 +95,7 @@ def _generate_secret() -> str:
     return base64.b32encode(secrets.token_bytes(20)).decode()
 
 
-def _generate_recovery_codes(count: int = 8) -> List[str]:
+def _generate_recovery_codes(count: int = 8) -> list[str]:
     return [secrets.token_hex(4).upper() for _ in range(count)]
 
 
@@ -95,8 +103,8 @@ def _hash_code(code: str) -> str:
     return hashlib.sha256(code.encode()).hexdigest()
 
 
-def _check_brute_force(db, user_id: str, ip: str = None) -> Tuple[bool, str]:
-    cutoff = (datetime.utcnow() - timedelta(minutes=15)).isoformat()
+def _check_brute_force(db, user_id: str, ip: str | None = None) -> tuple[bool, str]:
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
     
     result = db.execute(text(
         "SELECT COUNT(*) FROM dbp_2fa_attempts "
@@ -118,7 +126,7 @@ def _check_brute_force(db, user_id: str, ip: str = None) -> Tuple[bool, str]:
     return True, ""
 
 
-def _log_attempt(db, user_id: str, success: bool, ip: str = None, method: str = "totp"):
+def _log_attempt(db, user_id: str, success: bool, ip: str | None = None, method: str = "totp"):
     db.execute(text(
         "INSERT INTO dbp_2fa_attempts "
         "(id, user_id, method, success, ip_address, attempted_at) "
@@ -129,7 +137,7 @@ def _log_attempt(db, user_id: str, success: bool, ip: str = None, method: str = 
     })
 
 
-def get_2fa_status(db, user_id: str) -> Dict:
+def get_2fa_status(db, user_id: str) -> dict:
     row = db.execute(text(
         "SELECT is_enabled, method, recovery_codes_used, created_at, last_used_at "
         "FROM dbp_2fa_settings WHERE user_id = :uid"
@@ -152,7 +160,7 @@ def get_2fa_status(db, user_id: str) -> Dict:
     }
 
 
-def enable_2fa(db, user_id: str, method: str = "totp") -> Dict:
+def enable_2fa(db, user_id: str, method: str = "totp") -> dict:
     existing = db.execute(text(
         "SELECT id FROM dbp_2fa_settings WHERE user_id = :uid"
     ), {"uid": user_id}).fetchone()
@@ -220,7 +228,7 @@ def disable_2fa(db, user_id: str) -> bool:
     return True
 
 
-def verify_totp(db, user_id: str, code: str, ip: str = None) -> Tuple[bool, str]:
+def verify_totp(db, user_id: str, code: str, ip: str | None = None) -> tuple[bool, str]:
     allowed, msg = _check_brute_force(db, user_id, ip)
     if not allowed:
         return False, msg
@@ -253,7 +261,7 @@ def verify_totp(db, user_id: str, code: str, ip: str = None) -> Tuple[bool, str]
     return valid, "Invalid code" if not valid else "OK"
 
 
-def verify_recovery_code(db, user_id: str, code: str, ip: str = None) -> Tuple[bool, str]:
+def verify_recovery_code(db, user_id: str, code: str, ip: str | None = None) -> tuple[bool, str]:
     allowed, msg = _check_brute_force(db, user_id, ip)
     if not allowed:
         return False, msg

@@ -5,27 +5,33 @@ P70.8.2 Manufacturing ERP Professional — API
 Material Issues, Receipts, Quality, Scrap, Costs, Dashboard.
 All items/stock via Commerce Engine. Accounting via Core.
 """
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
-from typing import Optional, List
-from datetime import date, datetime
+from datetime import datetime, timezone
 
-from database import SessionLocal, get_db
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import text
+
 from core.auth import get_current_user
-from core.industry_security import (
-    now, uid, get_company_id, check_permission,
-    audit_log, post_journal,
-    atomic_stock_receive, atomic_stock_issue,
-    success_response, list_response, error_response,
-)
 from core.commerce_engine import (
     get_item as _ce_get_item,
-    get_stock as _ce_get_stock,
 )
+from core.industry_security import (
+    atomic_stock_issue,
+    atomic_stock_receive,
+    audit_log,
+    check_permission,
+    get_company_id,
+    list_response,
+    post_journal,
+    success_response,
+    uid,
+)
+from database import get_db
 
 router = APIRouter(prefix="/manufacturing", tags=["Manufacturing ERP"])
 
@@ -58,22 +64,22 @@ def _get_item(db, tenant_id, item_id):
 def _next_order_number(db, tenant_id):
     row = db.execute(text("SELECT COUNT(*) FROM dbp_mfg_orders WHERE tenant_id=:t"), {"t": tenant_id}).fetchone()
     n = (row[0] or 0) + 1
-    return f"MO-{datetime.now().strftime('%Y%m%d')}-{n:04d}"
+    return f"MO-{datetime.now(tz=timezone.utc).strftime('%Y%m%d')}-{n:04d}"
 
 def _next_issue_number(db, tenant_id):
     row = db.execute(text("SELECT COUNT(*) FROM dbp_mfg_material_issues WHERE tenant_id=:t"), {"t": tenant_id}).fetchone()
     n = (row[0] or 0) + 1
-    return f"MI-{datetime.now().strftime('%Y%m%d')}-{n:04d}"
+    return f"MI-{datetime.now(tz=timezone.utc).strftime('%Y%m%d')}-{n:04d}"
 
 def _next_receipt_number(db, tenant_id):
     row = db.execute(text("SELECT COUNT(*) FROM dbp_mfg_receipts WHERE tenant_id=:t"), {"t": tenant_id}).fetchone()
     n = (row[0] or 0) + 1
-    return f"MFR-{datetime.now().strftime('%Y%m%d')}-{n:04d}"
+    return f"MFR-{datetime.now(tz=timezone.utc).strftime('%Y%m%d')}-{n:04d}"
 
 def _next_inspection_number(db, tenant_id):
     row = db.execute(text("SELECT COUNT(*) FROM dbp_mfg_quality_inspections WHERE tenant_id=:t"), {"t": tenant_id}).fetchone()
     n = (row[0] or 0) + 1
-    return f"QI-{datetime.now().strftime('%Y%m%d')}-{n:04d}"
+    return f"QI-{datetime.now(tz=timezone.utc).strftime('%Y%m%d')}-{n:04d}"
 
 
 # ═══════════════════════════════════════════════════
@@ -87,18 +93,18 @@ class BOMLineCreate(BaseModel):
     scrap_pct: float = Field(default=0, ge=0, le=100)
     cost_estimate: float = Field(default=0, ge=0)
     sort_order: int = 0
-    notes: Optional[str] = None
+    notes: str | None = None
 
 class BOMCreate(BaseModel):
     bom_code: str
     name: str
     item_id: str
     revision: str = "A"
-    description: Optional[str] = None
-    lines: List[BOMLineCreate] = []
+    description: str | None = None
+    lines: list[BOMLineCreate] = []
 
 @router.post("/bom")
-def create_bom(body: BOMCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_bom(body: BOMCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     existing = db.execute(text("SELECT id FROM dbp_mfg_bom WHERE tenant_id=:t AND bom_code=:c"),
@@ -122,7 +128,7 @@ def create_bom(body: BOMCreate, user: dict = Depends(get_current_user), db=Depen
     return success_response("BOM created", {"id": bid, "bom_code": body.bom_code})
 
 @router.get("/bom")
-def list_bom(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_bom(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT b.id,b.bom_code,b.name,b.item_id,b.revision,b.status,b.is_active,b.version "
                            "FROM dbp_mfg_bom b WHERE b.tenant_id=:t ORDER BY b.bom_code"), {"t": t}).fetchall()
@@ -131,7 +137,7 @@ def list_bom(user: dict = Depends(get_current_user), db=Depends(get_db)):
     return list_response(data, len(data))
 
 @router.get("/bom/{bom_id}")
-def get_bom(bom_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_bom(bom_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     b = db.execute(text("SELECT id,bom_code,name,item_id,revision,description,status,is_active,version "
                         "FROM dbp_mfg_bom WHERE id=:id AND tenant_id=:t"), {"id": bom_id, "t": t}).fetchone()
@@ -149,7 +155,7 @@ def get_bom(bom_id: str, user: dict = Depends(get_current_user), db=Depends(get_
     })
 
 @router.put("/bom/{bom_id}/activate")
-def activate_bom(bom_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def activate_bom(bom_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     db.execute(text("UPDATE dbp_mfg_bom SET status='active', is_active=TRUE, updated_at=NOW() "
@@ -166,15 +172,15 @@ def activate_bom(bom_id: str, user: dict = Depends(get_current_user), db=Depends
 class WorkCenterCreate(BaseModel):
     code: str
     name: str
-    name_ar: Optional[str] = None
+    name_ar: str | None = None
     work_center_type: str = "machine"
     capacity_per_hour: float = Field(default=1, gt=0)
     cost_per_hour: float = Field(default=0, ge=0)
     efficiency_pct: float = Field(default=100, ge=0, le=200)
-    warehouse_id: Optional[str] = None
+    warehouse_id: str | None = None
 
 @router.post("/work-centers")
-def create_work_center(body: WorkCenterCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_work_center(body: WorkCenterCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     existing = db.execute(text("SELECT id FROM dbp_mfg_work_centers WHERE tenant_id=:t AND code=:c"),
@@ -193,7 +199,7 @@ def create_work_center(body: WorkCenterCreate, user: dict = Depends(get_current_
     return success_response("Work center created", {"id": wid, "code": body.code})
 
 @router.get("/work-centers")
-def list_work_centers(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_work_centers(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,code,name,work_center_type,capacity_per_hour,cost_per_hour,efficiency_pct,status "
                            "FROM dbp_mfg_work_centers WHERE tenant_id=:t ORDER BY code"), {"t": t}).fetchall()
@@ -214,19 +220,19 @@ class RoutingStepCreate(BaseModel):
     run_time_hrs: float = Field(default=0, ge=0)
     wait_time_hrs: float = Field(default=0, ge=0)
     transfer_time_hrs: float = Field(default=0, ge=0)
-    description: Optional[str] = None
+    description: str | None = None
 
 class RoutingCreate(BaseModel):
     routing_code: str
     name: str
     item_id: str
-    bom_id: Optional[str] = None
+    bom_id: str | None = None
     revision: str = "A"
-    description: Optional[str] = None
-    steps: List[RoutingStepCreate] = []
+    description: str | None = None
+    steps: list[RoutingStepCreate] = []
 
 @router.post("/routings")
-def create_routing(body: RoutingCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_routing(body: RoutingCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     existing = db.execute(text("SELECT id FROM dbp_mfg_routings WHERE tenant_id=:t AND routing_code=:c"),
@@ -251,7 +257,7 @@ def create_routing(body: RoutingCreate, user: dict = Depends(get_current_user), 
     return success_response("Routing created", {"id": rid, "routing_code": body.routing_code})
 
 @router.get("/routings")
-def list_routings(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_routings(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,routing_code,name,item_id,revision,status,is_active "
                            "FROM dbp_mfg_routings WHERE tenant_id=:t ORDER BY routing_code"), {"t": t}).fetchall()
@@ -260,7 +266,7 @@ def list_routings(user: dict = Depends(get_current_user), db=Depends(get_db)):
     return list_response(data, len(data))
 
 @router.get("/routings/{routing_id}")
-def get_routing(routing_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_routing(routing_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     r = db.execute(text("SELECT id,routing_code,name,item_id,bom_id,revision,description,status,is_active "
                         "FROM dbp_mfg_routings WHERE id=:id AND tenant_id=:t"), {"id": routing_id, "t": t}).fetchone()
@@ -285,17 +291,17 @@ def get_routing(routing_id: str, user: dict = Depends(get_current_user), db=Depe
 
 class ProductionOrderCreate(BaseModel):
     item_id: str
-    bom_id: Optional[str] = None
-    routing_id: Optional[str] = None
+    bom_id: str | None = None
+    routing_id: str | None = None
     warehouse_id: str
     qty_planned: float = Field(gt=0)
     priority: int = Field(default=5, ge=1, le=10)
-    planned_start: Optional[str] = None
-    planned_end: Optional[str] = None
-    notes: Optional[str] = None
+    planned_start: str | None = None
+    planned_end: str | None = None
+    notes: str | None = None
 
 @router.post("/orders")
-def create_production_order(body: ProductionOrderCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_production_order(body: ProductionOrderCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     order_num = _next_order_number(db, t)
@@ -315,7 +321,7 @@ def create_production_order(body: ProductionOrderCreate, user: dict = Depends(ge
     return success_response("Production order created", {"id": oid, "order_number": order_num})
 
 @router.get("/orders")
-def list_orders(status: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_orders(status: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     where = "WHERE o.tenant_id=:t"
     params = {"t": t}
@@ -333,7 +339,7 @@ def list_orders(status: Optional[str] = None, user: dict = Depends(get_current_u
     return list_response(data, len(data))
 
 @router.get("/orders/{order_id}")
-def get_order(order_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_order(order_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     o = db.execute(text("SELECT id,order_number,item_id,bom_id,routing_id,warehouse_id,"
                         "qty_planned,qty_completed,qty_scrapped,status,priority,"
@@ -357,7 +363,7 @@ def get_order(order_id: str, user: dict = Depends(get_current_user), db=Depends(
     })
 
 @router.put("/orders/{order_id}/release")
-def release_order(order_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def release_order(order_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     o = db.execute(text("SELECT status FROM dbp_mfg_orders WHERE id=:id AND tenant_id=:t"),
@@ -370,7 +376,7 @@ def release_order(order_id: str, user: dict = Depends(get_current_user), db=Depe
     return success_response("Order released", {"id": order_id})
 
 @router.put("/orders/{order_id}/start")
-def start_order(order_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def start_order(order_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     o = db.execute(text("SELECT status FROM dbp_mfg_orders WHERE id=:id AND tenant_id=:t"),
@@ -384,7 +390,7 @@ def start_order(order_id: str, user: dict = Depends(get_current_user), db=Depend
     return success_response("Order started", {"id": order_id})
 
 @router.put("/orders/{order_id}/complete")
-def complete_order(order_id: str, qty_completed: float = Query(gt=0), user: dict = Depends(get_current_user), db=Depends(get_db)):
+def complete_order(order_id: str, qty_completed: float | None=None, user: dict = Depends(get_current_user), db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     o = db.execute(text("SELECT status,qty_planned,qty_completed,item_id,warehouse_id FROM dbp_mfg_orders "
@@ -412,16 +418,16 @@ class MaterialIssueLineCreate(BaseModel):
     qty_required: float = Field(gt=0)
     qty_issued: float = Field(default=0, ge=0)
     unit_cost: float = Field(default=0, ge=0)
-    bom_line_id: Optional[str] = None
+    bom_line_id: str | None = None
 
 class MaterialIssueCreate(BaseModel):
     order_id: str
-    warehouse_id: Optional[str] = None
-    lines: List[MaterialIssueLineCreate] = []
-    notes: Optional[str] = None
+    warehouse_id: str | None = None
+    lines: list[MaterialIssueLineCreate] = []
+    notes: str | None = None
 
 @router.post("/material-issues")
-def create_material_issue(body: MaterialIssueCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_material_issue(body: MaterialIssueCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     order = db.execute(text("SELECT id,warehouse_id FROM dbp_mfg_orders WHERE id=:oid AND tenant_id=:t"),
@@ -447,7 +453,7 @@ def create_material_issue(body: MaterialIssueCreate, user: dict = Depends(get_cu
     return success_response("Material issue created", {"id": iid, "issue_number": issue_num})
 
 @router.put("/material-issues/{issue_id}/issue")
-def issue_materials(issue_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def issue_materials(issue_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     mi = db.execute(text("SELECT status,order_id,warehouse_id FROM dbp_mfg_material_issues WHERE id=:id AND tenant_id=:t"),
@@ -486,10 +492,10 @@ class ReceiptCreate(BaseModel):
     qty_rejected: float = Field(default=0, ge=0)
     warehouse_id: str
     unit_cost: float = Field(default=0, ge=0)
-    notes: Optional[str] = None
+    notes: str | None = None
 
 @router.post("/receipts")
-def create_receipt(body: ReceiptCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_receipt(body: ReceiptCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     order = db.execute(text("SELECT id,warehouse_id FROM dbp_mfg_orders WHERE id=:oid AND tenant_id=:t"),
@@ -524,18 +530,18 @@ def create_receipt(body: ReceiptCreate, user: dict = Depends(get_current_user), 
 # ═══════════════════════════════════════════════════
 
 class InspectionCreate(BaseModel):
-    order_id: Optional[str] = None
-    receipt_id: Optional[str] = None
+    order_id: str | None = None
+    receipt_id: str | None = None
     item_id: str
     inspection_type: str = "incoming"
     qty_inspected: float = Field(default=0, ge=0)
     qty_passed: float = Field(default=0, ge=0)
     qty_failed: float = Field(default=0, ge=0)
     result: str = "pending"
-    defect_notes: Optional[str] = None
+    defect_notes: str | None = None
 
 @router.post("/quality-inspections")
-def create_inspection(body: InspectionCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_inspection(body: InspectionCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     insp_num = _next_inspection_number(db, t)
@@ -554,7 +560,7 @@ def create_inspection(body: InspectionCreate, user: dict = Depends(get_current_u
     return success_response("Inspection recorded", {"id": iid, "inspection_number": insp_num})
 
 @router.get("/quality-inspections")
-def list_inspections(result: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_inspections(result: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     where = "WHERE tenant_id=:t"
     params = {"t": t}
@@ -579,11 +585,11 @@ class ScrapCreate(BaseModel):
     order_id: str
     item_id: str
     qty: float = Field(gt=0)
-    reason: Optional[str] = None
+    reason: str | None = None
     cost: float = Field(default=0, ge=0)
 
 @router.post("/scrap")
-def create_scrap(body: ScrapCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_scrap(body: ScrapCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     sid = uid()
@@ -609,7 +615,7 @@ def create_scrap(body: ScrapCreate, user: dict = Depends(get_current_user), db=D
 # ═══════════════════════════════════════════════════
 
 @router.get("/dashboard")
-def manufacturing_dashboard(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def manufacturing_dashboard(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
 
     planned = db.execute(text("SELECT COUNT(*) FROM dbp_mfg_orders WHERE tenant_id=:t AND status='planned'"), {"t": t}).fetchone()[0] or 0
@@ -647,11 +653,11 @@ class CostCreate(BaseModel):
     order_id: str
     cost_type: str
     amount: float = Field(ge=0)
-    description: Optional[str] = None
-    account_code: Optional[str] = None
+    description: str | None = None
+    account_code: str | None = None
 
 @router.post("/costs")
-def add_cost(body: CostCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def add_cost(body: CostCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     cid = uid()
@@ -665,7 +671,7 @@ def add_cost(body: CostCreate, user: dict = Depends(get_current_user), db=Depend
     return success_response("Cost recorded", {"id": cid})
 
 @router.get("/costs/{order_id}")
-def list_costs(order_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_costs(order_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,cost_type,amount,description,account_code,created_at "
                            "FROM dbp_mfg_costs WHERE order_id=:oid AND tenant_id=:t ORDER BY created_at"),

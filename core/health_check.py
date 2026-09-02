@@ -10,13 +10,13 @@ Replaces the simple /health endpoint with /health/full that checks:
 - Dependencies
 """
 
+import logging
 import os
 import time
-import logging
-import psutil
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Any
 
+import psutil
 from fastapi import APIRouter, Response
 from sqlalchemy import text
 
@@ -25,13 +25,13 @@ logger = logging.getLogger("eos.health")
 router = APIRouter(tags=["Health"], include_in_schema=False)
 
 
-def _check_database() -> Dict[str, Any]:
+def _check_database() -> dict[str, Any]:
     """Check PostgreSQL connectivity and stats."""
     try:
         from database import SessionLocal
         db = SessionLocal()
         start = time.time()
-        result = db.execute(text("SELECT 1"))
+        db.execute(text("SELECT 1"))
         latency_ms = round((time.time() - start) * 1000, 2)
         db.close()
 
@@ -49,7 +49,7 @@ def _check_database() -> Dict[str, Any]:
         }
 
 
-def _check_disk() -> Dict[str, Any]:
+def _check_disk() -> dict[str, Any]:
     """Check disk usage."""
     try:
         disk = psutil.disk_usage("/")
@@ -81,7 +81,7 @@ def _check_disk() -> Dict[str, Any]:
         }
 
 
-def _check_memory() -> Dict[str, Any]:
+def _check_memory() -> dict[str, Any]:
     """Check memory usage."""
     try:
         mem = psutil.virtual_memory()
@@ -113,7 +113,7 @@ def _check_memory() -> Dict[str, Any]:
         }
 
 
-def _check_process() -> Dict[str, Any]:
+def _check_process() -> dict[str, Any]:
     """Check FastAPI process health."""
     try:
         proc = psutil.Process(os.getpid())

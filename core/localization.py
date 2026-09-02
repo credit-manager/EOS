@@ -7,9 +7,6 @@ P64.4: Business Terminology
 P64.5: Date/Number/Currency Formatting
 """
 
-import os
-import re
-from typing import Optional
 from contextvars import ContextVar
 
 # ═══════════════════════════════════════════════
@@ -340,7 +337,7 @@ TRANSLATIONS = {
 # Translation Functions
 # ═══════════════════════════════════════════════
 
-def t(key: str, lang: str = None, **kwargs) -> str:
+def t(key: str, lang: str | None = None, **kwargs) -> str:
     """
     Translate a key to the specified language.
     Falls back to English if key not found, then returns the key itself.
@@ -363,7 +360,7 @@ def t(key: str, lang: str = None, **kwargs) -> str:
     return result
 
 
-def get_direction(lang: str = None) -> str:
+def get_direction(lang: str | None = None) -> str:
     """Get text direction for language (rtl or ltr)."""
     if lang is None:
         lang = current_lang.get(DEFAULT_LANGUAGE)
@@ -409,7 +406,7 @@ CURRENCY_SYMBOLS = {
 }
 
 
-def format_number(value, lang: str = None, decimals: int = 2) -> str:
+def format_number(value, lang: str | None = None, decimals: int = 2) -> str:
     """
     Format a number with locale-appropriate separators.
     Arabic: ١٬٢٥٠٬٠٠٠٫٥٠
@@ -436,7 +433,7 @@ def format_number(value, lang: str = None, decimals: int = 2) -> str:
     return formatted
 
 
-def format_currency(value, currency: str = "SAR", lang: str = None) -> str:
+def format_currency(value, currency: str = "SAR", lang: str | None = None) -> str:
     """
     Format a currency value.
     Arabic: ١٬٢٥٠٬٠٠٠٫٥٠ ر.س
@@ -458,7 +455,7 @@ def format_currency(value, currency: str = "SAR", lang: str = None) -> str:
         return f"{symbol} {formatted_number}"
 
 
-def format_percentage(value, lang: str = None, decimals: int = 1) -> str:
+def format_percentage(value, lang: str | None = None, decimals: int = 1) -> str:
     """
     Format a percentage.
     Arabic: ٨٥٫٥٪
@@ -474,7 +471,7 @@ def format_percentage(value, lang: str = None, decimals: int = 1) -> str:
     return f"{formatted}٪" if lang == "ar" else f"{formatted}%"
 
 
-def format_date(date_obj, lang: str = None, format_type: str = "medium") -> str:
+def format_date(date_obj, lang: str | None = None, format_type: str = "medium") -> str:
     """
     Format a date.
     Arabic: ٢٦ أغسطس ٢٠٢٦
@@ -518,7 +515,7 @@ def format_date(date_obj, lang: str = None, format_type: str = "medium") -> str:
 # Language Detection
 # ═══════════════════════════════════════════════
 
-def detect_language(accept_language: str = None, user_preference: str = None) -> str:
+def detect_language(accept_language: str | None = None, user_preference: str | None = None) -> str:
     """
     Detect language from Accept-Language header or user preference.
     Priority: user_preference > Accept-Language > default

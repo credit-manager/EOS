@@ -4,9 +4,16 @@ P78 FINAL ARCHITECTURE & PRODUCT REVIEW
 Comprehensive review of the entire EOS platform for scalability,
 architecture quality, and commercial SaaS readiness.
 """
-import sys, io, json, uuid, time, os
+import io
+import json
+import os
+import sys
+import time
+import uuid
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import urllib.request
+
 import psycopg2
 
 BASE = "http://127.0.0.1:8000"
@@ -84,7 +91,7 @@ try:
     test("1.7 APIVersionMiddleware", "APIVersionMiddleware" in main)
     router_count = main.count("app.include_router(")
     warn("1.8 Router count >= 60", router_count >= 60, f"Only {router_count} routers")
-except:
+except Exception:
     test("1.2-1.8 Main.py structure", False)
 
 # ═══ 2. DATABASE ARCHITECTURE ═══
@@ -133,6 +140,7 @@ token = r["data"]["access_token"]
 
 # Check that tenant_id is in JWT
 import base64
+
 payload = json.loads(base64.urlsafe_b64decode(token.split('.')[1] + '=='))
 has_tenant = "tenant_id" in payload
 test("3.1 JWT contains tenant_id", has_tenant)
@@ -329,7 +337,7 @@ test("13.8 .env.production exists", os.path.exists(".env.production"))
 
 # ═══ SUMMARY ═══
 print(f"\n{'='*60}")
-print(f"P78 FINAL ARCHITECTURE & PRODUCT REVIEW")
+print("P78 FINAL ARCHITECTURE & PRODUCT REVIEW")
 print(f"{'='*60}")
 print(f"  Passed:  {passed}")
 print(f"  Failed:  {failed}")

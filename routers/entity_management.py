@@ -4,16 +4,17 @@ All tenant-owned metadata is scoped to the authenticated tenant. Platform
 owners may operate across tenants explicitly; ordinary users may never select
 a tenant by crafting a request body or path.
 """
-import uuid
 import re
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from sqlalchemy import text
-from database import get_db
-from core.auth import require_permission, get_current_user
-from core.versioning_engine import VersioningEngine
-from core.rate_limit import read_limiter, write_limiter
+from sqlalchemy.orm import Session
+
+from core.auth import get_current_user, require_permission
 from core.event_bus import EventBus
+from core.rate_limit import read_limiter, write_limiter
+from core.versioning_engine import VersioningEngine
 from models import DBPEntity, DBPField
 from security.tenant_scope import get_user_tenant_id, is_platform_owner
 
@@ -55,7 +56,7 @@ def _entity_query(db, entity_code: str, current_user: dict):
 
 
 @router.post("/entities", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_entity(body: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def create_entity(body: dict, db: Session=None, current_user: dict = Depends(get_current_user)):
     required = ["code", "name_en", "faculty", "table_mapping"]
     for field in required:
         if field not in body:
@@ -108,7 +109,7 @@ async def create_entity(body: dict, db: Session = Depends(get_db), current_user:
 
 
 @router.put("/entities/{entity_code}", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def update_entity(entity_code: str, body: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def update_entity(entity_code: str, body: dict, db: Session=None, current_user: dict = Depends(get_current_user)):
     entity = _entity_query(db, entity_code, current_user).first()
     if not entity:
         raise HTTPException(404, "Entity not found")
@@ -129,7 +130,7 @@ async def update_entity(entity_code: str, body: dict, db: Session = Depends(get_
 
 
 @router.delete("/entities/{entity_code}", dependencies=[Depends(require_permission("dynamic", "delete")), Depends(write_limiter.check)])
-async def delete_entity(entity_code: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def delete_entity(entity_code: str, db: Session=None, current_user: dict = Depends(get_current_user)):
     entity = _entity_query(db, entity_code, current_user).first()
     if not entity:
         raise HTTPException(404, "Entity not found")
@@ -153,7 +154,7 @@ def _field_entity(db, entity_code, current_user):
 
 
 @router.post("/entities/{entity_code}/fields", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def add_field(entity_code: str, body: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def add_field(entity_code: str, body: dict, db: Session=None, current_user: dict = Depends(get_current_user)):
     entity = _field_entity(db, entity_code, current_user)
     if entity.is_system:
         raise HTTPException(403, "Cannot modify system entity")
@@ -178,7 +179,7 @@ async def add_field(entity_code: str, body: dict, db: Session = Depends(get_db),
 
 
 @router.put("/entities/{entity_code}/fields/{field_code}", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def update_field(entity_code: str, field_code: str, body: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def update_field(entity_code: str, field_code: str, body: dict, db: Session=None, current_user: dict = Depends(get_current_user)):
     entity = _field_entity(db, entity_code, current_user)
     field = db.query(DBPField).filter(DBPField.entity_id == entity.id, DBPField.code == field_code).first()
     if not field:
@@ -203,7 +204,7 @@ async def update_field(entity_code: str, field_code: str, body: dict, db: Sessio
 
 
 @router.delete("/entities/{entity_code}/fields/{field_code}", dependencies=[Depends(require_permission("dynamic", "delete")), Depends(write_limiter.check)])
-async def remove_field(entity_code: str, field_code: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def remove_field(entity_code: str, field_code: str, db: Session=None, current_user: dict = Depends(get_current_user)):
     entity = _field_entity(db, entity_code, current_user)
     if entity.is_system:
         raise HTTPException(403, "Cannot modify system entity")
@@ -219,14 +220,14 @@ async def remove_field(entity_code: str, field_code: str, db: Session = Depends(
 
 
 @router.get("/entities/{entity_code}/versions", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_versions(entity_code: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def list_versions(entity_code: str, db: Session=None, current_user: dict = Depends(get_current_user)):
     entity = _field_entity(db, entity_code, current_user)
     versions = VersioningEngine(db).get_versions(entity.id)
     return {"data": versions, "count": len(versions)}
 
 
 @router.get("/entities/{entity_code}/versions/{version_number}", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_version(entity_code: str, version_number: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def get_version(entity_code: str, version_number: int, db: Session=None, current_user: dict = Depends(get_current_user)):
     entity = _field_entity(db, entity_code, current_user)
     version = VersioningEngine(db).get_version(entity.id, version_number)
     if not version:

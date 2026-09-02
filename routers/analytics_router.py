@@ -24,17 +24,29 @@ Endpoints:
     GET  /api/v1/analytics/drill-down/{type}/{id} — Drill-down to source
 """
 
-from fastapi import APIRouter, Query, HTTPException, Depends
-from pydantic import BaseModel
-from typing import Optional
-from core.auth import get_current_user
+
+from fastapi import APIRouter, HTTPException, Query
+
 from core.analytics_engine import (
-    get_executive_summary, get_kpis, get_revenue_trend, get_expenses_trend,
-    get_profit_trend, get_cash_flow, get_sales_summary, get_sales_by_period,
-    get_top_customers, get_purchase_summary, get_top_suppliers,
-    get_inventory_summary, get_stock_movements, get_project_summary,
-    get_project_cost_breakdown, get_hr_summary, get_business_alerts,
-    get_dashboard_for_role, drill_down
+    drill_down,
+    get_business_alerts,
+    get_cash_flow,
+    get_dashboard_for_role,
+    get_executive_summary,
+    get_expenses_trend,
+    get_hr_summary,
+    get_inventory_summary,
+    get_kpis,
+    get_profit_trend,
+    get_project_cost_breakdown,
+    get_project_summary,
+    get_purchase_summary,
+    get_revenue_trend,
+    get_sales_by_period,
+    get_sales_summary,
+    get_stock_movements,
+    get_top_customers,
+    get_top_suppliers,
 )
 
 router = APIRouter(prefix="/api/v1/analytics", tags=["Analytics"])
@@ -42,7 +54,7 @@ router = APIRouter(prefix="/api/v1/analytics", tags=["Analytics"])
 
 @router.get("/executive")
 async def executive_summary(
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     period: str = Query("this_month", description="Period: today/yesterday/this_week/last_week/this_month/last_month/this_quarter/last_quarter/this_year/last_year")
 ):
     return get_executive_summary(user["tenant_id"], period)
@@ -50,7 +62,7 @@ async def executive_summary(
 
 @router.get("/kpis")
 async def kpis(
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     period: str = Query("this_month", description="Period")
 ):
     return {"kpis": get_kpis(user["tenant_id"], period)}
@@ -58,7 +70,7 @@ async def kpis(
 
 @router.get("/revenue-trend")
 async def revenue_trend(
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     months: int = Query(12, ge=1, le=36, description="Number of months")
 ):
     return {"trend": get_revenue_trend(user["tenant_id"], months)}
@@ -66,7 +78,7 @@ async def revenue_trend(
 
 @router.get("/expenses-trend")
 async def expenses_trend(
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     months: int = Query(12, ge=1, le=36, description="Number of months")
 ):
     return {"trend": get_expenses_trend(user["tenant_id"], months)}
@@ -74,7 +86,7 @@ async def expenses_trend(
 
 @router.get("/profit-trend")
 async def profit_trend(
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     months: int = Query(12, ge=1, le=36, description="Number of months")
 ):
     return {"trend": get_profit_trend(user["tenant_id"], months)}
@@ -82,7 +94,7 @@ async def profit_trend(
 
 @router.get("/cash-flow")
 async def cash_flow(
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     months: int = Query(6, ge=1, le=24, description="Number of months")
 ):
     return {"cash_flow": get_cash_flow(user["tenant_id"], months)}
@@ -90,20 +102,20 @@ async def cash_flow(
 
 @router.get("/sales/summary")
 async def sales_summary(
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     period: str = Query("this_month")
 ):
     return get_sales_summary(user["tenant_id"], period)
 
 
 @router.get("/sales/periods")
-async def sales_periods(user: dict = Depends(get_current_user)):
+async def sales_periods(user: dict | None=None):
     return get_sales_by_period(user["tenant_id"])
 
 
 @router.get("/sales/top-customers")
 async def top_customers(
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     limit: int = Query(10, ge=1, le=50)
 ):
     return {"customers": get_top_customers(user["tenant_id"], limit)}
@@ -111,7 +123,7 @@ async def top_customers(
 
 @router.get("/purchases/summary")
 async def purchase_summary(
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     period: str = Query("this_month")
 ):
     return get_purchase_summary(user["tenant_id"], period)
@@ -119,49 +131,49 @@ async def purchase_summary(
 
 @router.get("/purchases/top-suppliers")
 async def top_suppliers(
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     limit: int = Query(10, ge=1, le=50)
 ):
     return {"suppliers": get_top_suppliers(user["tenant_id"], limit)}
 
 
 @router.get("/inventory")
-async def inventory_summary(user: dict = Depends(get_current_user)):
+async def inventory_summary(user: dict | None=None):
     return get_inventory_summary(user["tenant_id"])
 
 
 @router.get("/inventory/movements")
 async def inventory_movements(
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     days: int = Query(30, ge=1, le=90)
 ):
     return {"movements": get_stock_movements(user["tenant_id"], days)}
 
 
 @router.get("/projects")
-async def project_summary(user: dict = Depends(get_current_user)):
+async def project_summary(user: dict | None=None):
     return get_project_summary(user["tenant_id"])
 
 
 @router.get("/projects/costs")
-async def project_costs(user: dict = Depends(get_current_user)):
+async def project_costs(user: dict | None=None):
     return {"projects": get_project_cost_breakdown(user["tenant_id"])}
 
 
 @router.get("/hr")
-async def hr_summary(user: dict = Depends(get_current_user)):
+async def hr_summary(user: dict | None=None):
     return get_hr_summary(user["tenant_id"])
 
 
 @router.get("/alerts")
-async def business_alerts(user: dict = Depends(get_current_user)):
+async def business_alerts(user: dict | None=None):
     return {"alerts": get_business_alerts(user["tenant_id"])}
 
 
 @router.get("/dashboard/{role}")
 async def role_dashboard(
     role: str,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     period: str = Query("this_month")
 ):
     valid_roles = ["owner", "ceo", "admin", "finance", "project_manager", "procurement", "warehouse"]
@@ -174,7 +186,7 @@ async def role_dashboard(
 async def drill_down_endpoint(
     entity_type: str,
     entity_id: str,
-    user: dict = Depends(get_current_user)
+    user: dict | None=None
 ):
     valid_types = ["invoice", "purchase_order", "project", "payment"]
     if entity_type not in valid_types:

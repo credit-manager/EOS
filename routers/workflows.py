@@ -1,16 +1,15 @@
 """
 P17 Workflow Router — CRUD + instance lifecycle + approvals
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from typing import Optional
 import uuid
 
-from database import get_db
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+
 from core.auth import get_current_user, require_permission
 from core.rate_limit import read_limiter, write_limiter
 from core.workflow_engine import WorkflowEngine
-
+from database import get_db
 
 router = APIRouter(
     prefix="/api/v1/dynamic",
@@ -18,7 +17,7 @@ router = APIRouter(
 )
 
 
-def _get_engine(db: Session = Depends(get_db)):
+def _get_engine(db: Session=None):
     return WorkflowEngine(db)
 
 
@@ -31,8 +30,8 @@ def _get_engine(db: Session = Depends(get_db)):
     dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)],
 )
 async def list_workflows(
-    entity_code: Optional[str] = None,
-    db: Session = Depends(get_db),
+    entity_code: str | None = None,
+    db: Session=None,
 ):
     """List workflow definitions."""
     conditions = []
@@ -71,7 +70,7 @@ async def list_workflows(
 )
 async def create_workflow(
     body: dict,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Create a workflow definition."""
@@ -115,7 +114,7 @@ async def create_workflow(
 )
 async def get_workflow(
     workflow_id: str,
-    db: Session = Depends(get_db),
+    db: Session=None,
 ):
     """Get workflow with states and transitions."""
     engine = WorkflowEngine(db)
@@ -134,7 +133,7 @@ async def get_workflow(
 )
 async def publish_workflow(
     workflow_id: str,
-    db: Session = Depends(get_db),
+    db: Session=None,
 ):
     """Publish a workflow (make it usable)."""
     engine = WorkflowEngine(db)
@@ -155,7 +154,7 @@ async def publish_workflow(
 async def add_state(
     workflow_id: str,
     body: dict,
-    db: Session = Depends(get_db),
+    db: Session=None,
 ):
     """Add a state to a workflow."""
     engine = WorkflowEngine(db)
@@ -187,7 +186,7 @@ async def add_state(
 async def add_transition(
     workflow_id: str,
     body: dict,
-    db: Session = Depends(get_db),
+    db: Session=None,
 ):
     """Add a transition to a workflow."""
     engine = WorkflowEngine(db)
@@ -225,7 +224,7 @@ async def add_transition(
 )
 async def start_instance(
     body: dict,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Start a workflow instance for a record."""
@@ -264,10 +263,10 @@ async def start_instance(
     dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)],
 )
 async def list_instances(
-    workflow_id: Optional[str] = None,
-    entity_code: Optional[str] = None,
-    status: Optional[str] = None,
-    limit: int = Query(50, ge=1, le=200),
+    workflow_id: str | None = None,
+    entity_code: str | None = None,
+    status: str | None = None,
+    limit: int | None=None,
     offset: int = Query(0, ge=0),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -291,7 +290,7 @@ async def list_instances(
 )
 async def get_instance(
     instance_id: str,
-    db: Session = Depends(get_db),
+    db: Session=None,
 ):
     """Get workflow instance with history."""
     engine = WorkflowEngine(db)
@@ -310,11 +309,13 @@ async def get_instance(
 )
 async def approve_instance(
     instance_id: str,
-    body: dict = {},
-    user: dict = Depends(get_current_user),
+    body: dict | None = None,
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Approve a workflow instance."""
+    if body is None:
+        body = {}
     engine = WorkflowEngine(db)
     user_id = user.get("id") or user.get("user_id")
     user_roles = user.get("roles", [])
@@ -341,11 +342,13 @@ async def approve_instance(
 )
 async def reject_instance(
     instance_id: str,
-    body: dict = {},
-    user: dict = Depends(get_current_user),
+    body: dict | None = None,
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Reject a workflow instance."""
+    if body is None:
+        body = {}
     engine = WorkflowEngine(db)
     user_id = user.get("id") or user.get("user_id")
     user_roles = user.get("roles", [])
@@ -372,7 +375,7 @@ async def reject_instance(
 )
 async def cancel_instance(
     instance_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Cancel a workflow instance."""

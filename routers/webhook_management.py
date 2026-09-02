@@ -9,17 +9,16 @@ Additional endpoints beyond P12 basic CRUD:
 
 All webhook_id params use webhook_code to match P12 conventions.
 """
-import uuid
 import json
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import require_permission, get_current_user
+from core.auth import require_permission
 from core.rate_limit import read_limiter, write_limiter
-
+from database import get_db
 
 router = APIRouter(
     prefix="/api/v1/dynamic",
@@ -27,7 +26,7 @@ router = APIRouter(
 )
 
 
-def _resolve_webhook_id(db: Session, webhook_code: str) -> Optional[str]:
+def _resolve_webhook_id(db: Session, webhook_code: str) -> str | None:
     """Resolve webhook code to internal ID."""
     row = db.execute(
         text("SELECT id FROM dbp_webhooks WHERE code = :code"),
@@ -46,7 +45,7 @@ def _resolve_webhook_id(db: Session, webhook_code: str) -> Optional[str]:
 )
 async def retry_delivery(
     delivery_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Manually retry a failed delivery."""
@@ -90,7 +89,7 @@ async def retry_delivery(
 )
 async def retry_all_failed(
     webhook_code: str,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Retry all failed deliveries for a webhook."""
@@ -127,11 +126,13 @@ async def retry_all_failed(
 )
 async def test_webhook(
     webhook_code: str,
-    body: dict = {},
-    user: dict = Depends(get_current_user),
+    body: dict | None = None,
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """Send a test event to the webhook."""
+    if body is None:
+        body = {}
     wh = db.execute(
         text("SELECT id, target_url, entity_code, secret, custom_headers "
              "FROM dbp_webhooks WHERE code = :code"),
@@ -171,9 +172,10 @@ async def test_webhook(
     )
     db.flush()
 
-    import httpx
-    import hmac
     import hashlib
+    import hmac
+
+    import httpx
 
     payload_data = body.get("payload", {"test": True, "message": "Webhook test event"})
     payload_str = json.dumps(payload_data)
@@ -234,7 +236,7 @@ async def test_webhook(
 )
 async def webhook_health(
     webhook_code: str,
-    hours: int = Query(24, ge=1, le=720),
+    hours: int | None=None,
     db: Session = Depends(get_db),
 ):
     """Get webhook delivery health metrics."""

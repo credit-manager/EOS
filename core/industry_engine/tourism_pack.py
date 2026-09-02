@@ -3,8 +3,7 @@ EOS Industry Engine — Tourism Pack
 Complete tourism industry template with entities, workflows, and accounting mappings.
 """
 
-from typing import Dict, List, Any
-from dataclasses import dataclass, field
+from typing import Any
 
 # Entity definitions for tourism industry
 TOURISM_ENTITIES = {
@@ -207,7 +206,7 @@ TOURISM_KPIS = [
     {"name": "Visa Success Rate", "metric": "visa_approval_rate", "aggregation": "PERCENTAGE"},
 ]
 
-def get_tourism_pack() -> Dict[str, Any]:
+def get_tourism_pack() -> dict[str, Any]:
     """Return complete tourism industry pack."""
     return {
         "industry": "tourism",

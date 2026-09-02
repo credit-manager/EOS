@@ -12,11 +12,11 @@ based on EOS_AUTH_MODE environment variable.
 
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+
 from dotenv import load_dotenv
+from fastapi import HTTPException, status
+from fastapi.security import HTTPBearer
 from jose import JWTError, jwt
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 load_dotenv()
 
@@ -35,8 +35,8 @@ def create_test_token(
     tenant_id: str,
     user_id: str = "test-user",
     email: str = "test@example.com",
-    roles: Optional[list] = None,
-    expires_delta: Optional[timedelta] = None
+    roles: list | None = None,
+    expires_delta: timedelta | None = None
 ) -> str:
     """
     Create a test JWT token.
@@ -100,14 +100,14 @@ def verify_test_token(token: str) -> dict:
 from core.auth_adapter import get_current_user, optional_get_current_user
 
 __all__ = [
+    "TEST_ALGORITHM",
+    "TEST_SECRET_KEY",
     "create_test_token",
-    "verify_test_token",
     "get_current_user",
     "optional_get_current_user",
     "require_permission",
     "require_platform_owner",
-    "TEST_SECRET_KEY",
-    "TEST_ALGORITHM",
+    "verify_test_token",
 ]
 
 
@@ -118,7 +118,7 @@ def require_permission(module: str, action: str):
     Usage:
         @router.post("/accounts", dependencies=[Depends(require_permission("dynamic", "create"))])
     """
-    async def _check(current_user: Optional[dict] = Depends(optional_get_current_user)):
+    async def _check(current_user: dict | None=None):
         # H2 FIX: Never bypass auth. A permission requirement implies the
         # caller must be authenticated. Previously a missing token (None user)
         # fell through and accessed the endpoint without any permission check.
@@ -171,7 +171,7 @@ def _designated_platform_owners() -> set:
     return owners
 
 
-async def require_platform_owner(user: dict = Depends(get_current_user)) -> dict:
+async def require_platform_owner(user: dict | None=None) -> dict:
     """
     Platform Owner dependency for the Owner Control Plane (/api/v1/control).
 

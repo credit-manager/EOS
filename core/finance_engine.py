@@ -2,9 +2,10 @@
 P23 Finance & Treasury Engine — Bank Accounts, Payments, Exchange Rates, Budgets
 """
 import uuid
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class FinanceEngine:
@@ -45,7 +46,7 @@ class FinanceEngine:
         self.db.flush()
         return bid
 
-    def get_bank_accounts(self, company_id: str, tenant_id: str) -> List[Dict]:
+    def get_bank_accounts(self, company_id: str, tenant_id: str) -> list[dict]:
         rows = self.db.execute(text(
             "SELECT id, account_name, bank_name, account_number, currency_code, "
             "current_balance, is_active FROM dbp_bank_accounts "
@@ -59,7 +60,7 @@ class FinanceEngine:
     # ── PAYMENTS ──
 
     def create_payment(self, tenant_id: str, company_id: str, payment_type: str,
-                       payment_date: str, amount: float, **kw) -> Optional[str]:
+                       payment_date: str, amount: float, **kw) -> str | None:
         if payment_type not in self.PAYMENT_TYPES or amount <= 0:
             return None
         self._verify_company_tenant(company_id, tenant_id)
@@ -90,7 +91,7 @@ class FinanceEngine:
         self.db.flush()
         return pid
 
-    def approve_payment(self, payment_id: str, approved_by: str, tenant_id: str) -> Dict[str, Any]:
+    def approve_payment(self, payment_id: str, approved_by: str, tenant_id: str) -> dict[str, Any]:
         # P80.5D FIX: scope the payment lookup AND the bank-account balance
         # mutation to the caller's tenant, so a tenant cannot approve another
         # tenant's payment and rewrite its cash balance.
@@ -128,10 +129,10 @@ class FinanceEngine:
         self.db.flush()
         return {"success": True, "status": "completed"}
 
-    def list_payments(self, company_id: str, tenant_id: str, payment_type: Optional[str] = None,
-                      status: Optional[str] = None, limit: int = 50) -> List[Dict]:
+    def list_payments(self, company_id: str, tenant_id: str, payment_type: str | None = None,
+                      status: str | None = None, limit: int = 50) -> list[dict]:
         conditions = ["company_id = :cid", "tenant_id = :t"]
-        params: Dict[str, Any] = {"cid": company_id, "t": tenant_id, "lim": limit}
+        params: dict[str, Any] = {"cid": company_id, "t": tenant_id, "lim": limit}
         if payment_type:
             conditions.append("payment_type = :pt")
             params["pt"] = payment_type
@@ -154,7 +155,7 @@ class FinanceEngine:
     # ── EXCHANGE RATES ──
 
     def set_exchange_rate(self, from_currency: str, to_currency: str,
-                          rate: float, rate_date: str, source: str = None) -> str:
+                          rate: float, rate_date: str, source: str | None = None) -> str:
         rid = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_exchange_rates (id, from_currency, to_currency, rate, rate_date, source) "
@@ -164,7 +165,7 @@ class FinanceEngine:
         self.db.flush()
         return rid
 
-    def get_exchange_rate(self, from_currency: str, to_currency: str) -> Optional[Dict]:
+    def get_exchange_rate(self, from_currency: str, to_currency: str) -> dict | None:
         row = self.db.execute(text(
             "SELECT id, rate, rate_date, source FROM dbp_exchange_rates "
             "WHERE from_currency = :fc AND to_currency = :tc "
@@ -174,7 +175,7 @@ class FinanceEngine:
             return None
         return {"id": row[0], "rate": float(row[1]), "rate_date": str(row[2]) if row[2] else None, "source": row[3]}
 
-    def convert_amount(self, amount: float, from_currency: str, to_currency: str) -> Optional[Dict]:
+    def convert_amount(self, amount: float, from_currency: str, to_currency: str) -> dict | None:
         if from_currency == to_currency:
             return {"original": amount, "converted": amount, "rate": 1}
         rate_info = self.get_exchange_rate(from_currency, to_currency)
@@ -187,7 +188,7 @@ class FinanceEngine:
 
     def create_budget(self, tenant_id: str, company_id: str, account_id: str,
                       fiscal_year_id: str, budget_amount: float,
-                      cost_center_id: str = None, period: str = None) -> str:
+                      cost_center_id: str | None = None, period: str | None = None) -> str:
         self._verify_company_tenant(company_id, tenant_id)
         bid = str(uuid.uuid4())
         self.db.execute(text(
@@ -199,9 +200,9 @@ class FinanceEngine:
         self.db.flush()
         return bid
 
-    def get_budgets(self, company_id: str, tenant_id: str, fiscal_year_id: str = None) -> List[Dict]:
+    def get_budgets(self, company_id: str, tenant_id: str, fiscal_year_id: str | None = None) -> list[dict]:
         conditions = ["b.company_id = :cid", "b.tenant_id = :t"]
-        params: Dict[str, Any] = {"cid": company_id, "t": tenant_id}
+        params: dict[str, Any] = {"cid": company_id, "t": tenant_id}
         if fiscal_year_id:
             conditions.append("b.fiscal_year_id = :fyid")
             params["fyid"] = fiscal_year_id
@@ -219,7 +220,7 @@ class FinanceEngine:
                  "actual_amount": float(r[7]) if r[7] else 0,
                  "variance": float(r[8]) if r[8] else 0} for r in rows]
 
-    def get_budget_utilization(self, company_id: str, tenant_id: str) -> List[Dict]:
+    def get_budget_utilization(self, company_id: str, tenant_id: str) -> list[dict]:
         budgets = self.get_budgets(company_id, tenant_id)
         result = []
         for b in budgets:

@@ -14,12 +14,12 @@ Usage:
     @router.get("/endpoint", dependencies=[Depends(limiter.check)])
 """
 
+import logging
 import os
 import time
-from datetime import datetime, timezone, timedelta
-from fastapi import Request, HTTPException, status
-from typing import Optional, Dict, List, Tuple
-import logging
+from datetime import datetime, timedelta, timezone
+
+from fastapi import HTTPException, Request, status
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,8 @@ def _load_engine():
     """Lazily obtain the shared SQLAlchemy engine."""
     global _ENGINE, _TEXT
     if _ENGINE is None:
-        from sqlalchemy import create_engine, text as stext
+        from sqlalchemy import create_engine
+        from sqlalchemy import text as stext
         url = os.getenv("DATABASE_URL")
         if not url:
             logger.warning("DATABASE_URL not set. Rate limiting disabled.")
@@ -97,7 +98,7 @@ def _get_client_ip(request: Request) -> str:
     return client_host.split(':')[0] if client_host else "unknown"
 
 
-def _get_tenant_from_request(request: Request) -> Optional[str]:
+def _get_tenant_from_request(request: Request) -> str | None:
     """Extract tenant ID from authenticated user context."""
     # Tenant should come from authenticated user, NOT from header
     # This prevents tenant switching attacks
@@ -107,7 +108,7 @@ def _get_tenant_from_request(request: Request) -> Optional[str]:
     return None
 
 
-def _get_user_from_request(request: Request) -> Optional[str]:
+def _get_user_from_request(request: Request) -> str | None:
     """Extract user ID from authentication context."""
     user = getattr(request.state, "user", None)
     if user and hasattr(user, 'id'):
@@ -131,7 +132,7 @@ class RateLimiter:
         max_requests: int = 100,
         window_seconds: int = 60,
         key_func=None,
-        limits: Optional[Dict[str, int]] = None
+        limits: dict[str, int] | None = None
     ):
         self.max_requests = max_requests
         self.window_seconds = window_seconds
@@ -147,7 +148,7 @@ class RateLimiter:
         """Default key function: secure client IP."""
         return _get_client_ip(request)
 
-    def _generate_buckets(self, request: Request) -> List[Tuple[str, int]]:
+    def _generate_buckets(self, request: Request) -> list[tuple[str, int]]:
         """
         Generate multiple buckets for layered rate limiting.
         Returns list of (bucket_name, limit) tuples.

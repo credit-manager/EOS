@@ -1,13 +1,21 @@
 """
 نقطة الدخول الرئيسية لتطبيق FastAPI
 """
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
+from app.api import (
+    auth,
+    customers,
+    invoices,
+    orders,
+    products,
+    reports,
+    suppliers,
+    users,
+)
 from app.config import settings
-from app.api import auth, users, customers, suppliers, products, orders, invoices, reports
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 
 @asynccontextmanager
