@@ -1,6 +1,6 @@
 """Production configuration validator.
 
-Production startup must fail closed when security-critical controls are missing.
+Security-critical production settings fail closed at startup.
 """
 import os
 import re
@@ -29,7 +29,9 @@ def validate_production_config() -> List[Tuple[str, str, bool]]:
     check("EOS_ENVIRONMENT", os.getenv("EOS_ENVIRONMENT", ""), r"^production$", True)
     check("EOS_SECRET_KEY", os.getenv("EOS_SECRET_KEY", ""), r"^.{32,}$", True)
     check("DATABASE_URL", os.getenv("DATABASE_URL", ""), r"^postgresql://.{10,}$", True)
-    check("EOS_2FA_ENCRYPTION_KEY", os.getenv("EOS_2FA_ENCRYPTION_KEY", ""), r"^.{44}$", True)
+
+    if os.getenv("EOS_2FA_ENABLED", "false").lower() == "true":
+        check("EOS_2FA_ENCRYPTION_KEY", os.getenv("EOS_2FA_ENCRYPTION_KEY", ""), r"^.{44}$", True)
 
     email_provider = os.getenv("EOS_EMAIL_PROVIDER", "")
     check("EOS_EMAIL_PROVIDER", email_provider, r"^smtp$", True)
@@ -39,8 +41,8 @@ def validate_production_config() -> List[Tuple[str, str, bool]]:
         check("EOS_SMTP_PASSWORD", os.getenv("EOS_SMTP_PASSWORD", ""), critical=True)
         check("EOS_FROM_EMAIL", os.getenv("EOS_FROM_EMAIL", ""), critical=True)
 
-    payment_mode = os.getenv("EOS_PAYMENT_MODE", "stripe")
-    check("EOS_PAYMENT_MODE", payment_mode, r"^(stripe)$", True)
+    payment_mode = os.getenv("EOS_PAYMENT_MODE", "")
+    check("EOS_PAYMENT_MODE", payment_mode, r"^(disabled|stripe)$", True)
     if payment_mode == "stripe":
         check("EOS_STRIPE_SECRET_KEY", os.getenv("EOS_STRIPE_SECRET_KEY", ""), r"^sk_live_.{10,}$", True)
 
@@ -51,7 +53,6 @@ def validate_production_config() -> List[Tuple[str, str, bool]]:
     check("EOS_DISABLE_DOCS", os.getenv("EOS_DISABLE_DOCS", ""), r"^true$", True)
     check("EOS_RATE_LIMIT_FAIL_CLOSED", os.getenv("EOS_RATE_LIMIT_FAIL_CLOSED", ""), r"^true$", True)
     check("EOS_TRUSTED_PROXIES", os.getenv("EOS_TRUSTED_PROXIES", ""), critical=True)
-
     check("POSTGRES_USER", os.getenv("POSTGRES_USER", ""), critical=True)
     check("POSTGRES_PASSWORD", os.getenv("POSTGRES_PASSWORD", ""), critical=True)
     check("POSTGRES_DB", os.getenv("POSTGRES_DB", ""), critical=True)
