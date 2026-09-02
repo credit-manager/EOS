@@ -1,3 +1,4 @@
+# Security regression suite. Dependency installation intentionally follows requirements.txt.
 name: EOS Security Regression
 
 on:
@@ -28,7 +29,9 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install test dependencies
-        run: python -m pip install --upgrade pip pytest fastapi sqlalchemy psycopg2-binary python-dotenv
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
       - name: Compile security-sensitive modules
         run: python -m py_compile security/tenant_scope.py core/builder_safety.py routers/industry_framework.py routers/entity_management.py routers/ai_composer.py routers/builder.py routers/dynamic_crud.py
       - name: Tenant isolation and ERP generation tests
