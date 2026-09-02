@@ -34,13 +34,25 @@ except ImportError:
 from sqlalchemy import text
 from core.industry_security import uid, now
 
-# Get encryption key from environment (must be set for production)
+# Get encryption key from environment (MUST be set for production)
 ENCRYPTION_KEY = os.getenv("EOS_2FA_ENCRYPTION_KEY")
-if not ENCRYPTION_KEY and CRYPTO_AVAILABLE:
-    # Generate a new key if not set (for development only)
-    ENCRYPTION_KEY = Fernet.generate_key().decode()
-    print(f"⚠️  WARNING: EOS_2FA_ENCRYPTION_KEY not set. Generated temporary key: {ENCRYPTION_KEY}")
-    print("   Set this in your .env file for production!")
+
+# SECURITY FIX (P0): Fail fast if encryption key is missing in production
+# This prevents data loss from regenerated keys on server restart
+if not ENCRYPTION_KEY:
+    if os.getenv("EOS_ENVIRONMENT") == "production":
+        raise RuntimeError(
+            "CRITICAL: EOS_2FA_ENCRYPTION_KEY must be set in production. "
+            "2FA secrets cannot be decrypted without it. "
+            "Set EOS_2FA_ENCRYPTION_KEY in your environment or .env file."
+        )
+    # Development mode: generate temporary key with warning
+    if CRYPTO_AVAILABLE:
+        ENCRYPTION_KEY = Fernet.generate_key().decode()
+        print(f"⚠️  WARNING: EOS_2FA_ENCRYPTION_KEY not set. Generated temporary key: {ENCRYPTION_KEY}")
+        print("   Set this in your .env file for production!")
+    else:
+        print("⚠️  WARNING: cryptography library not available. 2FA secrets will NOT be encrypted.")
 
 def _get_cipher() -> Optional[Fernet]:
     """Get Fernet cipher instance for encrypting/decrypting 2FA secrets."""

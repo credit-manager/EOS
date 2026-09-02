@@ -109,7 +109,7 @@ class DBPEvent(Base):
     __tablename__ = "dbp_events"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), nullable=True, index=True)
+    tenant_id = Column(String(36), nullable=False, index=True, default="platform")
     event_type = Column(String(50), nullable=False, index=True)
     entity_code = Column(String(100), nullable=False, index=True)
     record_id = Column(String(36), nullable=True)
@@ -122,7 +122,7 @@ class DBPWebhook(Base):
     __tablename__ = "dbp_webhooks"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), nullable=True, index=True)
+    tenant_id = Column(String(36), nullable=False, index=True, default="platform")
     code = Column(String(100), unique=True, nullable=False)
     target_url = Column(String(500), nullable=False)
     entity_code = Column(String(100), nullable=False, index=True)
@@ -164,7 +164,7 @@ class DBPNotification(Base):
     __tablename__ = "dbp_notifications"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), nullable=True, index=True)
+    tenant_id = Column(String(36), nullable=False, index=True, default="platform")
     user_id = Column(String(100), nullable=False, index=True)
     channel = Column(String(20), nullable=False, default="in_app", index=True)
     title = Column(String(500), nullable=False)
@@ -184,7 +184,7 @@ class DBPNotificationTemplate(Base):
     __tablename__ = "dbp_notification_templates"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), nullable=True, index=True)
+    tenant_id = Column(String(36), nullable=False, index=True, default="platform")
     code = Column(String(100), nullable=False, index=True)
     channel = Column(String(20), nullable=False, default="in_app")
     notification_type = Column(String(50), nullable=False, default="info")
@@ -199,7 +199,7 @@ class DBPNotificationPreference(Base):
     __tablename__ = "dbp_notification_preferences"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), nullable=True, index=True)
+    tenant_id = Column(String(36), nullable=False, index=True, default="platform")
     user_id = Column(String(100), nullable=False, index=True)
     notification_type = Column(String(50), nullable=False)
     channel = Column(String(20), nullable=False, default="in_app")
@@ -215,7 +215,7 @@ class DBPDashboard(Base):
     __tablename__ = "dbp_dashboards"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), nullable=True, index=True)
+    tenant_id = Column(String(36), nullable=False, index=True, default="platform")
     code = Column(String(100), nullable=False, index=True)
     name_en = Column(String(255), nullable=False)
     name_ar = Column(String(255))
@@ -258,7 +258,7 @@ class DBPKPI(Base):
     __tablename__ = "dbp_kpis"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), nullable=True, index=True)
+    tenant_id = Column(String(36), nullable=False, index=True, default="platform")
     code = Column(String(100), nullable=False, index=True)
     name_en = Column(String(255), nullable=False)
     name_ar = Column(String(255))
@@ -282,7 +282,7 @@ class DBPWorkflowDefinition(Base):
     __tablename__ = "dbp_workflow_definitions"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), nullable=True, index=True)
+    tenant_id = Column(String(36), nullable=False, index=True, default="platform")
     code = Column(String(100), nullable=False, index=True)
     name_en = Column(String(255), nullable=False)
     name_ar = Column(String(255))
@@ -349,7 +349,7 @@ class DBPWorkflowInstance(Base):
     __tablename__ = "dbp_workflow_instances"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), nullable=True, index=True)
+    tenant_id = Column(String(36), nullable=False, index=True, default="platform")
     workflow_id = Column(
         String(36),
         ForeignKey("dbp_workflow_definitions.id", ondelete="CASCADE"),
@@ -399,7 +399,7 @@ class DBPDataJob(Base):
     __tablename__ = "dbp_data_jobs"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), nullable=True, index=True)
+    tenant_id = Column(String(36), nullable=False, index=True, default="platform")
     code = Column(String(100), nullable=False, index=True)
     name_en = Column(String(255), nullable=False)
     name_ar = Column(String(255))
@@ -423,7 +423,7 @@ class DBPValidationRule(Base):
     __tablename__ = "dbp_validation_rules"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), nullable=True, index=True)
+    tenant_id = Column(String(36), nullable=False, index=True, default="platform")
     entity_id = Column(
         String(36),
         ForeignKey("dbp_entities.id", ondelete="CASCADE"),
@@ -521,7 +521,7 @@ class DBPCurrency(Base):
     __tablename__ = "dbp_currencies"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), nullable=True, index=True)
+    tenant_id = Column(String(36), nullable=False, index=True, default="platform")
     code = Column(String(10), nullable=False)
     name_en = Column(String(100), nullable=False)
     name_ar = Column(String(100))
