@@ -34,7 +34,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://user:pass@localhost/test
           EOS_AUTH_MODE: testing
-          SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
         run: python -c "import main"
 
   code-quality:
@@ -94,6 +94,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/eos_test
           SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
           ENVIRONMENT: testing
           EOS_AUTH_MODE: testing
         run: |
@@ -144,7 +145,7 @@ jobs:
           test "$(alembic heads | grep -c '(head)')" -eq 1
           alembic history
           alembic upgrade head
-          alembic current
+          alembic current --check-heads
           alembic check
 
   security-validation:
