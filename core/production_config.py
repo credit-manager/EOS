@@ -29,9 +29,9 @@ def validate_production_config() -> List[Tuple[str, str, bool]]:
     check("EOS_ENVIRONMENT", os.getenv("EOS_ENVIRONMENT", ""), r"^production$", True)
     check("EOS_SECRET_KEY", os.getenv("EOS_SECRET_KEY", ""), r"^.{32,}$", True)
     check("DATABASE_URL", os.getenv("DATABASE_URL", ""), r"^postgresql://.{10,}$", True)
-
-    if os.getenv("EOS_2FA_ENABLED", "false").lower() == "true":
-        check("EOS_2FA_ENCRYPTION_KEY", os.getenv("EOS_2FA_ENCRYPTION_KEY", ""), r"^.{44}$", True)
+    # 2FA can be enabled per-user/tenant in the database, so the durable
+    # encryption key must always exist in production.
+    check("EOS_2FA_ENCRYPTION_KEY", os.getenv("EOS_2FA_ENCRYPTION_KEY", ""), r"^.{44}$", True)
 
     email_provider = os.getenv("EOS_EMAIL_PROVIDER", "")
     check("EOS_EMAIL_PROVIDER", email_provider, r"^smtp$", True)
