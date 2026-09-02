@@ -1,4 +1,4 @@
-﻿"""
+"""
 EOS Advanced Analytics Engine — P65
 Executive Dashboard + KPIs + Period Comparisons + Drill-Down.
 
@@ -17,6 +17,7 @@ Provides:
 
 import os
 import logging
+import uuid
 from datetime import datetime, timedelta, date
 from typing import Dict, Any, List, Optional, Tuple
 from decimal import Decimal
