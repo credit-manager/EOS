@@ -1,68 +1,82 @@
-# Environment files (contain secrets)
-.env
-.env.local
-.env.production
-.env.staging
-
-# Python
+```
+# Dependencies
+node_modules/
+.venv/
+venv/
 __pycache__/
 *.pyc
 *.pyo
-*.egg-info/
-build/
-.eggs/
-
-# Ignore build dist outputs EXCEPT the committed React frontend build served at /ui
-dist/
-!eos-system/frontend/dist/
-
-# Virtual environments
-venv/
+*.pyd
+.Python
+env/
 .venv/
+venv/
 ENV/
 
-# IDE
+# Build artifacts
+dist/
+build/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+.env.*
+
+# IDE specific
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
-# OS
+# OS generated
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# Coverage
+.coverage
+htmlcov/
+.coverage.*
 
-# Database
-*.db
-*.sqlite3
+# Testing
+.pytest_cache/
+.mypy_cache/
 
-# --- Session / security artifacts (added during security review) ---
-# Pre-patch backups that may contain the vulnerable code / build context
-*.bak
-*.orig
-*.rej
+# Alembic
+alembic/versions/*.py
 
-# Auth tokens, login bodies, and test credentials captured during review
-*token*.json
-*login*.json
-*_resp.json
-*token*
+# Docker
+.dockerenv
 
-# Database backups / dumps
-backups/
-*.backup
-*.dump
+# Python virtual environments
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Operation logs generated at runtime
-uvicorn_*.log
+# Coverage generated file
+.coverage.*
 
-# Local only: sandbox / RLS scratch files
-utility/
+# profiling
+profile.log
 
-# Security-review scratch (one-off ad-hoc test scripts created during IDOR/tenant audit)
-apply_tenant_idor_patch.py
-apply_tenant_idor_patch_final.py
-cross_tenant_negative_test.py
-idor_target_context.txt
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# mypy
+.mypy_cache/
+
+# pytest
+.pytest_cache/
+
+# tox
+.tox/
+
+# coverage
+.coverage*
+```
