@@ -4,6 +4,7 @@ Application-level, tenant-aware, atomic fixed-window protection. For global
 traffic, deploy Redis/API-gateway rate limiting in front of EOS as well.
 """
 
+import ipaddress
 import logging
 import os
 import time
@@ -86,19 +87,21 @@ def _user_value(user, name: str):
 
 def _get_tenant_from_request(request: Request) -> str | None:
     """Extract tenant ID from authenticated user context."""
-    # Tenant should come from authenticated user, NOT from header
-    # This prevents tenant switching attacks
-    user = getattr(request.state, "user", None)
-    if user and hasattr(user, 'tenant_id'):
-        return user.tenant_id
+    user = _state_user(request)
+    if user:
+        tenant_id = _user_value(user, "tenant_id")
+        if tenant_id is not None:
+            return str(tenant_id)
     return None
 
 
 def _get_user_from_request(request: Request) -> str | None:
     """Extract user ID from authentication context."""
-    user = getattr(request.state, "user", None)
-    if user and hasattr(user, 'id'):
-        return str(user.id)
+    user = _state_user(request)
+    if user:
+        user_id = _user_value(user, "id")
+        if user_id is not None:
+            return str(user_id)
     return None
 
 
@@ -110,14 +113,18 @@ class RateLimiter:
         max_requests: int = 100,
         window_seconds: int = 60,
         key_func=None,
-        limits: dict[str, int] | None = None
+        limits: dict[str, int] | None = None,
+        fail_closed: bool | None = None,
     ):
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.key_func = key_func or self._default_key_func
         self.limits = limits or {"ip": 1000, "tenant": 5000, "user": 300, "endpoint": 100}
-        self.fail_closed = (fail_closed if fail_closed is not None else
-                            os.getenv("EOS_RATE_LIMIT_FAIL_CLOSED", "true").lower() == "true")
+        self.fail_closed = (
+            fail_closed
+            if fail_closed is not None
+            else os.getenv("EOS_RATE_LIMIT_FAIL_CLOSED", "true").lower() == "true"
+        )
 
     def _default_key_func(self, request: Request) -> str:
         return _get_client_ip(request)
