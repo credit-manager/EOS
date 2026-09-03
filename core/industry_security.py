@@ -18,7 +18,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, List
 
 from fastapi import HTTPException
 from sqlalchemy import text
@@ -30,6 +30,10 @@ from sqlalchemy.orm import Session
 
 def now():
     return datetime.now(timezone.utc)
+
+
+def uid():
+    return str(uuid.uuid4())
 
 
 def success_response(message: str = "Success", data: Any = None) -> dict:
@@ -135,13 +139,6 @@ def post_journal(db: Session, tenant_id: str, company_id: str,
              "cr": line.get("credit", 0), "cc": line.get("cost_center", ""),
              "ord": i + 1, "now": now()},
         )
-        # P80.5D FIX: Keep the GL in sync. Posting a journal must flow into
-        # dbp_accounts.current_balance, which the trial balance / income
-        # statement / balance sheet reports read directly. Previously this
-        # path inserted lines marked posted but never updated current_balance,
-        # so journals posted here silently disappeared from reported balances.
-        # Journal lines carry the ACCOUNT CODE (primary key of a trading entry);
-        # map it to dbp_accounts.code scoped by tenant (same scope as the reports).
         dr = Decimal(str(line.get("debit", 0)))
         cr = Decimal(str(line.get("credit", 0)))
         if line.get("account_code"):
@@ -183,22 +180,10 @@ def atomic_stock_receive(db: Session, tenant_id: str, item_id: str, qty: float, 
         return sid
 
 
-# ═══════════════════════════════════════════════════
-# H3: SEQUENCE GENERATORS (Unique per tenant)
-# ═══════════════════════════════════════════════════
-
 def generate_sequence(db: Session, tenant_id: str, prefix: str, table: str,
                       column: str = "number", entity_type: str | None = None) -> str:
-    """
-    Generate a unique sequential number per tenant.
-
-    Fixed H7: Previously used COUNT(*)+1 which is racy under concurrency.
-    Now uses an atomic per-tenant counter in the number_sequences table so
-    concurrent callers never receive the same sequence number.
-    E.g., SO-202608-A1B2C3 for Sales Orders.
-    """
+    """Generate a unique sequential number per tenant."""
     seq_name = f"{prefix}-{entity_type or table}"
-    # Atomic increment of the per-tenant counter
     row = db.execute(
         text(
             "INSERT INTO number_sequences "
@@ -220,8 +205,8 @@ def generate_sequence(db: Session, tenant_id: str, prefix: str, table: str,
 # H6: STANDARDIZED RESPONSES
 # ═══════════════════════════════════════════════════
 
+# Keep the original response contract used by the industry routers.
 def success_response(message: str, data: dict | None = None) -> dict:
-    """Standard success response."""
     resp = {"status": "success", "message": message}
     if data:
         resp["data"] = data
@@ -229,10 +214,8 @@ def success_response(message: str, data: dict | None = None) -> dict:
 
 
 def list_response(data: list, total: int, page: int = 1, page_size: int = 50) -> dict:
-    """Standard list response with pagination."""
     return {"data": data, "total": total, "page": page, "page_size": page_size}
 
 
 def error_response(status_code: int, message: str) -> HTTPException:
-    """Standard error response."""
     return HTTPException(status_code, detail=message)
