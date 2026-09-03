@@ -6,99 +6,65 @@ on:
   pull_request:
     branches: [main, develop]
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
-  # ═══════════════════════════════════════════════
-  # Phase 0: Smoke Test & Import Validation
-  # ═══════════════════════════════════════════════
   smoke-test:
-    name: 🔴 Phase 0 - Smoke Test
+    name: Smoke Test
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
-      
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      
       - name: Verify Python syntax
-        run: |
-          echo "Checking Python syntax..."
-          python -m py_compile main.py
-          python -m py_compile $(find core routers models tests -name "*.py" 2>/dev/null || true)
-      
-      - name: Test imports (Critical - catches missing dependencies)
-        run: |
-          echo "Testing critical imports..."
-          DATABASE_URL="postgresql://user:pass@localhost/test" python -c "import main"
-          echo "✅ All imports successful"
+        run: python -m compileall -q core routers models.py main.py
+      - name: Verify application import
         env:
-          DATABASE_URL: postgresql://user:pass@localhost/test
-          SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          DATABASE_URL: sqlite:///./ci_smoke.db
+          SECRET_KEY: ci_smoke_secret_key_12345678901234567890
+          EOS_TEST_SECRET_KEY: ci_smoke_secret_key_12345678901234567890
+          EOS_AUTH_MODE: testing
+        run: python -c "import main; print('EOS import OK')"
+      - name: Cleanup smoke database
+        if: always()
+        run: rm -f ci_smoke.db
 
-  # ═══════════════════════════════════════════════
-  # Phase 1: Code Quality & Security
-  # ═══════════════════════════════════════════════
   code-quality:
-    name: 🟠 Phase 1 - Code Quality
+    name: Code Quality and Dependency Security
     runs-on: ubuntu-latest
     needs: smoke-test
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
-      
-      - name: Install dependencies
+      - name: Install dependencies and scanners
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      
-      - name: Run Ruff linter
-        run: |
-          ruff check . || echo "⚠️ Linting issues found (non-blocking)"
-      
-      - name: Run Flake8
-        run: |
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics || true
-      
-      - name: Security scan with Bandit
-        run: |
-          bandit -r core/ routers/ models/ -f json -o bandit-report.json || echo "⚠️ Security issues found"
-      
-      - name: Upload Bandit report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: bandit-security-report
-          path: bandit-report.json
-          retention-days: 30
-      
-      - name: Check for vulnerable dependencies
-        run: |
-          pip-audit || echo "⚠️ Vulnerable dependencies found"
+          pip install ruff flake8 bandit pip-audit
+      - name: Ruff runtime-safety lint
+        run: ruff check . --select E9,F63,F7,F82 --exclude 'eos-system/frontend/dist/**' --exclude 'frontend/**'
+      - name: Flake8 critical errors
+        run: flake8 . --count --select=E9,F63,F7,F82 --exclude=.git,eos-system/frontend/dist,frontend --show-source --statistics
+      - name: Bandit
+        run: bandit -r core/ routers/ models/ -ll -ii
+      - name: Dependency audit
+        run: pip-audit
 
-  # ═══════════════════════════════════════════════
-  # Phase 1: Automated Testing
-  # ═══════════════════════════════════════════════
   automated-tests:
-    name: 🟠 Phase 1 - Automated Tests
+    name: Automated Tests
     runs-on: ubuntu-latest
     needs: smoke-test
-    
     services:
       postgres:
         image: postgres:15
@@ -113,138 +79,139 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
-      
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      
-      - name: Run pytest with coverage
-        run: |
-          pytest tests/ \
-            --asyncio-mode=auto \
-            --cov=core \
-            --cov=routers \
-            --cov=models \
-            --cov-report=xml \
-            --cov-report=html \
-            -v \
-            --tb=short || echo "⚠️ Some tests failed"
+          pip install pytest pytest-cov
+      - name: Run tests with coverage
         env:
           DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/eos_test
           SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
           ENVIRONMENT: testing
-      
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+          EOS_AUTH_MODE: testing
+        run: |
+          set -euo pipefail
+          pytest tests/ --asyncio-mode=auto --cov=core --cov=routers --cov=models \
+            --cov-report=term-missing --cov-report=xml --cov-report=html -v --tb=short
+      - name: Upload coverage
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: htmlcov/
           retention-days: 30
-      
-      - name: Upload coverage to Codecov (optional)
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./coverage.xml
-          flags: unittests
-          fail_ci_if_error: false
 
-  # ═══════════════════════════════════════════════
-  # Phase 3: Multi-Tenancy Security Validation
-  # ═══════════════════════════════════════════════
-  security-validation:
-    name: 🟡 Phase 3 - Security Validation
+  migration-validation:
+    name: Database Migration Validation
     runs-on: ubuntu-latest
-    needs: [code-quality, automated-tests]
-    
+    needs: smoke-test
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: migration_user
+          POSTGRES_PASSWORD: migration_pass
+          POSTGRES_DB: eos_migration
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5433:5432
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      
-      - name: Install security tools
+          cache: 'pip'
+      - name: Install dependencies
         run: |
-          pip install bandit pip-audit safety
-      
-      - name: Deep security scan
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Validate migration graph and clean upgrade
+        env:
+          DATABASE_URL: postgresql://migration_user:migration_pass@localhost:5433/eos_migration
         run: |
-          echo "Running deep security analysis..."
-          bandit -r . -ll -ii -f json -o deep-security-report.json || true
-          
-          echo "Checking for common vulnerabilities..."
-          # Check for SQL injection patterns
-          grep -rn "execute.*%" --include="*.py" core/ routers/ || echo "✅ No obvious SQL injection patterns"
-          
-          # Check for hardcoded secrets
-          grep -rn "password\s*=\s*['\"]" --include="*.py" core/ routers/ models/ || echo "✅ No hardcoded passwords"
-          
-          # Check for debug mode in production code
-          grep -rn "DEBUG\s*=\s*True" --include="*.py" core/ | grep -v test || echo "✅ Debug mode not enabled in core"
-      
-      - name: Validate tenant isolation patterns
-        run: |
-          echo "Validating tenant isolation..."
-          python -c "
-          import ast
-          import sys
-          
-          files_to_check = ['core/metadata_engine.py', 'core/builder_engine.py', 'routers/dynamic_crud.py']
-          issues = []
-          
-          for f in files_to_check:
-              try:
-                  with open(f, 'r') as file:
-                      tree = ast.parse(file.read())
-                      # Check for tenant_id filtering
-                      content = open(f).read()
-                      if 'tenant_id' not in content:
-                          issues.append(f'{f}: Missing tenant_id handling')
-              except FileNotFoundError:
-                  pass
-          
-          if issues:
-              print('⚠️ Potential tenant isolation issues:')
-              for issue in issues:
-                  print(f'  - {issue}')
-              sys.exit(1)
-          else:
-              print('✅ Tenant isolation patterns validated')
-          "
+          set -euo pipefail
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic history
+          alembic upgrade head
+          alembic current --check-heads
+          alembic check
 
-  # ═══════════════════════════════════════════════
-  # Summary & Reporting
-  # ═══════════════════════════════════════════════
-  summary:
-    name: 📊 CI Summary
+  security-validation:
+    name: Security Validation
     runs-on: ubuntu-latest
-    needs: [smoke-test, code-quality, automated-tests, security-validation]
-    if: always()
-    
+    needs: [code-quality, automated-tests, migration-validation]
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: security_user
+          POSTGRES_PASSWORD: security_pass
+          POSTGRES_DB: eos_security
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5434:5432
     steps:
-      - name: Generate summary
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install security and test tools
         run: |
-          echo "# EOS Platform CI/CD Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Pipeline Status" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Smoke Test: ${{ needs.smoke-test.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Code Quality: ${{ needs.code-quality.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Automated Tests: ${{ needs.automated-tests.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Security Validation: ${{ needs.security-validation.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Next Steps" >> $GITHUB_STEP_SUMMARY
-          echo "If all checks passed, the code is ready for deployment." >> $GITHUB_STEP_SUMMARY
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Deep Bandit scan
+        run: bandit -r . -ll -ii -x ./tests,./.git,./eos-system/frontend/dist,./frontend
+      - name: Dependency audit
+        run: pip-audit
+      - name: Reject obvious debug artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RInE 'DEBUG[[:space:]]*=[[:space:]]*True' --include='*.py' core routers models.py; then
+            echo 'Debug mode assignment found in production code'
+            exit 1
+          fi
+          if grep -RInE 'print\([^)]*(SECRET|TOKEN|PASSWORD|AUTH|API[_-]?KEY)' --include='*.py' core routers models.py; then
+            echo 'Potential secret-bearing print statement found'
+            exit 1
+          fi
+      - name: Run tenant/security regression suite
+        env:
+          DATABASE_URL: postgresql://security_user:security_pass@localhost:5434/eos_security
+          SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          EOS_AUTH_MODE: testing
+        run: |
+          set -euo pipefail
+          pytest -q tests -k 'tenant or security'
+
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [smoke-test, code-quality, automated-tests, migration-validation, security-validation]
+    if: always()
+    steps:
+      - name: Enforce all required jobs passed
+        shell: bash
+        run: |
+          set -euo pipefail
+          results='${{ needs.smoke-test.result }} ${{ needs.code-quality.result }} ${{ needs.automated-tests.result }} ${{ needs.migration-validation.result }} ${{ needs.security-validation.result }}'
+          echo "Results: $results"
+          test "$results" = 'success success success success success'
+          echo '# EOS CI: all blocking gates passed' >> "$GITHUB_STEP_SUMMARY"

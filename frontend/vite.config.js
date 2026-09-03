@@ -2,7 +2,6 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -19,18 +18,9 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/docs': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/openapi.json': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
+      '/api': { target: 'http://localhost:8001', changeOrigin: true },
+      '/docs': { target: 'http://localhost:8001', changeOrigin: true },
+      '/openapi.json': { target: 'http://localhost:8001', changeOrigin: true },
     },
   },
   build: {
@@ -41,7 +31,7 @@ export default defineConfig({
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom'],
           ui: ['antd', '@ant-design/icons', 'framer-motion'],
-          charts: ['recharts'],
+          charts: ['recharts', '@ant-design/charts'],
           utils: ['axios', '@tanstack/react-query', 'zustand', 'dayjs', 'i18next', 'react-i18next'],
         },
       },

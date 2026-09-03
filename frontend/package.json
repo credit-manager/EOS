@@ -3,52 +3,12 @@
   "version": "1.0.0",
   "description": "EOS ERP Platform - Dynamic Enterprise Resource Planning Frontend",
   "private": true,
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
-    "test": "vitest",
-    "test:ui": "vitest --ui"
-  },
+  "scripts": {"dev":"vite","build":"vite build","preview":"vite preview","lint":"eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0","test":"vitest","test:ui":"vitest --ui"},
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^6.20.0",
-    "axios": "^1.6.2",
-    "@tanstack/react-query": "^5.12.2",
-    "zustand": "^4.4.7",
-    "i18next": "^23.7.6",
-    "react-i18next": "^13.5.0",
-    "dayjs": "^1.11.10",
-    "recharts": "^2.10.3",
-    "antd": "^5.12.2",
-    "@ant-design/icons": "^5.2.6",
-    "framer-motion": "^10.16.16"
+    "react":"^18.2.0","react-dom":"^18.2.0","react-router-dom":"^6.20.0","axios":"^1.6.2","@tanstack/react-query":"^5.12.2","zustand":"^4.4.7","i18next":"^23.7.6","react-i18next":"^13.5.0","dayjs":"^1.11.10","recharts":"^2.10.3","antd":"^5.12.2","@ant-design/icons":"^5.2.6","@ant-design/charts":"^2.2.5","framer-motion":"^10.16.16"
   },
   "devDependencies": {
-    "@types/react": "^18.2.43",
-    "@types/react-dom": "^18.2.17",
-    "@vitejs/plugin-react": "^4.2.1",
-    "vite": "^5.0.8",
-    "eslint": "^8.55.0",
-    "eslint-plugin-react": "^7.33.2",
-    "eslint-plugin-react-hooks": "^4.6.0",
-    "eslint-plugin-react-refresh": "^0.4.5",
-    "vitest": "^1.0.4",
-    "@testing-library/react": "^14.1.2",
-    "@testing-library/jest-dom": "^6.1.5"
+    "@types/react":"^18.2.43","@types/react-dom":"^18.2.17","@vitejs/plugin-react":"^4.2.1","vite":"^5.0.8","eslint":"^8.55.0","eslint-plugin-react":"^7.33.2","eslint-plugin-react-hooks":"^4.6.0","eslint-plugin-react-refresh":"^0.4.5","vitest":"^1.0.4","@testing-library/react":"^14.1.2","@testing-library/jest-dom":"^6.1.5"
   },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
-  }
+  "browserslist":{"production":[">0.2%","not dead","not op_mini all"],"development":["last 1 chrome version","last 1 firefox version","last 1 safari version"]}
 }

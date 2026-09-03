@@ -1,19 +1,4 @@
-"""
-AUTH ADAPTER
-=============
-
-Switches between test and production authentication
-based on environment configuration.
-
-Usage:
-    from core.auth_adapter import get_current_user, optional_get_current_user
-
-Rules:
-    - EOS_AUTH_MODE=production → uses production_auth.py
-    - EOS_AUTH_MODE=test (or unset) → uses test auth (core/auth.py)
-    - No fallback from production secret to test secret
-    - Same return format in both modes
-"""
+"""Authentication adapter shared by test and production modes."""
 
 import os
 
@@ -50,27 +35,12 @@ def _get_test_auth():
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(
-        HTTPBearer(auto_error=False)
-    )
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False)),
 ) -> dict:
-    """
-    Get current authenticated user.
-
-    Production mode:
-        - Uses EOS_SECRET_KEY from environment
-        - Raises 401 if SECRET_KEY not set
-
-    Test mode:
-        - Uses hardcoded TEST_SECRET_KEY
-        - For verification/testing only
-    """
+    """Validate bearer credentials and establish server-side tenant context."""
     if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required", headers={"WWW-Authenticate": "Bearer"})
 
     if _is_production():
         from core.production_auth import _get_secret_key, verify_token
@@ -78,45 +48,34 @@ async def get_current_user(
         # Verify SECRET_KEY is set (will raise ValueError if not)
         try:
             _get_secret_key()
-        except ValueError as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=str(e)
-            )
-
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
         payload = verify_token(credentials.credentials)
-
     else:
-        from core.auth import verify_test_token as verify_token
+        from core.auth import verify_test_token
+        payload = verify_test_token(credentials.credentials)
 
-        payload = verify_token(credentials.credentials)
-
-    # Extract user info (same format for both modes)
     user_id = payload.get("sub")
-    if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token missing user ID",
-        )
-
     tenant_id = payload.get("tenant_id")
+    if user_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing user ID")
     if tenant_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token missing tenant ID",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing tenant ID")
 
-    # Bind the authenticated tenant into the DB context so RLS policies
-    # (app.tenant_id) are applied to every query in this request.
-    from database import current_tenant_id
-    current_tenant_id.set(str(tenant_id).lower())
-
-    return {
-        "id": user_id,
-        "tenant_id": tenant_id.lower(),
+    tenant_id = str(tenant_id).lower()
+    user = {
+        "id": str(user_id),
+        "tenant_id": tenant_id,
         "email": payload.get("email"),
         "roles": payload.get("roles", []),
     }
+
+    # Server-side state only. The effective tenant is never read from X-Tenant-ID.
+    request.state.user = user
+    request.state.tenant_id = tenant_id
+    from database import current_tenant_id
+    current_tenant_id.set(tenant_id)
+    return user
 
 
 async def optional_get_current_user(
@@ -134,5 +93,4 @@ async def optional_get_current_user(
     """
     if credentials is None:
         return None
-
-    return await get_current_user(credentials)
+    return await get_current_user(request, credentials)

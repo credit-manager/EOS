@@ -1,17 +1,7 @@
-"""
-RATE LIMITING MODULE - ENTERPRISE EDITION
-=========================================
-Multi-layer, tenant-aware, DB-backed sliding window rate limiter.
+"""Enterprise rate limiting for EOS.
 
-SECURITY FIXES:
-- Fixed H2: Trusted Proxy validation for X-Forwarded-For
-- Fixed H3: Multi-layer limits (IP + Tenant + User + Endpoint)
-- Fixed H4: Table creation moved to Alembic migration
-- Fixed H5: Proper retry-after calculation
-
-Usage:
-    limiter = RateLimiter(max_requests=100, window_seconds=60)
-    @router.get("/endpoint", dependencies=[Depends(limiter.check)])
+Application-level, tenant-aware, atomic fixed-window protection. For global
+traffic, deploy Redis/API-gateway rate limiting in front of EOS as well.
 """
 
 import logging
@@ -22,10 +12,11 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, Request, status
 
 logger = logging.getLogger(__name__)
+_ENGINE = None
+_TEXT = None
 
 
 def _get_id(text: str) -> int:
-    """Deterministic 64-bit hash for rate-limit keying."""
     h = 1469598103934665603
     for ch in text.encode("utf-8"):
         h = ((h ^ ch) * 1099511628211) & 0xFFFFFFFFFFFFFFFF
@@ -33,69 +24,64 @@ def _get_id(text: str) -> int:
 
 
 def _load_engine():
-    """Lazily obtain the shared SQLAlchemy engine."""
     global _ENGINE, _TEXT
     if _ENGINE is None:
         from sqlalchemy import create_engine
         from sqlalchemy import text as stext
         url = os.getenv("DATABASE_URL")
         if not url:
-            logger.warning("DATABASE_URL not set. Rate limiting disabled.")
-            _ENGINE = None
+            logger.error("DATABASE_URL is not configured; rate limiting unavailable")
             _TEXT = stext
-            return _ENGINE, _TEXT
+            return None, _TEXT
         _ENGINE = create_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=10)
         _TEXT = stext
-        # NOTE: Table creation should be done via Alembic migration
-        # This is a fallback for dev only
-        try:
-            with _ENGINE.begin() as conn:
-                conn.execute(stext(
-                    "CREATE TABLE IF NOT EXISTS dbp_rate_limits (\n"
-                    "    bucket TEXT PRIMARY KEY,\n"
-                    "    window_start TIMESTAMP NOT NULL,\n"
-                    "    request_count INTEGER NOT NULL DEFAULT 0\n"
-                    ")"
-                ))
-        except Exception as e:
-            logger.error(f"Failed to create rate limit table: {e}")
     return _ENGINE, _TEXT
 
 
-_ENGINE = None
-_TEXT = None
+def _parse_ip(value: str):
+    try:
+        return ipaddress.ip_address(value.strip())
+    except ValueError:
+        return None
+
+
+def _trusted_networks():
+    networks = []
+    for raw in os.getenv("EOS_TRUSTED_PROXIES", "").split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(raw, strict=False))
+        except ValueError:
+            logger.error("Ignoring invalid EOS_TRUSTED_PROXIES entry")
+    return networks
 
 
 def _get_client_ip(request: Request) -> str:
-    """
-    Securely extract client IP with trusted proxy validation.
-    
-    SECURITY FIX: Never trust X-Forwarded-For unless from trusted proxy.
-    """
-    trusted_proxies_str = os.getenv("EOS_TRUSTED_PROXIES", "")
-    trusted_proxies = [p.strip() for p in trusted_proxies_str.split(",") if p.strip()]
-    
-    client_host = request.client.host if request.client else "unknown"
-    
-    # If no trusted proxies configured, ignore forwarded headers completely
-    if not trusted_proxies:
-        return client_host.split(':')[0] if client_host else "unknown"
-    
-    # Check if immediate connection is from trusted proxy
-    is_trusted = any(client_host.startswith(p) for p in trusted_proxies)
-    
-    if not is_trusted:
-        logger.debug(f"Untrusted proxy {client_host}, ignoring X-Forwarded-For")
-        return client_host.split(':')[0] if client_host else "unknown"
-    
-    # If trusted, parse X-Forwarded-For safely (leftmost IP = original client)
-    forwarded_for = request.headers.get('x-forwarded-for', '')
-    if forwarded_for:
-        ips = [ip.strip() for ip in forwarded_for.split(',')]
-        if ips:
-            return ips[0]
-    
-    return client_host.split(':')[0] if client_host else "unknown"
+    raw_client = request.client.host if request.client else "unknown"
+    client_ip = _parse_ip(raw_client)
+    networks = _trusted_networks()
+    if not client_ip or not any(client_ip in network for network in networks):
+        return str(client_ip) if client_ip else "unknown"
+
+    candidates = [p.strip() for p in request.headers.get("x-forwarded-for", "").split(",") if p.strip()]
+    for candidate in reversed(candidates):
+        parsed = _parse_ip(candidate)
+        if parsed and not any(parsed in network for network in networks):
+            return str(parsed)
+    return str(client_ip)
+
+
+def _state_user(request: Request):
+    """Normalize dict/object authentication state without trusting client headers."""
+    return getattr(request.state, "user", None)
+
+
+def _user_value(user, name: str):
+    if isinstance(user, dict):
+        return user.get(name)
+    return getattr(user, name, None)
 
 
 def _get_tenant_from_request(request: Request) -> str | None:
@@ -117,15 +103,7 @@ def _get_user_from_request(request: Request) -> str | None:
 
 
 class RateLimiter:
-    """
-    Enterprise multi-layer sliding window rate limiter.
-    
-    Layers:
-    1. Global IP limit (DDoS protection)
-    2. Tenant limit (Noisy neighbor protection)
-    3. User limit (Abuse protection)
-    4. Endpoint limit (Resource protection)
-    """
+    """Atomic fixed-window, multi-layer application rate limiter."""
 
     def __init__(
         self,
@@ -137,15 +115,11 @@ class RateLimiter:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.key_func = key_func or self._default_key_func
-        self.limits = limits or {
-            "ip": 1000,       # Per IP
-            "tenant": 5000,   # Per Tenant
-            "user": 300,      # Per User
-            "endpoint": 100   # Per Endpoint
-        }
+        self.limits = limits or {"ip": 1000, "tenant": 5000, "user": 300, "endpoint": 100}
+        self.fail_closed = (fail_closed if fail_closed is not None else
+                            os.getenv("EOS_RATE_LIMIT_FAIL_CLOSED", "true").lower() == "true")
 
     def _default_key_func(self, request: Request) -> str:
-        """Default key function: secure client IP."""
         return _get_client_ip(request)
 
     def _generate_buckets(self, request: Request) -> list[tuple[str, int]]:
@@ -156,179 +130,75 @@ class RateLimiter:
         ip = _get_client_ip(request)
         tenant_id = _get_tenant_from_request(request)
         user_id = _get_user_from_request(request)
-        endpoint = request.url.path
-        
-        buckets = []
-        
-        # Layer 1: IP Limit (Global DDoS protection)
-        ip_limit = self.limits.get("ip", 1000)
-        buckets.append((f"rl:ip:{_get_id(ip):016x}:{self.window_seconds}", ip_limit))
-        
-        # Layer 2: Tenant Limit (Noisy neighbor)
+        endpoint = request.url.path or "/"
+        normalized_ep = "".join(c for c in endpoint if c.isalnum() or c in "/_-:")
+        buckets = [
+            (f"rl:ip:{_get_id(ip):016x}:{self.window_seconds}", self.limits.get("ip", self.max_requests)),
+            (f"rl:ep:{_get_id(normalized_ep):016x}:{self.window_seconds}", self.limits.get("endpoint", self.max_requests)),
+        ]
         if tenant_id:
-            tenant_limit = self.limits.get("tenant", 5000)
-            buckets.append((f"rl:tenant:{tenant_id}:{self.window_seconds}", tenant_limit))
-        
-        # Layer 3: User Limit (Abuse prevention)
+            buckets.extend([
+                (f"rl:tenant:{tenant_id}:{self.window_seconds}", self.limits.get("tenant", self.max_requests)),
+                (f"rl:ep_tenant:{tenant_id}:{_get_id(normalized_ep):016x}:{self.window_seconds}", self.limits.get("endpoint", self.max_requests)),
+            ])
         if user_id:
-            user_limit = self.limits.get("user", 300)
-            buckets.append((f"rl:user:{user_id}:{self.window_seconds}", user_limit))
-        
-        # Layer 4: Endpoint Limit (Specific resource)
-        if endpoint:
-            ep_limit = self.limits.get("endpoint", 100)
-            normalized_ep = "".join([c for c in endpoint if c.isalnum() or c == '/'])
-            buckets.append((f"rl:ep:{_get_id(normalized_ep):016x}:{self.window_seconds}", ep_limit))
-            
-            # Tenant+Endpoint combination
-            if tenant_id:
-                buckets.append((f"rl:ep_tenant:{tenant_id}:{_get_id(normalized_ep):016x}:{self.window_seconds}", ep_limit))
-        
+            buckets.append((f"rl:user:{user_id}:{self.window_seconds}", self.limits.get("user", self.max_requests)))
         return buckets
 
     def check(self, request: Request) -> None:
-        """
-        Check if request is allowed against ALL layers atomically.
-        
-        Raises HTTPException 429 if ANY layer exceeds its limit.
-        """
         engine, stext = _load_engine()
         if engine is None:
-            # Fail open if DB unavailable (log warning)
-            logger.warning("Rate limiter DB unavailable. Allowing request.")
+            if self.fail_closed:
+                raise HTTPException(status_code=503, detail="Rate limiting service unavailable")
+            logger.warning("Rate limiting unavailable; explicit fail-open policy enabled")
             return
 
+        now = time.time()
+        window_epoch = int(now // self.window_seconds) * self.window_seconds
+        window_start = datetime.fromtimestamp(window_epoch, tz=timezone.utc).replace(tzinfo=None)
         buckets = self._generate_buckets(request)
-        cur = int(time.time() // self.window_seconds) * self.window_seconds
-        cur_start = datetime.fromtimestamp(cur, tz=timezone.utc)
-        cur_iso = cur_start.strftime("%Y-%m-%d %H:%M:%S")
-
-        conn = engine.connect()
+        placeholders = ", ".join(f":b{i}" for i in range(len(buckets)))
+        params = {f"b{i}": bucket for i, (bucket, _limit) in enumerate(buckets)}
         try:
-            # Check ALL buckets first (read phase)
-            for bucket, limit in buckets:
-                row = conn.execute(
-                    stext(
-                        "SELECT window_start, request_count FROM dbp_rate_limits "
-                        "WHERE bucket = :b"
-                    ),
-                    {"b": bucket},
-                ).fetchone()
-
-                if row is not None:
-                    row_start = row[0]
-                    count = int(row[1])
-                    row_iso = str(row_start)[:19] if row_start else ""
-
-                    if row_iso == cur_iso and count >= limit:
-                        # Calculate accurate retry-after
-                        oldest_time = cur_start
-                        retry_after = int((oldest_time + timedelta(seconds=self.window_seconds) - datetime.now(timezone.utc)).total_seconds())
-                        
-                        logger.info(
-                            f"Rate limit exceeded for bucket {bucket}. "
-                            f"Limit: {limit}, Retry after: {retry_after}s"
-                        )
-                        
+            with engine.begin() as conn:
+                for bucket, _limit in buckets:
+                    conn.execute(stext(
+                        "INSERT INTO dbp_rate_limits (bucket, window_start, request_count) "
+                        "VALUES (:b, :ws, 0) ON CONFLICT (bucket) DO NOTHING"),
+                        {"b": bucket, "ws": window_start})
+                params["ws"] = window_start
+                rows = conn.execute(
+                    stext(f"SELECT bucket, window_start, request_count FROM dbp_rate_limits "
+                          f"WHERE bucket IN ({placeholders}) FOR UPDATE"), params).fetchall()
+                state = {row[0]: (row[1], int(row[2])) for row in rows}
+                for bucket, limit in buckets:
+                    row_start, count = state[bucket]
+                    effective_count = 0 if row_start != window_start else count
+                    if effective_count >= limit:
+                        retry_after = max(1, int(window_epoch + self.window_seconds - time.time()))
                         raise HTTPException(
                             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                             detail="Rate limit exceeded. Try again later.",
-                            headers={
-                                "Retry-After": str(max(1, retry_after)),
-                                "X-RateLimit-Limit": str(limit),
-                                "X-RateLimit-Remaining": "0",
-                                "X-RateLimit-Bucket": bucket[:50],  # Truncate for header
-                            }
+                            headers={"Retry-After": str(retry_after),
+                                     "X-RateLimit-Limit": str(limit),
+                                     "X-RateLimit-Remaining": "0"},
                         )
-
-            # All checks passed - increment ALL buckets (write phase)
-            for bucket, limit in buckets:
-                while True:
-                    conn.execute(stext("BEGIN"))
-                    row = conn.execute(
-                        stext(
-                            "SELECT window_start, request_count FROM dbp_rate_limits "
-                            "WHERE bucket = :b FOR UPDATE"
-                        ),
-                        {"b": bucket},
-                    ).fetchone()
-
-                    if row is None:
-                        conn.execute(
-                            stext(
-                                "INSERT INTO dbp_rate_limits "
-                                "(bucket, window_start, request_count) "
-                                "VALUES (:b, :ws, 1)"
-                            ),
-                            {"b": bucket, "ws": cur_iso},
-                        )
-                        conn.execute(stext("COMMIT"))
-                        break
-
-                    row_start = row[0]
-                    row_iso = str(row_start)[:19] if row_start else ""
-
-                    if row_iso != cur_iso:
-                        # Reset expired window
-                        conn.execute(
-                            stext(
-                                "UPDATE dbp_rate_limits SET window_start = :ws, "
-                                "request_count = 1 WHERE bucket = :b"
-                            ),
-                            {"b": bucket, "ws": cur_iso},
-                        )
-                        conn.execute(stext("COMMIT"))
-                        break
-
-                    # Increment counter
-                    conn.execute(
-                        stext(
-                            "UPDATE dbp_rate_limits SET request_count = request_count + 1 "
-                            "WHERE bucket = :b"
-                        ),
-                        {"b": bucket},
-                    )
-                    conn.execute(stext("COMMIT"))
-                    break
-                    
+                for bucket, _limit in buckets:
+                    conn.execute(stext(
+                        "UPDATE dbp_rate_limits SET window_start = :ws, "
+                        "request_count = CASE WHEN window_start <> :ws THEN 1 ELSE request_count + 1 END "
+                        "WHERE bucket = :b"), {"ws": window_start, "b": bucket})
         except HTTPException:
             raise
-        except Exception as e:
-            logger.error(f"Rate limiter error: {e}")
-            # Fail open on unexpected errors (log and allow)
-        finally:
-            conn.close()
+        except Exception:
+            logger.exception("Rate limiter database failure")
+            if self.fail_closed:
+                raise HTTPException(status_code=503, detail="Rate limiting service unavailable")
+            logger.warning("Explicit fail-open policy enabled; allowing request")
 
 
-# Pre-configured rate limiters for common scenarios
-
-# General API: Balanced limits
 default_limiter = RateLimiter(max_requests=100, window_seconds=60)
-
-# Auth endpoints: Very strict (brute force protection)
-auth_limiter = RateLimiter(
-    max_requests=10,
-    window_seconds=60,
-    limits={"ip": 10, "user": 5, "endpoint": 5}
-)
-
-# Read endpoints: More lenient
-read_limiter = RateLimiter(
-    max_requests=200,
-    window_seconds=60,
-    limits={"ip": 2000, "tenant": 10000, "user": 500, "endpoint": 200}
-)
-
-# Write endpoints: Moderate
-write_limiter = RateLimiter(
-    max_requests=100,
-    window_seconds=60,
-    limits={"ip": 1000, "tenant": 5000, "user": 200, "endpoint": 100}
-)
-
-# Builder/AI endpoints: Expensive operations
-builder_limiter = RateLimiter(
-    max_requests=20,
-    window_seconds=60,
-    limits={"ip": 50, "tenant": 200, "user": 50, "endpoint": 20}
-)
+auth_limiter = RateLimiter(max_requests=10, window_seconds=60, limits={"ip": 10, "user": 5, "endpoint": 5})
+read_limiter = RateLimiter(max_requests=200, window_seconds=60, limits={"ip": 2000, "tenant": 10000, "user": 500, "endpoint": 200})
+write_limiter = RateLimiter(max_requests=100, window_seconds=60, limits={"ip": 1000, "tenant": 5000, "user": 200, "endpoint": 100})
+builder_limiter = RateLimiter(max_requests=20, window_seconds=60, limits={"ip": 50, "tenant": 200, "user": 50, "endpoint": 20})

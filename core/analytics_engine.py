@@ -1,4 +1,4 @@
-﻿"""
+"""
 EOS Advanced Analytics Engine — P65
 Executive Dashboard + KPIs + Period Comparisons + Drill-Down.
 
