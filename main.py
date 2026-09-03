@@ -11,6 +11,7 @@ import uuid
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from core.api_versioning import SUPPORTED_VERSIONS, APIVersionMiddleware
@@ -151,7 +152,6 @@ app = FastAPI(
 )
 
 
-# CORS is explicit. There is no wildcard/implicit production fallback.
 _raw_cors = os.getenv("EOS_CORS_ORIGINS", "[]")
 try:
     cors_origins = json.loads(_raw_cors)
@@ -180,11 +180,7 @@ app.add_middleware(RequestIdMiddleware)
 app.add_middleware(LocaleMiddleware)
 app.add_middleware(APIVersionMiddleware)
 
-# Prometheus metrics - manual endpoint
-from prometheus_client import CollectorRegistry, generate_latest
-
 _prometheus_registry = CollectorRegistry()
-# Add default collectors
 from prometheus_client import PlatformCollector, ProcessCollector
 
 ProcessCollector(registry=_prometheus_registry)
@@ -218,7 +214,6 @@ async def api_version():
     }
 
 
-# Routers
 for _router in [
     dynamic_crud, relationships, entity_management, events_webhooks, security_admin,
     auto_ui, notifications, dashboards, workflows, data_jobs, webhook_management,
@@ -270,23 +265,12 @@ def root():
 
 @app.get("/app")
 async def serve_landing():
-    import os
-
-    from fastapi.responses import FileResponse
     index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
     if os.path.exists(index_path):
+        from fastapi.responses import FileResponse
         return FileResponse(index_path, media_type="text/html")
     return {"message": "Landing page not found"}
 
-
-# ──────────────────────────────────────────────────────────────
-# P67: React Frontend — served from eos-system/frontend/dist
-# Access at http://HOST/ui  (does NOT touch /app or any API route)
-# ──────────────────────────────────────────────────────────────
-import os as _os
-
-from fastapi.responses import FileResponse as _FileResponse
-from fastapi.staticfiles import StaticFiles
 
 _REACT_DIST = os.path.join(os.path.dirname(__file__), "eos-system", "frontend", "dist")
 if os.path.isdir(_REACT_DIST):
@@ -300,15 +284,18 @@ if os.path.isdir(_REACT_DIST):
 
     @app.get("/ui/manifest.webmanifest")
     async def _serve_manifest():
-        return _FileResponse(os.path.join(_REACT_DIST, "manifest.webmanifest"), media_type="application/manifest+json")
+        from fastapi.responses import FileResponse
+        return FileResponse(os.path.join(_REACT_DIST, "manifest.webmanifest"), media_type="application/manifest+json")
 
     @app.get("/ui/sw.js")
     async def _serve_sw():
-        return _FileResponse(os.path.join(_REACT_DIST, "sw.js"), media_type="application/javascript")
+        from fastapi.responses import FileResponse
+        return FileResponse(os.path.join(_REACT_DIST, "sw.js"), media_type="application/javascript")
 
     @app.get("/ui/{full_path:path}")
     async def _serve_react(full_path: str):
-        return _FileResponse(os.path.join(_REACT_DIST, "index.html"), media_type="text/html")
+        from fastapi.responses import FileResponse
+        return FileResponse(os.path.join(_REACT_DIST, "index.html"), media_type="text/html")
 
 
 if __name__ == "__main__":
