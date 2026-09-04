@@ -1,14 +1,15 @@
 """
 P30 Document Management Router — folders, documents, versions, tags
 """
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from typing import Optional
 
-from core.auth import require_permission
-from core.document_engine import DocumentEngine
-from core.rate_limit import read_limiter, write_limiter
 from database import get_db
+from core.auth import get_current_user, require_permission
+from core.rate_limit import read_limiter, write_limiter
+from core.document_engine import DocumentEngine
+
 
 router = APIRouter(
     prefix="/api/v1/dynamic",
@@ -23,7 +24,7 @@ def _err(status_code: int, code: str, message: str) -> HTTPException:
     })
 
 
-def _get_engine(db: Session=None) -> DocumentEngine:
+def _get_engine(db: Session = Depends(get_db)) -> DocumentEngine:
     return DocumentEngine(db)
 
 
@@ -37,8 +38,8 @@ def _get_engine(db: Session=None) -> DocumentEngine:
 )
 async def list_doc_folders(
     cid: str,
-    parent_id: str | None = None,
-    user: dict | None=None,
+    parent_id: Optional[str] = None,
+    user: dict = Depends(get_current_user),
     engine: DocumentEngine = Depends(_get_engine),
 ):
     """List document folders for a company (optionally by parent)."""
@@ -54,7 +55,7 @@ async def list_doc_folders(
 async def create_doc_folder(
     cid: str,
     body: dict,
-    user: dict | None=None,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
     engine: DocumentEngine = Depends(_get_engine),
 ):
@@ -86,7 +87,7 @@ async def create_doc_folder(
 )
 async def delete_doc_folder(
     fid: str,
-    db: Session=None,
+    db: Session = Depends(get_db),
     engine: DocumentEngine = Depends(_get_engine),
 ):
     """Delete a folder (only when empty of documents)."""
@@ -109,11 +110,11 @@ async def delete_doc_folder(
 )
 async def list_documents(
     cid: str,
-    folder_id: str | None = None,
-    doc_type: str | None = None,
-    search: str | None = None,
-    tag: str | None = None,
-    user: dict | None=None,
+    folder_id: Optional[str] = None,
+    doc_type: Optional[str] = None,
+    search: Optional[str] = None,
+    tag: Optional[str] = None,
+    user: dict = Depends(get_current_user),
     engine: DocumentEngine = Depends(_get_engine),
 ):
     """List documents with optional filters and title/description search."""
@@ -132,7 +133,7 @@ async def list_documents(
 async def create_document(
     cid: str,
     body: dict,
-    user: dict | None=None,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
     engine: DocumentEngine = Depends(_get_engine),
 ):
@@ -172,7 +173,7 @@ async def create_document(
 )
 async def get_document(
     did: str,
-    user: dict | None=None,
+    user: dict = Depends(get_current_user),
     engine: DocumentEngine = Depends(_get_engine),
 ):
     """Get a single document with tags and latest version."""
@@ -189,7 +190,7 @@ async def get_document(
 async def update_document(
     did: str,
     body: dict,
-    user: dict | None=None,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
     engine: DocumentEngine = Depends(_get_engine),
 ):
@@ -214,7 +215,7 @@ async def update_document(
 )
 async def delete_document(
     did: str,
-    db: Session=None,
+    db: Session = Depends(get_db),
     engine: DocumentEngine = Depends(_get_engine),
 ):
     """Delete a document with its versions and tags."""
@@ -235,7 +236,7 @@ async def delete_document(
 )
 async def list_versions(
     did: str,
-    user: dict | None=None,
+    user: dict = Depends(get_current_user),
     engine: DocumentEngine = Depends(_get_engine),
 ):
     """List version history of a document."""
@@ -253,7 +254,7 @@ async def list_versions(
 async def add_version(
     did: str,
     body: dict,
-    user: dict | None=None,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
     engine: DocumentEngine = Depends(_get_engine),
 ):
@@ -287,7 +288,7 @@ async def add_version(
 async def add_tag(
     did: str,
     body: dict,
-    user: dict | None=None,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
     engine: DocumentEngine = Depends(_get_engine),
 ):
@@ -312,7 +313,7 @@ async def add_tag(
 async def remove_tag(
     did: str,
     tag: str,
-    user: dict | None=None,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
     engine: DocumentEngine = Depends(_get_engine),
 ):
