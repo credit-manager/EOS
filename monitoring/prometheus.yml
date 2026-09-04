@@ -13,9 +13,6 @@ alerting:
             - alertmanager:9093
 
 scrape_configs:
-  # ─────────────────────────────────────
-  # EOS FastAPI Application
-  # ─────────────────────────────────────
   - job_name: "eos-api"
     metrics_path: /metrics
     static_configs:
@@ -24,42 +21,8 @@ scrape_configs:
           service: "eos-api"
           environment: "production"
 
-  # ─────────────────────────────────────
-  # Prometheus Self-Monitoring
-  # ─────────────────────────────────────
   - job_name: "prometheus"
     static_configs:
       - targets: ["localhost:9090"]
         labels:
           service: "prometheus"
-
-  # ─────────────────────────────────────
-  # Node Exporter — Host Metrics
-  # ─────────────────────────────────────
-  - job_name: "node-exporter"
-    static_configs:
-      - targets: ["node-exporter:9100"]
-        labels:
-          service: "node-exporter"
-          instance: "eos-server"
-
-  # ─────────────────────────────────────
-  # PostgreSQL Exporter — DB Metrics
-  # ─────────────────────────────────────
-  - job_name: "postgres-exporter"
-    static_configs:
-      - targets: ["postgres-exporter:9187"]
-        labels:
-          service: "postgres-exporter"
-          instance: "eos-db"
-
-  # ─────────────────────────────────────
-  # Nginx Exporter (if enabled)
-  # ─────────────────────────────────────
-  - job_name: "nginx"
-    static_configs:
-      - targets: ["nginx:9113"]
-        labels:
-          service: "nginx"
-    # Optional: uncomment if nginx-prometheus-exporter is added
-    # scrape_interval: 10s
