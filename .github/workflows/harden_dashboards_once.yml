@@ -12,6 +12,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: custom-erp-system-for-companies-24152
+      - name: Install test dependencies
+        run: python -m pip install -r requirements.txt
       - name: Apply tenant-scoped dashboard access
         run: |
           python - <<'PY'
