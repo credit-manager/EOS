@@ -20,8 +20,6 @@ class PaymentGatewayEngine:
         self._ensure_tables()
 
     def _ensure_tables(self):
-        # Migrations are authoritative in production. Runtime DDL remains only
-        # for legacy/dev environments so a fresh test database can boot.
         if os.getenv("EOS_AUTH_MODE", "test").lower() == "production" or os.getenv("EOS_RUNTIME_SCHEMA", "true").lower() != "true":
             return
         self.db.execute(text("CREATE TABLE IF NOT EXISTS dbp_payment_gateways (id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text, tenant_id TEXT NOT NULL, gateway_name TEXT NOT NULL, gateway_type TEXT NOT NULL, is_active BOOLEAN DEFAULT TRUE, config JSONB DEFAULT '{}', created_at TIMESTAMP DEFAULT NOW())"))
@@ -48,8 +46,9 @@ class PaymentGatewayEngine:
         if len(currency) != 3 or not currency.isalpha():
             raise ValueError("Currency must be a 3-letter ISO code")
         idem = IdempotencyStore(self.db)
+        request_payload = {"amount": str(amount), "currency": currency, "transaction_type": tx_type, "reference_type": ref_type, "reference_id": ref_id, "customer_id": customer_id, "payment_method": method}
         if idempotency_key:
-            replay = idem.reserve(tenant_id, idempotency_key, {"amount": str(amount), "currency": currency, "transaction_type": tx_type, "reference_type": ref_type, "reference_id": ref_id, "customer_id": customer_id, "payment_method": method})
+            replay = idem.reserve(tenant_id, idempotency_key, request_payload)
             if replay is not None:
                 body = replay.get("response_body") or {}
                 if isinstance(body, dict):
@@ -70,7 +69,7 @@ class PaymentGatewayEngine:
             raise
 
     def complete_transaction(self, transaction_id, tenant_id, gateway_response=None):
-        row = self.db.execute(text("SELECT id FROM dbp_payment_transactions WHERE id = :id AND tenant_id = :t"), {"id": transaction_id, "t": tenant_id}).fetchone()
+        row = self.db.execute(text("SELECT id FROM dbp_payment_transactions WHERE id = :id AND tenant_id = :t FOR UPDATE"), {"id": transaction_id, "t": tenant_id}).fetchone()
         if not row:
             return {"error": "Transaction not found"}
         self.db.execute(text("UPDATE dbp_payment_transactions SET status='completed', completed_at=NOW(), gateway_response = gateway_response || :resp WHERE id = :id AND tenant_id = :t"), {"id": transaction_id, "t": tenant_id, "resp": json.dumps(gateway_response or {})})
@@ -78,7 +77,7 @@ class PaymentGatewayEngine:
         return {"status": "completed", "transaction_id": transaction_id}
 
     def fail_transaction(self, transaction_id, tenant_id, reason=""):
-        row = self.db.execute(text("SELECT id FROM dbp_payment_transactions WHERE id = :id AND tenant_id = :t"), {"id": transaction_id, "t": tenant_id}).fetchone()
+        row = self.db.execute(text("SELECT id FROM dbp_payment_transactions WHERE id = :id AND tenant_id = :t FOR UPDATE"), {"id": transaction_id, "t": tenant_id}).fetchone()
         if not row:
             return {"error": "Transaction not found"}
         self.db.execute(text("UPDATE dbp_payment_transactions SET status='failed', gateway_response = gateway_response || :resp WHERE id = :id AND tenant_id = :t"), {"id": transaction_id, "t": tenant_id, "resp": json.dumps({"failure_reason": reason})})
@@ -147,8 +146,12 @@ class PaymentGatewayEngine:
     def process_bank_transfer(self, tenant_id, amount, bank_name, account_number, reference, idempotency_key=None):
         if not account_number:
             raise ValueError("Bank account number is required")
-        masked = "*" * max(0, len(account_number) - 4) + account_number[-4:]
-        return self.create_transaction(tenant_id, amount, method="bank_transfer", idempotency_key=idempotency_key)
+        if not bank_name:
+            raise ValueError("Bank name is required")
+        if not reference:
+            raise ValueError("Bank transfer reference is required")
+        metadata = {"bank_name": bank_name, "account_number_last4": account_number[-4:], "reference": reference}
+        return self.create_transaction(tenant_id, amount, method="bank_transfer", ref_type="bank_transfer", ref_id=reference, idempotency_key=idempotency_key)
 
     def process_cash(self, tenant_id, amount, received_by=None, idempotency_key=None):
         return self.create_transaction(tenant_id, amount, method="cash", idempotency_key=idempotency_key)
