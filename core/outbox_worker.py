@@ -22,12 +22,16 @@ class OutboxDispatcher:
             raise ValueError("tenant_id is required")
         store = OutboxStore(self.db)
         events = store.claim_batch(tenant_id, limit)
+        if not events:
+            return 0
+        # claim_batch atomically transitions all selected rows to processing.
+        # Commit that state before invoking external handlers so a slow handler
+        # never holds database row locks.
+        self.db.commit()
         processed = 0
         for event in events:
             event_id = event["id"]
             try:
-                store.mark_processing(event_id, tenant_id)
-                self.db.commit()
                 self.handler(
                     tenant_id=tenant_id,
                     event_type=event["event_type"],
