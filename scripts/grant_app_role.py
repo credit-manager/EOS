@@ -6,7 +6,6 @@ schema owner and EOS_DB_APP_USER is the runtime application role.
 import os
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import URL
 
 
 def main() -> None:
