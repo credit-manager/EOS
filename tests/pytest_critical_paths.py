@@ -1,16 +1,16 @@
+"""Focused pytest coverage for critical accounting and authorization paths."""
 from decimal import Decimal
 
 import pytest
 from fastapi import HTTPException
 
 from core.accounting_engine import AccountingEngine
-from core.auth import _authorize_user
-from core.industry_security import FieldSecurity
-from core.validation_engine import InputValidator
+from core.auth import _authorize_user, require_platform_owner
+from core.security import FieldSecurity, InputValidator, mask_sensitive_data, redact_audit_values
 
 
 class FakeResult:
-    def __init__(self, rows=None, rowcount=0):
+    def __init__(self, rows=None, rowcount=1):
         self.rows = rows or []
         self.rowcount = rowcount
 
@@ -20,22 +20,18 @@ class FakeResult:
     def fetchall(self):
         return self.rows
 
+    def scalar(self):
+        return self.rows[0][0] if self.rows else None
+
 
 class AccountingDB:
-    def __init__(self, results):
-        self.results = list(results)
+    def __init__(self, responses):
+        self.responses = list(responses)
         self.statements = []
 
     def execute(self, statement, params=None):
-        sql = str(statement)
-        self.statements.append((sql, params or {}))
-        return self.results.pop(0) if self.results else FakeResult()
-
-    def commit(self):
-        pass
-
-    def rollback(self):
-        pass
+        self.statements.append((str(statement), params or {}))
+        return self.responses.pop(0) if self.responses else FakeResult()
 
     def flush(self):
         pass
@@ -169,3 +165,101 @@ async def test_authorization_rejects_missing_user():
     with pytest.raises(HTTPException) as exc:
         _authorize_user(None, 'accounting', 'read')
     assert exc.value.status_code == 401
+
+
+def test_authorization_denies_missing_permission():
+    with pytest.raises(HTTPException) as exc:
+        _authorize_user({'permissions': [], 'roles': ['user']}, 'accounting', 'delete')
+    assert exc.value.status_code == 403
+
+
+def test_authorization_allows_exact_permission():
+    user = {'permissions': ['accounting:read'], 'roles': ['user']}
+    assert _authorize_user(user, 'accounting', 'read') == user
+
+
+def test_authorization_wildcard_allows_access():
+    user = {'permissions': ['*:*'], 'roles': []}
+    assert _authorize_user(user, 'accounting', 'delete') == user
+
+
+def test_authorization_allows_supported_dynamic_operator_actions_only():
+    user = {'permissions': [], 'roles': ['dynamic_operator']}
+    assert _authorize_user(user, 'dynamic', 'read') == user
+    with pytest.raises(HTTPException) as exc:
+        _authorize_user(user, 'dynamic', 'delete')
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_platform_owner_rejects_generic_admin_role():
+    with pytest.raises(HTTPException) as exc:
+        await require_platform_owner({'email': 'tenant-admin@example.com', 'roles': ['admin']})
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_platform_owner_accepts_explicit_platform_owner_role():
+    user = {'email': 'owner@example.com', 'roles': ['platform_owner']}
+    assert await require_platform_owner(user) == user
+
+
+def test_field_security_blocks_unauthorized_write():
+    payload, blocked = FieldSecurity.filter_writable_columns(
+        {'amount': 10, 'approved': True},
+        {'approved': {'writable_roles': ['accounting:approve']}},
+        ['accounting:read'],
+    )
+    assert payload == {'amount': 10}
+    assert blocked == ['approved']
+
+
+def test_field_security_allows_authorized_write():
+    payload, blocked = FieldSecurity.filter_writable_columns(
+        {'approved': True},
+        {'approved': {'writable_roles': ['accounting:approve']}},
+        ['accounting:approve'],
+    )
+    assert payload == {'approved': True}
+    assert blocked == []
+
+
+def test_field_security_masks_restricted_read_fields():
+    result = FieldSecurity.filter_visible_columns(
+        {'amount': 10, 'approved': True},
+        {'approved': {'visible_roles': ['accounting:approve']}},
+        ['accounting:read'],
+    )
+    assert result == {'amount': 10, 'approved': '***RESTRICTED***'}
+
+
+def test_sensitive_data_is_masked_and_audit_values_redacted():
+    assert mask_sensitive_data(
+        {'name': 'Alice', 'national_id': '123'},
+        {'national_id': {'is_sensitive': True}},
+    )['national_id'] == '***REDACTED***'
+    assert redact_audit_values({'profile': {'password': 'secret'}, 'amount': 10}) == {
+        'profile': {'password': '***REDACTED***'}, 'amount': 10
+    }
+
+
+def test_input_validation_rejects_invalid_enum_and_range():
+    errors = InputValidator.validate_record(
+        {'status': 'invalid', 'amount': -1},
+        [
+            {'code': 'status', 'field_type': 'string', 'is_required': True, 'enum_values': ['draft', 'posted']},
+            {'code': 'amount', 'field_type': 'number', 'is_required': True, 'ui_config': {'min': 0}},
+        ],
+    )
+    assert any('status' in e for e in errors)
+    assert any('amount' in e for e in errors)
+
+
+def test_input_validation_accepts_valid_record():
+    assert InputValidator.validate_record(
+        {'status': 'posted', 'amount': 100},
+        [
+            {'code': 'status', 'field_type': 'string', 'is_required': True, 'enum_values': ['draft', 'posted']},
+            {'code': 'amount', 'field_type': 'number', 'is_required': True, 'ui_config': {'min': 0}},
+        ],
+    ) == []
