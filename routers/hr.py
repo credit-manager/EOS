@@ -1,20 +1,20 @@
 """
 P27 Human Resources Router
 """
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
 from core.auth import require_permission, get_current_user
-from core.rate_limit import read_limiter, write_limiter
 from core.hr_engine import HREngine
+from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic", tags=["Human Resources"])
 
 
 @router.get("/companies/{cid}/employees", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_employees(cid: str, department_id: Optional[str] = None,
+async def list_employees(cid: str, department_id: str | None = None,
                          user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     return {"status": "success", "data": HREngine(db).list_employees(cid, tenant_id=user.get("tenant_id"),
                                                                       department_id=department_id)}
@@ -54,7 +54,7 @@ async def update_employee(eid: str, body: dict, user: dict = Depends(get_current
 
 
 @router.get("/companies/{cid}/leave-requests", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_leave_requests(cid: str, status: Optional[str] = None, employee_id: Optional[str] = None,
+async def list_leave_requests(cid: str, status: str | None = None, employee_id: str | None = None,
                               user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     return {"status": "success", "data": HREngine(db).list_leave_requests(cid, tenant_id=user.get("tenant_id"),
                                                                            status=status, employee_id=employee_id)}
@@ -97,8 +97,8 @@ async def record_attendance(cid: str, body: dict, user: dict = Depends(get_curre
 
 
 @router.get("/companies/{cid}/attendance", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_attendance(cid: str, employee_id: Optional[str] = None, start_date: Optional[str] = None,
-                         end_date: Optional[str] = None, user: dict = Depends(get_current_user),
+async def get_attendance(cid: str, employee_id: str | None = None, start_date: str | None = None,
+                         end_date: str | None = None, user: dict = Depends(get_current_user),
                          db: Session = Depends(get_db)):
     return {"status": "success", "data": HREngine(db).get_attendance(cid, tenant_id=user.get("tenant_id"),
                                                                       employee_id=employee_id,

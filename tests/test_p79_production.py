@@ -7,9 +7,16 @@ P79 — PRODUCTION DEPLOYMENT & FULL PRODUCT ANALYSIS
 4. First real tenant creation (end-to-end)
 5. Full product analysis (strengths, weaknesses, gaps)
 """
-import sys, io, json, uuid, time, os, subprocess
+import io
+import json
+import os
+import sys
+import time
+import uuid
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import urllib.request
+
 import psycopg2
 
 BASE = "http://127.0.0.1:8000"
@@ -156,11 +163,12 @@ try:
     test("3.4 SecurityMiddleware active", "SecurityMiddleware" in main)
     test("3.5 TrustedHostMiddleware active", "TrustedHostMiddleware" in main)
     test("3.6 CORS configured", "CORSMiddleware" in main)
-except:
+except Exception:
     test("3.4-3.6 Middleware check", False)
 
 # JWT has expiry
 import base64
+
 payload = json.loads(base64.urlsafe_b64decode(token.split('.')[1] + '=='))
 test("3.7 JWT has expiry", "exp" in payload)
 test("3.8 JWT has tenant_id", "tenant_id" in payload)
@@ -340,7 +348,7 @@ for name, path in [
     benchmarks.append((name, elapsed))
     warn(f"5.{benchmarks.index((name,elapsed))+1} {name} < 1s", elapsed < 1.0, f"{elapsed:.3f}s")
 
-print(f"\n  Performance Summary:")
+print("\n  Performance Summary:")
 for name, t in benchmarks:
     status = "OK" if t < 1.0 else "SLOW"
     print(f"    {name:20s} {t:.3f}s  [{status}]")
@@ -472,4 +480,4 @@ analysis = {
 }
 with open("P79_PRODUCT_ANALYSIS.json", "w", encoding="utf-8") as f:
     json.dump(analysis, f, indent=2, ensure_ascii=False)
-print(f"\nAnalysis saved to P79_PRODUCT_ANALYSIS.json")
+print("\nAnalysis saved to P79_PRODUCT_ANALYSIS.json")

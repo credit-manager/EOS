@@ -1,13 +1,22 @@
 """
 نقطة الدخول الرئيسية لتطبيق FastAPI
 """
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+import os
 from contextlib import asynccontextmanager
 
+from app.api import (
+    auth,
+    customers,
+    invoices,
+    orders,
+    products,
+    reports,
+    suppliers,
+    users,
+)
 from app.config import settings
-from app.api import auth, users, customers, suppliers, products, orders, invoices, reports
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 
 @asynccontextmanager
@@ -72,7 +81,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "app.main:app",
-        host="0.0.0.0",
+        host=os.getenv("EOS_BIND_HOST", "127.0.0.1"),
         port=8000,
         reload=settings.DEBUG
     )

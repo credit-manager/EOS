@@ -15,13 +15,12 @@ Usage:
     format_currency(1250000, "SAR", locale="ar")  # → "١٬٢٥٠٬٠٠٠٫٥٠ ر.س"
 """
 
-import os
 import json
-import copy
-from typing import Optional, Dict, Any
+import os
 from contextvars import ContextVar
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 # ═══════════════════════════════════════════════
 # Context Variables
@@ -33,7 +32,7 @@ _locale_var: ContextVar[str] = ContextVar("locale", default="en")
 # Translation Data
 # ═══════════════════════════════════════════════
 
-_translations: Dict[str, Dict] = {}
+_translations: dict[str, dict] = {}
 
 SUPPORTED_LOCALES = ["en", "ar"]
 DEFAULT_LOCALE = "en"
@@ -64,7 +63,7 @@ _load_translations()
 # Translation Function
 # ═══════════════════════════════════════════════
 
-def t(key: str, locale: str = None, **kwargs) -> str:
+def t(key: str, locale: str | None = None, **kwargs) -> str:
     """
     Translate a key to the target locale.
 
@@ -123,14 +122,14 @@ def set_locale(locale: str):
     _locale_var.set(locale)
 
 
-def is_rtl(locale: str = None) -> bool:
+def is_rtl(locale: str | None = None) -> bool:
     """Check if locale is right-to-left."""
     if locale is None:
         locale = get_locale()
     return locale in RTL_LOCALES
 
 
-def get_direction(locale: str = None) -> str:
+def get_direction(locale: str | None = None) -> str:
     """Get text direction for locale."""
     return "rtl" if is_rtl(locale) else "ltr"
 
@@ -166,7 +165,7 @@ def _to_arabic_digits(text: str) -> str:
     return text.translate(_ARABIC_DIGITS)
 
 
-def format_date(dt: datetime, locale: str = None, fmt: str = None) -> str:
+def format_date(dt: datetime, locale: str | None = None, fmt: str | None = None) -> str:
     """
     Format date for locale.
 
@@ -191,7 +190,7 @@ def format_date(dt: datetime, locale: str = None, fmt: str = None) -> str:
         return f"{month} {dt.day}, {dt.year}"
 
 
-def format_datetime(dt: datetime, locale: str = None) -> str:
+def format_datetime(dt: datetime, locale: str | None = None) -> str:
     """Format datetime for locale."""
     if locale is None:
         locale = get_locale()
@@ -208,7 +207,7 @@ def format_datetime(dt: datetime, locale: str = None) -> str:
 # Formatting — Numbers
 # ═══════════════════════════════════════════════
 
-def format_number(value, locale: str = None, decimals: int = 0) -> str:
+def format_number(value, locale: str | None = None, decimals: int = 0) -> str:
     """
     Format number for locale.
 
@@ -254,7 +253,7 @@ _CURRENCY_SYMBOLS = {
 }
 
 
-def format_currency(value, currency: str = "SAR", locale: str = None, decimals: int = 2) -> str:
+def format_currency(value, currency: str = "SAR", locale: str | None = None, decimals: int = 2) -> str:
     """
     Format currency for locale.
 
@@ -345,7 +344,7 @@ BUSINESS_TERMS = {
 }
 
 
-def get_business_term(term: str, locale: str = None) -> str:
+def get_business_term(term: str, locale: str | None = None) -> str:
     """Get business term translation."""
     if locale is None:
         locale = get_locale()
@@ -357,7 +356,7 @@ def get_business_term(term: str, locale: str = None) -> str:
 # Locale Helper for API
 # ═══════════════════════════════════════════════
 
-def detect_locale(accept_language: str = None, user_preference: str = None) -> str:
+def detect_locale(accept_language: str | None = None, user_preference: str | None = None) -> str:
     """
     Detect best locale from:
     1. User preference (highest priority)
@@ -377,7 +376,7 @@ def detect_locale(accept_language: str = None, user_preference: str = None) -> s
     return DEFAULT_LOCALE
 
 
-def get_locale_info(locale: str = None) -> Dict[str, Any]:
+def get_locale_info(locale: str | None = None) -> dict[str, Any]:
     """Get full locale information."""
     if locale is None:
         locale = get_locale()

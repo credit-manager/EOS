@@ -2,15 +2,14 @@
 EOS HR API Router — /api/v1/hr
 """
 import uuid
-from typing import Optional
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-from database import get_db
 from core.auth import get_current_user
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/hr", tags=["HR API"])
 
@@ -19,10 +18,10 @@ router = APIRouter(prefix="/api/v1/hr", tags=["HR API"])
 
 @router.get("/employees")
 async def list_employees(
-    department_id: Optional[str] = None,
-    status: Optional[str] = None,
-    search: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    department_id: str | None = None,
+    status: str | None = None,
+    search: str | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -190,7 +189,7 @@ async def delete_department(dept_id: str, user: dict = Depends(get_current_user)
 
 @router.get("/positions")
 async def list_positions(
-    page: int = Query(1, ge=1),
+    page: int | None=None,
     page_size: int = Query(50, ge=1, le=200),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -223,10 +222,10 @@ async def delete_position(position_id: str, user: dict = Depends(get_current_use
 
 @router.get("/attendance")
 async def list_attendance(
-    employee_id: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    employee_id: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -309,7 +308,7 @@ async def clock_out(body: dict, user: dict = Depends(get_current_user), db: Sess
 
 @router.get("/payroll")
 async def list_payroll(
-    page: int = Query(1, ge=1),
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -350,9 +349,9 @@ async def get_payslip(payslip_id: str, user: dict = Depends(get_current_user), d
 
 @router.get("/leave-requests")
 async def list_leave_requests(
-    employee_id: Optional[str] = None,
-    status: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    employee_id: str | None = None,
+    status: str | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -414,7 +413,9 @@ async def approve_leave_request(request_id: str, user: dict = Depends(get_curren
 
 
 @router.post("/leave-requests/{request_id}/reject")
-async def reject_leave_request(request_id: str, body: dict = {}, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def reject_leave_request(request_id: str, body: dict | None = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if body is None:
+        body = {}
     db.execute(text("UPDATE dbp_leave_requests SET status = 'rejected' WHERE id = :id"), {"id": request_id})
     db.commit()
     return {"message": "Leave request rejected"}

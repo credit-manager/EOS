@@ -1,64 +1,28 @@
-# EOS Dynamic Business Platform — Production Dockerfile
-# Multi-stage build for smaller production image
+# EOS Dynamic Business Platform — production image
+FROM node:22-alpine AS frontend-builder
+WORKDIR /app/frontend
+COPY frontend/package.json ./
+RUN npm install --package-lock-only --ignore-scripts --no-audit --no-fund \
+    && npm ci --ignore-scripts --no-audit --no-fund
+COPY frontend/ ./
+RUN npm run build
 
-# ═══════════════════════════════════════════════
-# Stage 1: Build dependencies
-# ═══════════════════════════════════════════════
-FROM python:3.14-slim AS builder
-
+FROM python:3.12-alpine AS builder
 WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python dependencies
+RUN apk add --no-cache gcc musl-dev libffi-dev openssl-dev postgresql-dev
 COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
-# ═══════════════════════════════════════════════
-# Stage 2: Production runtime
-# ═══════════════════════════════════════════════
-FROM python:3.14-slim
-
+FROM python:3.12-alpine
 WORKDIR /app
-
-# Create non-root user
-RUN groupadd -r eos && useradd -r -g eos eos
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy Python packages from builder
+RUN addgroup -S eos && adduser -S -G eos eos
+RUN apk add --no-cache libpq
 COPY --from=builder /root/.local /home/eos/.local
-
-# Copy application code
 COPY --chown=eos:eos . .
-
-# Switch to non-root user
+RUN rm -rf /app/eos-system/frontend/dist
+COPY --from=frontend-builder --chown=eos:eos /app/frontend/dist /app/eos-system/frontend/dist
 USER eos
-
-# Add local packages to PATH
 ENV PATH=/home/eos/.local/bin:$PATH
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Expose port
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5)"
 EXPOSE 8000
-
-# Run with gunicorn for production
-CMD ["gunicorn", "main:app", \
-     "--workers", "4", \
-     "--worker-class", "uvicorn.workers.UvicornWorker", \
-     "--bind", "0.0.0.0:8000", \
-     "--timeout", "120", \
-     "--keep-alive", "5", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-"]
+CMD ["gunicorn","main:app","--workers","4","--worker-class","uvicorn.workers.UvicornWorker","--bind","0.0.0.0:8000","--timeout","120","--keep-alive","5","--access-logfile","-","--error-logfile","-"]

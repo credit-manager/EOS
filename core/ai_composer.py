@@ -3,12 +3,13 @@ P53 AI Business Composer Engine
 Converts natural language business requirements into ERP configuration.
 Generic platform capability — no industry-specific code.
 """
-import uuid, json, re
-from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any, Tuple
-from sqlalchemy.orm import Session
-from sqlalchemy import text
+import json
+import re
+import uuid
+from typing import Any
 
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 # ═══════════════════════════════════════════════════════════
 # INDUSTRY DETECTION RULES (keyword → industry)
@@ -319,7 +320,7 @@ class AIComposerEngine:
 
     # ── 1. PARSE NATURAL LANGUAGE ──
 
-    def parse_requirements(self, user_input: str) -> Dict[str, Any]:
+    def parse_requirements(self, user_input: str) -> dict[str, Any]:
         lang = detect_language(user_input)
         normalized = normalize_arabic(user_input)
         lower = normalized.lower()
@@ -354,7 +355,7 @@ class AIComposerEngine:
             return max(scores, key=scores.get)
         return "services"
 
-    def _extract_modules(self, text_lower: str) -> List[str]:
+    def _extract_modules(self, text_lower: str) -> list[str]:
         found = set()
         for term, modules in TERM_MODULE_MAP.items():
             if term in text_lower:
@@ -364,7 +365,7 @@ class AIComposerEngine:
         found.update(CORE_MODULES)
         return sorted(found)
 
-    def _extract_number(self, text_lower: str, keywords: List[str]) -> Optional[int]:
+    def _extract_number(self, text_lower: str, keywords: list[str]) -> int | None:
         words = text_lower.split()
         for kw in keywords:
             for i, w in enumerate(words):
@@ -375,7 +376,7 @@ class AIComposerEngine:
                         pass
         return None
 
-    def _extract_currency(self, text_lower: str) -> Optional[str]:
+    def _extract_currency(self, text_lower: str) -> str | None:
         currencies = {"sar": "SAR", "usd": "USD", "eur": "EUR", "egp": "EGP",
                        "\u0631\u064a\u0627\u0644": "SAR", "\u062f\u0648\u0644\u0627\u0631": "USD"}
         for key, code in currencies.items():
@@ -385,7 +386,7 @@ class AIComposerEngine:
 
     # ── 2. GENERATE CONFIGURATION ──
 
-    def generate_config(self, requirements: Dict) -> Dict[str, Any]:
+    def generate_config(self, requirements: dict) -> dict[str, Any]:
         modules = requirements["modules"]
         industry = requirements["industry"]
 
@@ -430,7 +431,7 @@ class AIComposerEngine:
         }
         return config
 
-    def _get_template_accounts(self, industry: str) -> List[Dict]:
+    def _get_template_accounts(self, industry: str) -> list[dict]:
         from core.onboarding_engine import OnboardingEngine
         oe = OnboardingEngine(self.db)
         accounts = oe.get_industry_accounts(industry)
@@ -445,7 +446,7 @@ class AIComposerEngine:
             {"code": "5000", "name": "Expenses", "account_type": "expense"},
         ]
 
-    def _infer_relationships(self, modules: List[str]) -> List[Dict]:
+    def _infer_relationships(self, modules: list[str]) -> list[dict]:
         rels = []
         if "sales" in modules and "accounting" in modules:
             rels.append({"from": "invoices", "to": "accounts", "type": "journal_entry"})
@@ -465,7 +466,7 @@ class AIComposerEngine:
 
     # ── 3. VALIDATE CONFIGURATION ──
 
-    def validate_config(self, config: Dict) -> Dict[str, Any]:
+    def validate_config(self, config: dict) -> dict[str, Any]:
         errors = []
         warnings = []
         modules = config.get("modules", [])
@@ -510,7 +511,7 @@ class AIComposerEngine:
 
     # ── 4. PREVIEW ──
 
-    def generate_preview(self, config: Dict, validation: Dict) -> Dict[str, Any]:
+    def generate_preview(self, config: dict, validation: dict) -> dict[str, Any]:
         return {
             "modules": config["modules"],
             "entities": config["entities"],
@@ -536,7 +537,7 @@ class AIComposerEngine:
 
     # ── 5. SESSION MANAGEMENT ──
 
-    def create_session(self, tenant_id: str, user_id: str, user_input: str) -> Dict[str, Any]:
+    def create_session(self, tenant_id: str, user_id: str, user_input: str) -> dict[str, Any]:
         sid = str(uuid.uuid4())
         requirements = self.parse_requirements(user_input)
         config = self.generate_config(requirements)
@@ -559,20 +560,46 @@ class AIComposerEngine:
         return {"session_id": sid, "requirements": requirements, "config": config,
                 "validation": validation, "preview": preview}
 
-    def get_session(self, session_id: str) -> Optional[Dict]:
-        row = self.db.execute(text(
-            "SELECT id, tenant_id, user_id, natural_language_input, detected_industry, "
-            "detected_language, parsed_requirements, generated_config, status, preview_data, "
-            "approved_by, approved_at, activated_at, activation_result, error_message, "
-            "created_at, updated_at "
-            "FROM dbp_composer_sessions WHERE id = :sid"
-        ), {"sid": session_id}).fetchone()
+    def get_session(self, session_id: str, tenant_id: str | None = None) -> dict | None:
+        """
+        Get composer session by ID.
+        
+        SECURITY FIX (P0): Added tenant_id parameter to enforce multi-tenancy isolation.
+        Prevents IDOR vulnerability where knowing a session_id could allow access
+        to another tenant's session data.
+        
+        Args:
+            session_id: The session UUID
+            tenant_id: Optional tenant ID for isolation check (recommended)
+        
+        Returns:
+            Session dict or None if not found/access denied
+        """
+        if tenant_id:
+            # Enforce tenant isolation - critical security fix
+            row = self.db.execute(text(
+                "SELECT id, tenant_id, user_id, natural_language_input, detected_industry, "
+                "detected_language, parsed_requirements, generated_config, status, preview_data, "
+                "approved_by, approved_at, activated_at, activation_result, error_message, "
+                "created_at, updated_at "
+                "FROM dbp_composer_sessions WHERE id = :sid AND tenant_id = :tid"
+            ), {"sid": session_id, "tid": tenant_id}).fetchone()
+        else:
+            # Fallback without tenant check (not recommended for production)
+            row = self.db.execute(text(
+                "SELECT id, tenant_id, user_id, natural_language_input, detected_industry, "
+                "detected_language, parsed_requirements, generated_config, status, preview_data, "
+                "approved_by, approved_at, activated_at, activation_result, error_message, "
+                "created_at, updated_at "
+                "FROM dbp_composer_sessions WHERE id = :sid"
+            ), {"sid": session_id}).fetchone()
+        
         if not row:
             return None
         return self._row_to_dict(row)
 
-    def approve_session(self, session_id: str, approved_by: str) -> Dict[str, Any]:
-        session = self.get_session(session_id)
+    def approve_session(self, session_id: str, approved_by: str, tenant_id: str | None = None) -> dict[str, Any]:
+        session = self.get_session(session_id, tenant_id=tenant_id)
         if not session:
             return {"success": False, "error": "Session not found"}
         if session["status"] != "preview":
@@ -585,8 +612,8 @@ class AIComposerEngine:
         self.db.flush()
         return {"success": True, "status": "approved"}
 
-    def activate_session(self, session_id: str) -> Dict[str, Any]:
-        session = self.get_session(session_id)
+    def activate_session(self, session_id: str, tenant_id: str | None = None) -> dict[str, Any]:
+        session = self.get_session(session_id, tenant_id=tenant_id)
         if not session:
             return {"success": False, "error": "Session not found"}
         if session["status"] != "approved":
@@ -612,10 +639,10 @@ class AIComposerEngine:
         self.db.flush()
         return {"success": True, "status": "activated", "result": result}
 
-    def list_sessions(self, tenant_id: str, status: Optional[str] = None,
-                      limit: int = 50) -> List[Dict]:
+    def list_sessions(self, tenant_id: str, status: str | None = None,
+                      limit: int = 50) -> list[dict]:
         conditions = ["tenant_id = :tid"]
-        params: Dict[str, Any] = {"tid": tenant_id, "lim": limit}
+        params: dict[str, Any] = {"tid": tenant_id, "lim": limit}
         if status:
             conditions.append("status = :st")
             params["st"] = status
@@ -633,7 +660,7 @@ class AIComposerEngine:
 
     # ── HELPERS ──
 
-    def _row_to_dict(self, row) -> Dict:
+    def _row_to_dict(self, row) -> dict:
         def p(v):
             if v is None:
                 return {}

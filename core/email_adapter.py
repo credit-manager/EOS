@@ -5,10 +5,9 @@ Console provider (dev/test) + SMTP provider (production).
 Providers registered via EOS_EMAIL_PROVIDER env var.
 Default: console (safe fallback).
 """
-import os
 import logging
+import os
 from abc import ABC, abstractmethod
-from typing import Optional
 from datetime import datetime, timezone
 
 logger = logging.getLogger("eos.email")
@@ -21,9 +20,9 @@ class EmailProvider(ABC):
         to_email: str,
         subject: str,
         html_body: str,
-        text_body: Optional[str] = None,
-        from_email: Optional[str] = None,
-        from_name: Optional[str] = None,
+        text_body: str | None = None,
+        from_email: str | None = None,
+        from_name: str | None = None,
     ) -> dict:
         """Send an email. Returns {success, message_id, error}."""
         ...
@@ -40,9 +39,9 @@ class ConsoleEmailProvider(EmailProvider):
         to_email: str,
         subject: str,
         html_body: str,
-        text_body: Optional[str] = None,
-        from_email: Optional[str] = None,
-        from_name: Optional[str] = None,
+        text_body: str | None = None,
+        from_email: str | None = None,
+        from_name: str | None = None,
     ) -> dict:
         from_name = from_name or "EOS Platform"
         from_email = from_email or "noreply@eos-platform.com"
@@ -75,13 +74,13 @@ class SMTPEmailProvider(EmailProvider):
 
     def __init__(
         self,
-        host: str = None,
+        host: str | None = None,
         port: int = 587,
-        username: str = None,
-        password: str = None,
+        username: str | None = None,
+        password: str | None = None,
         use_tls: bool = True,
-        from_email: str = None,
-        from_name: str = None,
+        from_email: str | None = None,
+        from_name: str | None = None,
     ):
         self.host = host or os.getenv("EOS_SMTP_HOST", "smtp.gmail.com")
         self.port = port or int(os.getenv("EOS_SMTP_PORT", "587"))
@@ -96,13 +95,13 @@ class SMTPEmailProvider(EmailProvider):
         to_email: str,
         subject: str,
         html_body: str,
-        text_body: Optional[str] = None,
-        from_email: Optional[str] = None,
-        from_name: Optional[str] = None,
+        text_body: str | None = None,
+        from_email: str | None = None,
+        from_name: str | None = None,
     ) -> dict:
         import smtplib
-        from email.mime.text import MIMEText
         from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
 
         from_email = from_email or self.from_email
         from_name = from_name or self.from_name

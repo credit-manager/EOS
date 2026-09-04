@@ -1,27 +1,50 @@
-"""
-P62 Production Configuration Validator.
-Checks all required settings before starting in production mode.
-Blocks startup if critical settings are missing.
+"""Production configuration validator.
+
+Security-critical production settings fail closed at startup, including the
+PostgreSQL role properties required for RLS to be effective.
 """
 import os
 import re
 import sys
-from typing import List, Tuple
 
 
 class ProductionConfigError(Exception):
     pass
 
 
-def validate_production_config() -> List[Tuple[str, str, bool]]:
-    """
-    Validate all production configuration.
-    Returns list of (setting, status, is_critical).
-    Raises ProductionConfigError if critical settings are missing.
-    """
+_DOMAIN_RE = re.compile(r"^(?=.{1,253}$)(?!.*\.\.)[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$")
+_DATABASE_URL_RE = r"^postgresql(?:\+psycopg2)?://.{10,}$"
+
+
+def _check_database_role() -> tuple[str, str, bool]:
+    """Ensure the application role cannot bypass PostgreSQL RLS."""
+    try:
+        import psycopg2
+        conn = psycopg2.connect(os.environ["DATABASE_URL"], connect_timeout=5)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT r.rolsuper, r.rolbypassrls,
+                           (current_database() = pg_get_userbyid(d.datdba)) AS is_owner
+                    FROM pg_roles r CROSS JOIN pg_database d
+                    WHERE r.rolname = current_user AND d.datname = current_database()
+                """)
+                row = cur.fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return ("DATABASE_ROLE_RLS_SAFE", "INVALID", True)
+        if any(bool(value) for value in row):
+            return ("DATABASE_ROLE_RLS_SAFE", "INVALID: superuser/bypassrls/owner", True)
+        return ("DATABASE_ROLE_RLS_SAFE", "OK", True)
+    except Exception:
+        return ("DATABASE_ROLE_RLS_SAFE", "UNVERIFIED", True)
+
+
+def validate_production_config() -> list[tuple[str, str, bool]]:
     checks = []
 
-    def check(name: str, value: str, pattern: str = None, critical: bool = True):
+    def check(name: str, value: str, pattern: str | None = None, critical: bool = True):
         if not value:
             checks.append((name, "MISSING", critical))
             return False
@@ -31,98 +54,78 @@ def validate_production_config() -> List[Tuple[str, str, bool]]:
         checks.append((name, "OK", critical))
         return True
 
-    # Auth mode MUST be production
-    auth_mode = os.getenv("EOS_AUTH_MODE", "")
-    check("EOS_AUTH_MODE", auth_mode, r"^production$", critical=True)
+    check("EOS_AUTH_MODE", os.getenv("EOS_AUTH_MODE", ""), r"^production$", True)
+    check("EOS_ENVIRONMENT", os.getenv("EOS_ENVIRONMENT", ""), r"^production$", True)
+    check("EOS_SECRET_KEY", os.getenv("EOS_SECRET_KEY", ""), r"^.{32,}$", True)
+    database_url = os.getenv("DATABASE_URL", "")
+    check("DATABASE_URL", database_url, _DATABASE_URL_RE, True)
+    if re.match(_DATABASE_URL_RE, database_url):
+        checks.append(_check_database_role())
+    check("EOS_2FA_ENCRYPTION_KEY", os.getenv("EOS_2FA_ENCRYPTION_KEY", ""), r"^.{44}$", True)
 
-    # Secret key — strong and long
-    secret = os.getenv("EOS_SECRET_KEY", "")
-    check("EOS_SECRET_KEY", secret, r"^.{32,}$", critical=True)
-
-    # Database URL
-    db_url = os.getenv("DATABASE_URL", "")
-    check("DATABASE_URL", db_url, r"^postgresql://.{10,}$", critical=True)
-
-    # Email provider
-    email_provider = os.getenv("EOS_EMAIL_PROVIDER", "console")
-    check("EOS_EMAIL_PROVIDER", email_provider, r"^(smtp|console)$", critical=False)
-
+    email_provider = os.getenv("EOS_EMAIL_PROVIDER", "")
+    check("EOS_EMAIL_PROVIDER", email_provider, r"^smtp$", True)
     if email_provider == "smtp":
-        check("EOS_SMTP_HOST", os.getenv("EOS_SMTP_HOST", ""), critical=True)
-        check("EOS_SMTP_USERNAME", os.getenv("EOS_SMTP_USERNAME", ""), critical=True)
-        check("EOS_SMTP_PASSWORD", os.getenv("EOS_SMTP_PASSWORD", ""), critical=True)
-        check("EOS_FROM_EMAIL", os.getenv("EOS_FROM_EMAIL", ""), critical=True)
+        for name in ("EOS_SMTP_HOST", "EOS_SMTP_USERNAME", "EOS_SMTP_PASSWORD", "EOS_FROM_EMAIL"):
+            check(name, os.getenv(name, ""), critical=True)
 
-    # Stripe
-    payment_mode = os.getenv("EOS_PAYMENT_MODE", "test")
-    check("EOS_PAYMENT_MODE", payment_mode, r"^(test|stripe)$", critical=False)
-
+    payment_mode = os.getenv("EOS_PAYMENT_MODE", "")
+    check("EOS_PAYMENT_MODE", payment_mode, r"^(disabled|stripe)$", True)
     if payment_mode == "stripe":
-        stripe_key = os.getenv("EOS_STRIPE_SECRET_KEY", "")
-        check("EOS_STRIPE_SECRET_KEY", stripe_key, critical=True)
-        if stripe_key and stripe_key.startswith("sk_test"):
-            checks.append(("EOS_STRIPE_SECRET_KEY", "WARNING: Using test key in production!", False))
+        check("EOS_STRIPE_SECRET_KEY", os.getenv("EOS_STRIPE_SECRET_KEY", ""), r"^sk_live_.{10,}$", True)
 
-    # Frontend URL
-    frontend = os.getenv("EOS_FRONTEND_URL", "")
-    check("EOS_FRONTEND_URL", frontend, critical=True)
-
-    # CORS
-    cors = os.getenv("EOS_CORS_ORIGINS", "")
-    check("EOS_CORS_ORIGINS", cors, critical=True)
-
-    # Allowed hosts
-    hosts = os.getenv("EOS_ALLOWED_HOSTS", "")
-    check("EOS_ALLOWED_HOSTS", hosts, critical=True)
-
-    # Postgres
+    check("EOS_FRONTEND_URL", os.getenv("EOS_FRONTEND_URL", ""), r"^https://", True)
+    check("EOS_CORS_ORIGINS", os.getenv("EOS_CORS_ORIGINS", ""), critical=True)
+    check("EOS_ALLOWED_HOSTS", os.getenv("EOS_ALLOWED_HOSTS", ""), critical=True)
+    if "*" in os.getenv("EOS_ALLOWED_HOSTS", ""):
+        checks.append(("EOS_ALLOWED_HOSTS_WILDCARD", "INVALID", True))
+    check("EOS_TRUSTED_HOSTS_ENABLED", os.getenv("EOS_TRUSTED_HOSTS_ENABLED", ""), r"^true$", True)
+    check("EOS_DISABLE_DOCS", os.getenv("EOS_DISABLE_DOCS", ""), r"^true$", True)
+    check("EOS_RATE_LIMIT_FAIL_CLOSED", os.getenv("EOS_RATE_LIMIT_FAIL_CLOSED", ""), r"^true$", True)
+    check("EOS_TRUSTED_PROXIES", os.getenv("EOS_TRUSTED_PROXIES", ""), critical=True)
     check("POSTGRES_USER", os.getenv("POSTGRES_USER", ""), critical=True)
     check("POSTGRES_PASSWORD", os.getenv("POSTGRES_PASSWORD", ""), critical=True)
     check("POSTGRES_DB", os.getenv("POSTGRES_DB", ""), critical=True)
-
-    # Domain
-    check("DOMAIN", os.getenv("DOMAIN", ""), critical=True)
-
+    domain = os.getenv("DOMAIN", "")
+    if not domain or not _DOMAIN_RE.fullmatch(domain) or domain.lower() in {"localhost", "127.0.0.1"}:
+        checks.append(("DOMAIN", "INVALID FORMAT", True))
+    else:
+        checks.append(("DOMAIN", "OK", True))
+    check("EOS_METRICS_TOKEN", os.getenv("EOS_METRICS_TOKEN", ""), r"^.{32,}$", True)
+    check("EOS_HEALTH_TOKEN", os.getenv("EOS_HEALTH_TOKEN", ""), r"^.{32,}$", True)
+    check("EOS_RUNTIME_SCHEMA", os.getenv("EOS_RUNTIME_SCHEMA", "false"), r"^false$", True)
+    if os.getenv("EOS_OTEL_ENABLED", "false").lower() == "true":
+        check("OTEL_EXPORTER_OTLP_ENDPOINT", os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", ""), r"^https://", True)
     return checks
 
 
 def run_validation():
-    """Run validation and print results. Exits with code 1 if critical failures."""
     print("=" * 60)
-    print("  P62 PRODUCTION CONFIGURATION VALIDATOR")
+    print("  EOS PRODUCTION CONFIGURATION VALIDATOR")
     print("=" * 60)
-
     try:
         checks = validate_production_config()
-    except Exception as e:
-        print(f"\n  FATAL: {e}")
+    except Exception as exc:
+        print(f"\n  FATAL: {exc}")
         sys.exit(1)
-
     critical_failures = 0
-    warnings = 0
-
     for name, status, is_critical in checks:
         if status == "OK":
             print(f"  OK    {name}")
-        elif status.startswith("WARNING"):
-            print(f"  WARN  {name}: {status}")
-            warnings += 1
         else:
             tag = "CRITICAL" if is_critical else "OPTIONAL"
             print(f"  {tag}  {name}: {status}")
             if is_critical:
                 critical_failures += 1
-
     print("\n" + "=" * 60)
-    if critical_failures > 0:
-        print(f"  FAILED: {critical_failures} critical settings missing")
+    if critical_failures:
+        print(f"  FAILED: {critical_failures} critical settings missing/invalid")
         print("  Fix the above issues before deploying to production.")
         print("=" * 60)
         sys.exit(1)
-    else:
-        print("  ALL CHECKS PASSED — Ready for production deployment")
-        print("=" * 60)
-        sys.exit(0)
+    print("  ALL CHECKS PASSED — production configuration is valid")
+    print("=" * 60)
+    sys.exit(0)
 
 
 if __name__ == "__main__":

@@ -2,9 +2,9 @@
 EOS Platform — Full Test Suite Runner
 Usage: python tests/run_all.py [--quick]
 """
+import os
 import subprocess
 import sys
-import os
 import time
 
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -72,7 +72,7 @@ def main():
         tests = ACTIVE_TESTS
 
     print(f"{'='*60}")
-    print(f"EOS PLATFORM — FULL TEST SUITE")
+    print("EOS PLATFORM — FULL TEST SUITE")
     print(f"{'='*60}\n")
 
     total_passed = 0

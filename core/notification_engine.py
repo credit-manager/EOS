@@ -8,12 +8,12 @@ Design:
   - Notifications stored in dbp_notifications (persistent, tenant-scoped)
   - Channels: in_app (implemented), email (placeholder), future
 """
-from typing import Dict, Any, Optional, List
-from sqlalchemy.orm import Session
-from sqlalchemy import text
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 # Default notification templates (built-in, created on first run)
 DEFAULT_TEMPLATES = [
@@ -109,7 +109,7 @@ class NotificationEngine:
     def __init__(self, db: Session):
         self.db = db
 
-    def ensure_default_templates(self, tenant_id: Optional[str] = None):
+    def ensure_default_templates(self, tenant_id: str | None = None):
         """Create default templates if they don't exist (idempotent)."""
         for tmpl in DEFAULT_TEMPLATES:
             existing = self.db.execute(
@@ -141,12 +141,12 @@ class NotificationEngine:
         self,
         event_type: str,
         entity_code: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        record_id: Optional[str] = None,
-        event_id: Optional[str] = None,
-        payload: Optional[Dict[str, Any]] = None,
-    ) -> List[str]:
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        record_id: str | None = None,
+        event_id: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> list[str]:
         """
         Process an EventBus event → create notifications for affected users.
         Returns list of notification IDs created.
@@ -173,7 +173,7 @@ class NotificationEngine:
         target_users = self._get_target_users(tenant_id, event_type)
 
         for tmpl in templates:
-            tmpl_id, code, channel, ntype, title_tmpl, msg_tmpl = tmpl
+            _tmpl_id, _code, channel, ntype, title_tmpl, msg_tmpl = tmpl
 
             # Build context for template
             ctx = {
@@ -226,8 +226,8 @@ class NotificationEngine:
         return created_ids
 
     def _get_target_users(
-        self, tenant_id: Optional[str], event_type: str
-    ) -> List[str]:
+        self, tenant_id: str | None, event_type: str
+    ) -> list[str]:
         """
         Determine which users should receive notifications for this event.
         Returns list of user_id strings.
@@ -273,15 +273,15 @@ class NotificationEngine:
         self,
         user_id: str,
         title: str,
-        tenant_id: Optional[str] = None,
-        message: Optional[str] = None,
+        tenant_id: str | None = None,
+        message: str | None = None,
         notification_type: str = "info",
         channel: str = "in_app",
-        entity_code: Optional[str] = None,
-        record_id: Optional[str] = None,
-        event_id: Optional[str] = None,
-        action_url: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        entity_code: str | None = None,
+        record_id: str | None = None,
+        event_id: str | None = None,
+        action_url: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """
         Create a direct notification (not from event).
@@ -333,12 +333,12 @@ class NotificationEngine:
         self.db.commit()
         return result.rowcount > 0
 
-    def mark_all_read(self, user_id: str, tenant_id: Optional[str] = None) -> int:
+    def mark_all_read(self, user_id: str, tenant_id: str | None = None) -> int:
         """Mark all notifications for a user as read. Returns count."""
         now = datetime.now(timezone.utc)
         query = "UPDATE dbp_notifications SET is_read = true, read_at = :now " \
                 "WHERE user_id = :uid AND is_read = false"
-        params: Dict[str, Any] = {"uid": user_id, "now": now}
+        params: dict[str, Any] = {"uid": user_id, "now": now}
 
         if tenant_id:
             query += " AND tenant_id = :tid"
@@ -350,7 +350,7 @@ class NotificationEngine:
         return result.rowcount
 
 
-def _render_template(template: str, context: Dict[str, Any]) -> str:
+def _render_template(template: str, context: dict[str, Any]) -> str:
     """Simple {placeholder} rendering."""
     result = template
     for key, value in context.items():

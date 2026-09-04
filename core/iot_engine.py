@@ -1,10 +1,12 @@
 """
 P48 IoT & Device Management Engine
 """
-import uuid, json
-from typing import Dict, Any
-from sqlalchemy.orm import Session
+import json
+import uuid
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class IoTEngine:
@@ -28,7 +30,7 @@ class IoTEngine:
 
     def list_devices(self, tenant_id, device_type=None, status=None):
         q = "SELECT id, device_name, device_type, device_model, serial_number, firmware_version, status, location, last_heartbeat_at, created_at FROM dbp_iot_devices WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if device_type:
             q += " AND device_type=:dt"
             params["dt"] = device_type
@@ -89,7 +91,7 @@ class IoTEngine:
 
     def get_telemetry(self, tenant_id, device_id=None, metric_name=None, limit=100):
         q = "SELECT id, device_id, metric_name, metric_value, unit, quality_score, recorded_at FROM dbp_iot_telemetry WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if device_id:
             q += " AND device_id=:di"
             params["di"] = device_id
@@ -124,7 +126,7 @@ class IoTEngine:
 
     def list_alerts(self, tenant_id, device_id=None, is_acknowledged=None, severity=None):
         q = "SELECT id, device_id, alert_type, severity, message, is_acknowledged, created_at FROM dbp_iot_alerts WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if device_id:
             q += " AND device_id=:di"
             params["di"] = device_id
@@ -157,7 +159,7 @@ class IoTEngine:
 
     def list_rules(self, tenant_id, device_type=None, is_active=None):
         q = "SELECT id, rule_name, device_type, is_active, created_at FROM dbp_iot_rules WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if device_type:
             q += " AND device_type=:dt"
             params["dt"] = device_type
@@ -194,7 +196,7 @@ class IoTEngine:
 
     def list_firmware(self, tenant_id, device_type=None):
         q = "SELECT id, device_type, version, changelog, download_url, file_size_bytes, is_active, created_at FROM dbp_iot_firmware WHERE tenant_id=:tid"
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         if device_type:
             q += " AND device_type=:dt"
             params["dt"] = device_type

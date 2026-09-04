@@ -3,7 +3,11 @@ P72.2 Core ↔ Commerce Integration Tests
 =========================================
 Tests the full integration between Commerce Engine and Core Accounting.
 """
-import sys, io, json, uuid
+import io
+import json
+import sys
+import uuid
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import urllib.request
 
@@ -145,12 +149,14 @@ test("7.1 Manufacturing order created", "_err" not in mfg_order and "id" in mfg_
 print("\n--- 8. Accounting Integration ---")
 
 import base64
+
 payload = token.split('.')[1]
 if len(payload) % 4: payload += '=' * (4 - len(payload) % 4)
 decoded = json.loads(base64.urlsafe_b64decode(payload))
 tenant_id = decoded['tenant_id']
 
 import psycopg2
+
 conn = psycopg2.connect('postgresql://eos:0100@127.0.0.1:5432/eos_main')
 cur = conn.cursor()
 cur.execute("SELECT id FROM dbp_companies WHERE tenant_id=%s LIMIT 1", (tenant_id,))

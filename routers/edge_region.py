@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import require_permission, get_current_user
-from core.rate_limit import read_limiter, write_limiter
+from core.auth import require_permission
 from core.edge_region import EdgeRegionEngine
+from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic/edge", tags=["Edge & Multi-Region"])
 
@@ -12,8 +12,8 @@ router = APIRouter(prefix="/api/v1/dynamic/edge", tags=["Edge & Multi-Region"])
 # -------------------------------------------------- edge nodes
 @router.get("/nodes",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_nodes(region: str = None, status: str = None,
-                    user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_nodes(region: str | None = None, status: str | None = None,
+                    user: dict | None=None, db: Session = Depends(get_db)):
     data = EdgeRegionEngine(db).list_nodes(region=region, status=status)
     return {"status": "success", "data": data}
 
@@ -21,7 +21,7 @@ async def list_nodes(region: str = None, status: str = None,
 @router.post("/nodes",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_node(body: dict,
-                    user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                    user: dict | None=None, db: Session = Depends(get_db)):
     required = ["node_name", "region", "endpoint_url"]
     for f in required:
         if f not in body:
@@ -37,7 +37,7 @@ async def create_node(body: dict,
 @router.get("/nodes/{node_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_node(node_id: str,
-                 user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                 user: dict | None=None, db: Session = Depends(get_db)):
     data = EdgeRegionEngine(db).get_node(node_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -48,7 +48,7 @@ async def get_node(node_id: str,
 @router.put("/nodes/{node_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_node(node_id: str, body: dict,
-                    user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                    user: dict | None=None, db: Session = Depends(get_db)):
     result = EdgeRegionEngine(db).update_node(node_id, **body)
     db.commit()
     return {"status": "success", "data": result}
@@ -57,7 +57,7 @@ async def update_node(node_id: str, body: dict,
 # ------------------------------------------------ region configs
 @router.get("/region-configs",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_region_configs(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_region_configs(user: dict | None=None, db: Session = Depends(get_db)):
     data = EdgeRegionEngine(db).list_region_configs(user["tenant_id"])
     return {"status": "success", "data": data}
 
@@ -65,7 +65,7 @@ async def list_region_configs(user: dict = Depends(get_current_user), db: Sessio
 @router.post("/region-configs",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_region_config(body: dict,
-                             user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                             user: dict | None=None, db: Session = Depends(get_db)):
     if "region" not in body:
         raise HTTPException(400, detail={"status": "error",
             "error": {"code": "MISSING", "message": "region required"}})
@@ -81,7 +81,7 @@ async def create_region_config(body: dict,
 @router.put("/region-configs/{config_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_region_config(config_id: str, body: dict,
-                             user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                             user: dict | None=None, db: Session = Depends(get_db)):
     result = EdgeRegionEngine(db).update_region_config(
         user["tenant_id"], config_id, **body)
     db.commit()
@@ -91,8 +91,8 @@ async def update_region_config(config_id: str, body: dict,
 # -------------------------------------------------- sync logs
 @router.get("/sync-logs",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_sync_logs(node_id: str = None, status: str = None, limit: int = 50,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_sync_logs(node_id: str | None = None, status: str | None = None, limit: int = 50,
+                        user: dict | None=None, db: Session = Depends(get_db)):
     data = EdgeRegionEngine(db).list_sync_logs(
         user["tenant_id"], node_id=node_id, status=status, limit=limit)
     return {"status": "success", "data": data}
@@ -101,7 +101,7 @@ async def list_sync_logs(node_id: str = None, status: str = None, limit: int = 5
 @router.post("/sync-logs",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_sync_log(body: dict,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                        user: dict | None=None, db: Session = Depends(get_db)):
     required = ["node_id", "sync_type"]
     for f in required:
         if f not in body:
@@ -117,7 +117,7 @@ async def create_sync_log(body: dict,
 @router.put("/sync-logs/{sync_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_sync_log(sync_id: str, body: dict,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                        user: dict | None=None, db: Session = Depends(get_db)):
     if "status" not in body:
         raise HTTPException(400, detail={"status": "error",
             "error": {"code": "MISSING", "message": "status required"}})
@@ -129,8 +129,8 @@ async def update_sync_log(sync_id: str, body: dict,
 # ------------------------------------------------ network topology
 @router.get("/topology",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_topology(node_id: str = None,
-                       user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_topology(node_id: str | None = None,
+                       user: dict | None=None, db: Session = Depends(get_db)):
     data = EdgeRegionEngine(db).list_links(node_id=node_id)
     return {"status": "success", "data": data}
 
@@ -138,7 +138,7 @@ async def list_topology(node_id: str = None,
 @router.post("/topology",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_link(body: dict,
-                    user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                    user: dict | None=None, db: Session = Depends(get_db)):
     required = ["node_id", "peer_node_id"]
     for f in required:
         if f not in body:
@@ -155,7 +155,7 @@ async def create_link(body: dict,
 @router.put("/topology/{link_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_link(link_id: str, body: dict,
-                    user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                    user: dict | None=None, db: Session = Depends(get_db)):
     if "is_active" not in body:
         raise HTTPException(400, detail={"status": "error",
             "error": {"code": "MISSING", "message": "is_active required"}})
@@ -167,8 +167,8 @@ async def update_link(link_id: str, body: dict,
 # -------------------------------------------------- failover
 @router.get("/failovers",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_failovers(status: str = None,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_failovers(status: str | None = None,
+                        user: dict | None=None, db: Session = Depends(get_db)):
     data = EdgeRegionEngine(db).list_failovers(user["tenant_id"], status=status)
     return {"status": "success", "data": data}
 
@@ -176,7 +176,7 @@ async def list_failovers(status: str = None,
 @router.post("/failovers",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_failover(body: dict,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                        user: dict | None=None, db: Session = Depends(get_db)):
     required = ["source_region", "target_region"]
     for f in required:
         if f not in body:
@@ -192,7 +192,7 @@ async def create_failover(body: dict,
 @router.put("/failovers/{failover_id}/activate",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def activate_failover(failover_id: str,
-                           user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                           user: dict | None=None, db: Session = Depends(get_db)):
     result = EdgeRegionEngine(db).activate_failover(user["tenant_id"], failover_id)
     db.commit()
     return {"status": "success", "data": result}

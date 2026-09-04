@@ -1,4 +1,8 @@
-import sys, io, json, uuid
+import io
+import json
+import sys
+import uuid
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import urllib.request
 
@@ -44,7 +48,6 @@ item = api("POST", "/trading/items", {"name": f"RItem-{_rid}", "item_code": f"RI
 item_id = item["data"]["id"]
 
 # Stock via GRN
-from datetime import date
 supp = api("POST", "/trading/suppliers", {"name": f"RS-{_rid}", "supplier_code": f"RS-{_rid}"}, token)
 po = api("POST", "/trading/purchase-orders", {"supplier_id": supp["data"]["id"],
          "lines": [{"item_id": item_id, "qty": 100, "estimated_price": 15}]}, token)

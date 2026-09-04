@@ -3,8 +3,8 @@ EOS Industry Engine — Terminology Engine
 Industry-specific labels, translations, and terminology.
 """
 
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -21,19 +21,19 @@ class IndustryTerminology:
     """Complete terminology set for an industry."""
     industry: str
     # Core concepts
-    terms: Dict[str, TermSet] = field(default_factory=dict)
+    terms: dict[str, TermSet] = field(default_factory=dict)
     # Entity names
-    entity_names: Dict[str, TermSet] = field(default_factory=dict)
+    entity_names: dict[str, TermSet] = field(default_factory=dict)
     # Status labels
-    status_labels: Dict[str, TermSet] = field(default_factory=dict)
+    status_labels: dict[str, TermSet] = field(default_factory=dict)
     # Action labels
-    action_labels: Dict[str, TermSet] = field(default_factory=dict)
+    action_labels: dict[str, TermSet] = field(default_factory=dict)
     # Menu labels
-    menu_labels: Dict[str, TermSet] = field(default_factory=dict)
+    menu_labels: dict[str, TermSet] = field(default_factory=dict)
     # Dashboard labels
-    dashboard_labels: Dict[str, TermSet] = field(default_factory=dict)
+    dashboard_labels: dict[str, TermSet] = field(default_factory=dict)
     # Report names
-    report_names: Dict[str, TermSet] = field(default_factory=dict)
+    report_names: dict[str, TermSet] = field(default_factory=dict)
 
 
 class TerminologyEngine:
@@ -43,7 +43,7 @@ class TerminologyEngine:
     """
 
     def __init__(self):
-        self._terminology: Dict[str, IndustryTerminology] = {}
+        self._terminology: dict[str, IndustryTerminology] = {}
         self._register_builtins()
 
     def _register_builtins(self):
@@ -277,7 +277,7 @@ class TerminologyEngine:
         """Register industry terminology."""
         self._terminology[terminology.industry] = terminology
 
-    def get(self, industry: str) -> Optional[IndustryTerminology]:
+    def get(self, industry: str) -> IndustryTerminology | None:
         """Get terminology for an industry."""
         return self._terminology.get(industry)
 
@@ -332,11 +332,11 @@ class TerminologyEngine:
                     return getattr(term, lang, term.en)
         return widget_key
 
-    def get_all_industries(self) -> List[str]:
+    def get_all_industries(self) -> list[str]:
         """Get all registered industries."""
         return list(self._terminology.keys())
 
-    def export_terminology(self, industry: str) -> Dict[str, Any]:
+    def export_terminology(self, industry: str) -> dict[str, Any]:
         """Export terminology for a template."""
         term = self._terminology.get(industry)
         if not term:

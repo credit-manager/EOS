@@ -6,23 +6,29 @@ Projects, Tasks, Milestones, Skills, Allocations, Timesheets,
 Expenses, Invoices, Profitability, Dashboard.
 Cross-platform: CRM → Core CRM, Accounting → Core Accounting.
 """
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
-from typing import Optional, List
-from datetime import date, datetime
+from datetime import datetime, timezone
 
-from database import SessionLocal, get_db
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import text
+
 from core.auth import get_current_user
 from core.industry_security import (
-    now, uid, get_company_id, check_permission,
-    audit_log, post_journal,
-    success_response, list_response, error_response,
+    audit_log,
+    check_permission,
+    get_company_id,
     get_tenant_config,
+    list_response,
+    post_journal,
+    success_response,
+    uid,
 )
+from database import get_db
 
 router = APIRouter(prefix="/services", tags=["Services ERP"])
 
@@ -34,7 +40,7 @@ router = APIRouter(prefix="/services", tags=["Services ERP"])
 def _next_code(db, tenant_id, table, prefix):
     row = db.execute(text(f"SELECT COUNT(*) FROM {table} WHERE tenant_id=:t"), {"t": tenant_id}).fetchone()
     n = (row[0] or 0) + 1
-    return f"{prefix}-{datetime.now().strftime('%Y%m%d')}-{n:04d}"
+    return f"{prefix}-{datetime.now(tz=timezone.utc).strftime('%Y%m%d')}-{n:04d}"
 
 
 # ═══════════════════════════════════════════════════
@@ -44,19 +50,19 @@ def _next_code(db, tenant_id, table, prefix):
 class ClientCreate(BaseModel):
     client_code: str
     name: str
-    name_ar: Optional[str] = None
-    industry: Optional[str] = None
-    website: Optional[str] = None
-    phone: Optional[str] = None
-    email: Optional[str] = None
-    address: Optional[str] = None
-    contact_person: Optional[str] = None
+    name_ar: str | None = None
+    industry: str | None = None
+    website: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    address: str | None = None
+    contact_person: str | None = None
     credit_limit: float = Field(default=0, ge=0)
-    source: Optional[str] = None
-    notes: Optional[str] = None
+    source: str | None = None
+    notes: str | None = None
 
 @router.post("/clients")
-def create_client(body: ClientCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_client(body: ClientCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     existing = db.execute(text("SELECT id FROM dbp_svc_clients WHERE tenant_id=:t AND client_code=:c"),
@@ -76,7 +82,7 @@ def create_client(body: ClientCreate, user: dict = Depends(get_current_user), db
     return success_response("Client created", {"id": cid, "client_code": body.client_code})
 
 @router.get("/clients")
-def list_clients(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_clients(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,client_code,name,industry,status,credit_limit,source "
                            "FROM dbp_svc_clients WHERE tenant_id=:t ORDER BY client_code"), {"t": t}).fetchall()
@@ -85,7 +91,7 @@ def list_clients(user: dict = Depends(get_current_user), db=Depends(get_db)):
     return list_response(data, len(data))
 
 @router.get("/clients/{client_id}")
-def get_client(client_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_client(client_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     c = db.execute(text("SELECT * FROM dbp_svc_clients WHERE id=:id AND tenant_id=:t"),
                    {"id": client_id, "t": t}).fetchone()
@@ -105,16 +111,16 @@ def get_client(client_id: str, user: dict = Depends(get_current_user), db=Depend
 
 class LeadCreate(BaseModel):
     company_name: str
-    contact_name: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    source: Optional[str] = None
+    contact_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    source: str | None = None
     estimated_value: float = Field(default=0, ge=0)
-    assigned_to: Optional[str] = None
-    notes: Optional[str] = None
+    assigned_to: str | None = None
+    notes: str | None = None
 
 @router.post("/leads")
-def create_lead(body: LeadCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_lead(body: LeadCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     lead_num = _next_code(db, t, "dbp_svc_leads", "LD")
@@ -130,7 +136,7 @@ def create_lead(body: LeadCreate, user: dict = Depends(get_current_user), db=Dep
     return success_response("Lead created", {"id": lid, "lead_number": lead_num})
 
 @router.get("/leads")
-def list_leads(status: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_leads(status: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     where = "WHERE tenant_id=:t"
     params = {"t": t}
@@ -145,8 +151,8 @@ def list_leads(status: Optional[str] = None, user: dict = Depends(get_current_us
     return list_response(data, len(data))
 
 @router.put("/leads/{lead_id}/convert")
-def convert_lead(lead_id: str, client_name: Optional[str] = None,
-                 user: dict = Depends(get_current_user), db=Depends(get_db)):
+def convert_lead(lead_id: str, client_name: str | None = None,
+                 user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     lead = db.execute(text("SELECT id,company_name,contact_name,email,phone,estimated_value "
@@ -154,7 +160,7 @@ def convert_lead(lead_id: str, client_name: Optional[str] = None,
                       {"id": lead_id, "t": t}).fetchone()
     if not lead:
         raise HTTPException(404, detail="Lead not found")
-    client_code = f"CLI-{datetime.now().strftime('%Y%m%d')}-{uid()[:6].upper()}"
+    client_code = f"CLI-{datetime.now(tz=timezone.utc).strftime('%Y%m%d')}-{uid()[:6].upper()}"
     cid = uid()
     db.execute(text("INSERT INTO dbp_svc_clients "
                     "(id,tenant_id,client_code,name,phone,email,source,created_by) "
@@ -173,18 +179,18 @@ def convert_lead(lead_id: str, client_name: Optional[str] = None,
 # ═══════════════════════════════════════════════════
 
 class OpportunityCreate(BaseModel):
-    client_id: Optional[str] = None
-    lead_id: Optional[str] = None
+    client_id: str | None = None
+    lead_id: str | None = None
     name: str
     stage: str = "qualification"
     probability: float = Field(default=50, ge=0, le=100)
     expected_value: float = Field(default=0, ge=0)
-    close_date: Optional[str] = None
-    assigned_to: Optional[str] = None
-    notes: Optional[str] = None
+    close_date: str | None = None
+    assigned_to: str | None = None
+    notes: str | None = None
 
 @router.post("/opportunities")
-def create_opportunity(body: OpportunityCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_opportunity(body: OpportunityCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     opp_num = _next_code(db, t, "dbp_svc_opportunities", "OPP")
@@ -200,7 +206,7 @@ def create_opportunity(body: OpportunityCreate, user: dict = Depends(get_current
     return success_response("Opportunity created", {"id": oid, "opp_number": opp_num})
 
 @router.get("/opportunities")
-def list_opportunities(stage: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_opportunities(stage: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     where = "WHERE tenant_id=:t"
     params = {"t": t}
@@ -215,7 +221,7 @@ def list_opportunities(stage: Optional[str] = None, user: dict = Depends(get_cur
     return list_response(data, len(data))
 
 @router.put("/opportunities/{opp_id}/stage")
-def update_opportunity_stage(opp_id: str, stage: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def update_opportunity_stage(opp_id: str, stage: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     valid_stages = {"qualification", "proposal", "negotiation", "closed_won", "closed_lost"}
@@ -245,15 +251,15 @@ class QuoteLineCreate(BaseModel):
 
 class QuoteCreate(BaseModel):
     client_id: str
-    opportunity_id: Optional[str] = None
+    opportunity_id: str | None = None
     title: str
-    description: Optional[str] = None
-    valid_until: Optional[str] = None
-    notes: Optional[str] = None
-    lines: List[QuoteLineCreate] = []
+    description: str | None = None
+    valid_until: str | None = None
+    notes: str | None = None
+    lines: list[QuoteLineCreate] = []
 
 @router.post("/quotations")
-def create_quotation(body: QuoteCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_quotation(body: QuoteCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     qnum = _next_code(db, t, "dbp_svc_quotations", "QT")
@@ -282,7 +288,7 @@ def create_quotation(body: QuoteCreate, user: dict = Depends(get_current_user), 
     return success_response("Quotation created", {"id": qid, "quote_number": qnum, "grand_total": grand})
 
 @router.get("/quotations")
-def list_quotations(status: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_quotations(status: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     where = "WHERE tenant_id=:t"
     params = {"t": t}
@@ -297,7 +303,7 @@ def list_quotations(status: Optional[str] = None, user: dict = Depends(get_curre
     return list_response(data, len(data))
 
 @router.put("/quotations/{quote_id}/accept")
-def accept_quotation(quote_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def accept_quotation(quote_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     q = db.execute(text("SELECT id,status,client_id,grand_total FROM dbp_svc_quotations WHERE id=:id AND tenant_id=:t"),
@@ -330,14 +336,14 @@ class ContractCreate(BaseModel):
     title: str
     contract_type: str = "fixed_price"
     value: float = Field(default=0, ge=0)
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
+    start_date: str | None = None
+    end_date: str | None = None
     billing_cycle: str = "monthly"
     auto_renew: bool = False
-    notes: Optional[str] = None
+    notes: str | None = None
 
 @router.post("/contracts")
-def create_contract(body: ContractCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_contract(body: ContractCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     cnum = _next_code(db, t, "dbp_svc_contracts", "CTR")
@@ -354,7 +360,7 @@ def create_contract(body: ContractCreate, user: dict = Depends(get_current_user)
     return success_response("Contract created", {"id": cid, "contract_number": cnum})
 
 @router.get("/contracts")
-def list_contracts(status: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_contracts(status: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     where = "WHERE tenant_id=:t"
     params = {"t": t}
@@ -376,17 +382,17 @@ def list_contracts(status: Optional[str] = None, user: dict = Depends(get_curren
 
 class ProjectCreate(BaseModel):
     name: str
-    client_id: Optional[str] = None
-    contract_id: Optional[str] = None
+    client_id: str | None = None
+    contract_id: str | None = None
     project_type: str = "time_material"
     budget: float = Field(default=0, ge=0)
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    manager_id: Optional[str] = None
-    description: Optional[str] = None
+    start_date: str | None = None
+    end_date: str | None = None
+    manager_id: str | None = None
+    description: str | None = None
 
 @router.post("/projects")
-def create_project(body: ProjectCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_project(body: ProjectCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     pcode = _next_code(db, t, "dbp_svc_projects", "PRJ")
@@ -403,7 +409,7 @@ def create_project(body: ProjectCreate, user: dict = Depends(get_current_user), 
     return success_response("Project created", {"id": pid, "project_code": pcode})
 
 @router.get("/projects")
-def list_projects(status: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_projects(status: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     where = "WHERE tenant_id=:t"
     params = {"t": t}
@@ -421,7 +427,7 @@ def list_projects(status: Optional[str] = None, user: dict = Depends(get_current
     return list_response(data, len(data))
 
 @router.put("/projects/{project_id}/status")
-def update_project_status(project_id: str, status: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def update_project_status(project_id: str, status: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     valid = {"planning", "active", "on_hold", "completed", "cancelled"}
@@ -445,15 +451,15 @@ def update_project_status(project_id: str, status: str, user: dict = Depends(get
 class TaskCreate(BaseModel):
     project_id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     task_type: str = "task"
-    assigned_to: Optional[str] = None
+    assigned_to: str | None = None
     estimated_hours: float = Field(default=0, ge=0)
-    start_date: Optional[str] = None
-    due_date: Optional[str] = None
+    start_date: str | None = None
+    due_date: str | None = None
 
 @router.post("/tasks")
-def create_task(body: TaskCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_task(body: TaskCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     tid = uid()
@@ -471,8 +477,8 @@ def create_task(body: TaskCreate, user: dict = Depends(get_current_user), db=Dep
     return success_response("Task created", {"id": tid})
 
 @router.get("/tasks/{project_id}")
-def list_tasks(project_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
-    t = user["tenant_id"]
+def list_tasks(project_id: str, user: dict | None=None, db=Depends(get_db)):
+    user["tenant_id"]
     rows = db.execute(text("SELECT id,name,task_type,status,priority,assigned_to,estimated_hours,actual_hours,due_date "
                            "FROM dbp_svc_project_tasks WHERE project_id=:pid ORDER BY sort_order"),
                       {"pid": project_id}).fetchall()
@@ -483,7 +489,7 @@ def list_tasks(project_id: str, user: dict = Depends(get_current_user), db=Depen
     return list_response(data, len(data))
 
 @router.put("/tasks/{task_id}/status")
-def update_task_status(task_id: str, status: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def update_task_status(task_id: str, status: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     valid = {"todo", "in_progress", "review", "done", "blocked"}
@@ -507,11 +513,11 @@ def update_task_status(task_id: str, status: str, user: dict = Depends(get_curre
 class MilestoneCreate(BaseModel):
     project_id: str
     name: str
-    due_date: Optional[str] = None
+    due_date: str | None = None
     amount: float = Field(default=0, ge=0)
 
 @router.post("/milestones")
-def create_milestone(body: MilestoneCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_milestone(body: MilestoneCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     mid = uid()
@@ -524,8 +530,8 @@ def create_milestone(body: MilestoneCreate, user: dict = Depends(get_current_use
     return success_response("Milestone created", {"id": mid})
 
 @router.get("/milestones/{project_id}")
-def list_milestones(project_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
-    t = user["tenant_id"]
+def list_milestones(project_id: str, user: dict | None=None, db=Depends(get_db)):
+    user["tenant_id"]
     rows = db.execute(text("SELECT id,name,due_date,amount,status,completed_at "
                            "FROM dbp_svc_milestones WHERE project_id=:pid ORDER BY due_date"),
                       {"pid": project_id}).fetchall()
@@ -540,8 +546,8 @@ def list_milestones(project_id: str, user: dict = Depends(get_current_user), db=
 # ═══════════════════════════════════════════════════
 
 @router.post("/skills")
-def create_skill(name: str, category: Optional[str] = None,
-                 user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_skill(name: str, category: str | None = None,
+                 user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     sid = uid()
@@ -552,7 +558,7 @@ def create_skill(name: str, category: Optional[str] = None,
     return success_response("Skill created", {"id": sid})
 
 @router.get("/skills")
-def list_skills(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_skills(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,name,category FROM dbp_svc_skills WHERE tenant_id=:t ORDER BY name"), {"t": t}).fetchall()
     data = [{"id": r[0], "name": r[1], "category": r[2]} for r in rows]
@@ -567,11 +573,11 @@ class AllocationCreate(BaseModel):
     employee_id: str
     project_id: str
     allocation_pct: float = Field(default=100, gt=0, le=100)
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
+    start_date: str | None = None
+    end_date: str | None = None
 
 @router.post("/allocations")
-def create_allocation(body: AllocationCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_allocation(body: AllocationCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     aid = uid()
@@ -585,7 +591,7 @@ def create_allocation(body: AllocationCreate, user: dict = Depends(get_current_u
     return success_response("Allocation created", {"id": aid})
 
 @router.get("/allocations")
-def list_allocations(project_id: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_allocations(project_id: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     where = "WHERE tenant_id=:t"
     params = {"t": t}
@@ -606,20 +612,20 @@ def list_allocations(project_id: Optional[str] = None, user: dict = Depends(get_
 
 class TimesheetLineCreate(BaseModel):
     project_id: str
-    task_id: Optional[str] = None
+    task_id: str | None = None
     work_date: str
     hours: float = Field(gt=0)
     billable: bool = True
-    description: Optional[str] = None
+    description: str | None = None
 
 class TimesheetCreate(BaseModel):
     employee_id: str
     week_start: str
     week_end: str
-    lines: List[TimesheetLineCreate] = []
+    lines: list[TimesheetLineCreate] = []
 
 @router.post("/timesheets")
-def create_timesheet(body: TimesheetCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_timesheet(body: TimesheetCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     ts_num = _next_code(db, t, "dbp_svc_timesheets", "TS")
@@ -644,7 +650,7 @@ def create_timesheet(body: TimesheetCreate, user: dict = Depends(get_current_use
     return success_response("Timesheet created", {"id": tsid, "timesheet_number": ts_num, "total_hours": total_h})
 
 @router.get("/timesheets")
-def list_timesheets(status: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_timesheets(status: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     where = "WHERE tenant_id=:t"
     params = {"t": t}
@@ -660,7 +666,7 @@ def list_timesheets(status: Optional[str] = None, user: dict = Depends(get_curre
     return list_response(data, len(data))
 
 @router.put("/timesheets/{ts_id}/submit")
-def submit_timesheet(ts_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def submit_timesheet(ts_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     ts = db.execute(text("SELECT status FROM dbp_svc_timesheets WHERE id=:id AND tenant_id=:t"),
@@ -675,7 +681,7 @@ def submit_timesheet(ts_id: str, user: dict = Depends(get_current_user), db=Depe
     return success_response("Timesheet submitted", {"id": ts_id})
 
 @router.put("/timesheets/{ts_id}/approve")
-def approve_timesheet(ts_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def approve_timesheet(ts_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     ts = db.execute(text("SELECT status FROM dbp_svc_timesheets WHERE id=:id AND tenant_id=:t"),
@@ -697,15 +703,15 @@ def approve_timesheet(ts_id: str, user: dict = Depends(get_current_user), db=Dep
 
 class ExpenseCreate(BaseModel):
     employee_id: str
-    project_id: Optional[str] = None
+    project_id: str | None = None
     category: str
     amount: float = Field(gt=0)
     expense_date: str
-    description: Optional[str] = None
-    receipt_ref: Optional[str] = None
+    description: str | None = None
+    receipt_ref: str | None = None
 
 @router.post("/expenses")
-def create_expense(body: ExpenseCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_expense(body: ExpenseCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     valid_cats = {"travel", "meals", "office", "software", "hardware", "other"}
@@ -725,7 +731,7 @@ def create_expense(body: ExpenseCreate, user: dict = Depends(get_current_user), 
     return success_response("Expense created", {"id": eid, "expense_number": exp_num})
 
 @router.get("/expenses")
-def list_expenses(status: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_expenses(status: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     where = "WHERE tenant_id=:t"
     params = {"t": t}
@@ -740,7 +746,7 @@ def list_expenses(status: Optional[str] = None, user: dict = Depends(get_current
     return list_response(data, len(data))
 
 @router.put("/expenses/{exp_id}/approve")
-def approve_expense(exp_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def approve_expense(exp_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     exp = db.execute(text("SELECT status FROM dbp_svc_expenses WHERE id=:id AND tenant_id=:t"),
@@ -764,20 +770,20 @@ class InvoiceLineCreate(BaseModel):
     description: str
     quantity: float = Field(default=1, gt=0)
     unit_price: float = Field(default=0, ge=0)
-    timesheet_line_id: Optional[str] = None
-    expense_id: Optional[str] = None
+    timesheet_line_id: str | None = None
+    expense_id: str | None = None
 
 class InvoiceCreate(BaseModel):
     client_id: str
-    project_id: Optional[str] = None
-    contract_id: Optional[str] = None
+    project_id: str | None = None
+    contract_id: str | None = None
     invoice_type: str = "time_material"
-    due_date: Optional[str] = None
-    notes: Optional[str] = None
-    lines: List[InvoiceLineCreate] = []
+    due_date: str | None = None
+    notes: str | None = None
+    lines: list[InvoiceLineCreate] = []
 
 @router.post("/invoices")
-def create_invoice(body: InvoiceCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_invoice(body: InvoiceCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     inv_num = _next_code(db, t, "dbp_svc_invoices", "SINV")
@@ -806,7 +812,7 @@ def create_invoice(body: InvoiceCreate, user: dict = Depends(get_current_user), 
     return success_response("Invoice created", {"id": inv_id, "invoice_number": inv_num, "total": total})
 
 @router.get("/invoices")
-def list_invoices(status: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_invoices(status: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     where = "WHERE tenant_id=:t"
     params = {"t": t}
@@ -822,7 +828,7 @@ def list_invoices(status: Optional[str] = None, user: dict = Depends(get_current
     return list_response(data, len(data))
 
 @router.put("/invoices/{inv_id}/send")
-def send_invoice(inv_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def send_invoice(inv_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     inv = db.execute(text("SELECT status FROM dbp_svc_invoices WHERE id=:id AND tenant_id=:t"),
@@ -837,7 +843,7 @@ def send_invoice(inv_id: str, user: dict = Depends(get_current_user), db=Depends
     return success_response("Invoice sent", {"id": inv_id})
 
 @router.put("/invoices/{inv_id}/pay")
-def pay_invoice(inv_id: str, amount: float = Query(gt=0),
+def pay_invoice(inv_id: str, amount: float | None=None,
                 user: dict = Depends(get_current_user), db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
@@ -867,7 +873,7 @@ def pay_invoice(inv_id: str, amount: float = Query(gt=0),
 # ═══════════════════════════════════════════════════
 
 @router.get("/profitability/{project_id}")
-def get_profitability(project_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_profitability(project_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     proj = db.execute(text("SELECT id,budget,spent FROM dbp_svc_projects WHERE id=:pid AND tenant_id=:t"),
                       {"pid": project_id, "t": t}).fetchone()
@@ -914,7 +920,7 @@ def get_profitability(project_id: str, user: dict = Depends(get_current_user), d
 # ═══════════════════════════════════════════════════
 
 @router.get("/dashboard")
-def services_dashboard(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def services_dashboard(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
 
     clients = db.execute(text("SELECT COUNT(*) FROM dbp_svc_clients WHERE tenant_id=:t AND status='active'"), {"t": t}).fetchone()[0] or 0

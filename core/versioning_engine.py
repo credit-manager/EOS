@@ -1,11 +1,11 @@
 """P11 Versioning Engine — immutable schema snapshots for dynamic entities."""
-from typing import Dict, Any, List, Optional
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-import json
 import uuid
+from typing import Any
 
-from models import DBPEntity, DBPField, DBPRelationship, DBPEntityVersion
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from models import DBPEntity, DBPEntityVersion, DBPField, DBPRelationship
 
 
 class VersioningEngine:
@@ -30,7 +30,7 @@ class VersioningEngine:
         ).scalar()
         return result + 1
 
-    def _build_snapshot(self, entity_id: str) -> Dict[str, Any]:
+    def _build_snapshot(self, entity_id: str) -> dict[str, Any]:
         entity = self.db.query(DBPEntity).filter(
             DBPEntity.id == entity_id
         ).first()
@@ -90,8 +90,8 @@ class VersioningEngine:
         entity_id: str,
         change_type: str,
         changed_by: str,
-        change_summary: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        change_summary: str | None = None,
+    ) -> dict[str, Any]:
         version_number = self._get_next_version_number(entity_id)
         snapshot = self._build_snapshot(entity_id)
 
@@ -117,7 +117,7 @@ class VersioningEngine:
             "change_summary": version.change_summary,
         }
 
-    def get_versions(self, entity_id: str) -> List[Dict[str, Any]]:
+    def get_versions(self, entity_id: str) -> list[dict[str, Any]]:
         rows = (
             self.db.query(DBPEntityVersion)
             .filter(DBPEntityVersion.entity_id == entity_id)
@@ -138,7 +138,7 @@ class VersioningEngine:
 
     def get_version(
         self, entity_id: str, version_number: int
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         row = (
             self.db.query(DBPEntityVersion)
             .filter(
@@ -161,7 +161,7 @@ class VersioningEngine:
             "change_summary": row.change_summary,
         }
 
-    def get_latest_version(self, entity_id: str) -> Optional[Dict[str, Any]]:
+    def get_latest_version(self, entity_id: str) -> dict[str, Any] | None:
         row = (
             self.db.query(DBPEntityVersion)
             .filter(DBPEntityVersion.entity_id == entity_id)

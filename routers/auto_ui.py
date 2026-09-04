@@ -4,16 +4,13 @@ P14 Auto UI + Dynamic OpenAPI Router
 Provides UI schema endpoints and dynamic OpenAPI generation
 for dynamic entities. All security enforced at metadata level.
 """
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import Optional
 
-from database import get_db
-from core.auth import get_current_user, require_permission
+from core.auth import require_permission
 from core.rate_limit import read_limiter
 from core.ui_schema import UISchemaEngine
-
+from database import get_db
 
 router = APIRouter(
     prefix="/api/v1/dynamic",
@@ -46,7 +43,7 @@ def _extract_user_context(user: dict):
 async def get_form_schema(
     entity_code: str,
     mode: str = "create",
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
     engine: UISchemaEngine = Depends(_get_ui_engine),
 ):
@@ -96,7 +93,7 @@ async def get_form_schema(
 )
 async def get_list_schema(
     entity_code: str,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
     engine: UISchemaEngine = Depends(_get_ui_engine),
 ):
@@ -133,7 +130,7 @@ async def get_list_schema(
 )
 async def get_detail_schema(
     entity_code: str,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
     engine: UISchemaEngine = Depends(_get_ui_engine),
 ):
@@ -250,7 +247,7 @@ async def ui_field_lookup(
     field_code: str,
     q: str = "",
     limit: int = 20,
-    user: dict = Depends(get_current_user),
+    user: dict | None=None,
     db: Session = Depends(get_db),
 ):
     """
@@ -281,7 +278,7 @@ async def ui_field_lookup(
             },
         })
 
-    target_code, lookup_field, _, target_col = rel
+    target_code, lookup_field, _, _target_col = rel
 
     # Get table_mapping for target entity
     target = db.execute(

@@ -1,9 +1,9 @@
 import json
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
-from typing import Optional, List, Dict
-from sqlalchemy.orm import Session
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class SystemEngine:
@@ -11,7 +11,7 @@ class SystemEngine:
         self.db = db
 
     # ------------------------------------------------------------------ config
-    def get_config(self, tenant_id: str, config_key: str) -> Optional[Dict]:
+    def get_config(self, tenant_id: str, config_key: str) -> dict | None:
         row = self.db.execute(
             text("SELECT * FROM dbp_system_config WHERE tenant_id=:tid AND config_key=:ck"),
             {"tid": tenant_id, "ck": config_key},
@@ -46,7 +46,7 @@ class SystemEngine:
         self.db.commit()
         return cid
 
-    def list_configs(self, tenant_id: str, category: str = None) -> List[Dict]:
+    def list_configs(self, tenant_id: str, category: str | None = None) -> list[dict]:
         sql = "SELECT * FROM dbp_system_config WHERE tenant_id=:tid"
         params: dict = {"tid": tenant_id}
         if category:
@@ -56,7 +56,7 @@ class SystemEngine:
         rows = self.db.execute(text(sql), params).mappings().all()
         return [self._serialize(r) for r in rows]
 
-    def delete_config(self, tenant_id: str, config_key: str) -> Dict:
+    def delete_config(self, tenant_id: str, config_key: str) -> dict:
         existing = self.get_config(tenant_id, config_key)
         if not existing:
             return None
@@ -93,9 +93,9 @@ class SystemEngine:
         self.db.commit()
         return lid
 
-    def list_integration_logs(self, tenant_id: str, company_id: str = None,
-                              integration_type: str = None, status: str = None,
-                              limit: int = 100) -> List[Dict]:
+    def list_integration_logs(self, tenant_id: str, company_id: str | None = None,
+                              integration_type: str | None = None, status: str | None = None,
+                              limit: int = 100) -> list[dict]:
         sql = "SELECT * FROM dbp_integration_logs WHERE tenant_id=:tid"
         params: dict = {"tid": tenant_id}
         if company_id:
@@ -142,7 +142,7 @@ class SystemEngine:
         self.db.commit()
         return iid
 
-    def update_data_import(self, import_id: str, tenant_id: str, **kw) -> Dict:
+    def update_data_import(self, import_id: str, tenant_id: str, **kw) -> dict:
         row = self.db.execute(
             text("SELECT * FROM dbp_data_imports WHERE id=:id AND tenant_id=:tenant_id"),
             {"id": import_id, "tenant_id": tenant_id},
@@ -164,8 +164,8 @@ class SystemEngine:
         ).mappings().first()
         return self._serialize(updated)
 
-    def list_data_imports(self, company_id: str, tenant_id: str = None,
-                          status: str = None) -> List[Dict]:
+    def list_data_imports(self, company_id: str, tenant_id: str | None = None,
+                          status: str | None = None) -> list[dict]:
         sql = "SELECT * FROM dbp_data_imports WHERE company_id=:cid"
         params: dict = {"cid": company_id}
         if tenant_id:
@@ -205,8 +205,8 @@ class SystemEngine:
         self.db.commit()
         return eid
 
-    def list_data_exports(self, company_id: str, tenant_id: str = None,
-                          export_type: str = None) -> List[Dict]:
+    def list_data_exports(self, company_id: str, tenant_id: str | None = None,
+                          export_type: str | None = None) -> list[dict]:
         sql = "SELECT * FROM dbp_data_exports WHERE company_id=:cid"
         params: dict = {"cid": company_id}
         if tenant_id:
@@ -220,7 +220,7 @@ class SystemEngine:
         return [self._serialize(r) for r in rows]
 
     # ------------------------------------------------------------- system health
-    def get_system_health(self) -> Dict:
+    def get_system_health(self) -> dict:
         now = datetime.now(timezone.utc)
         module_tables = [
             "dbp_companies", "dbp_currencies", "dbp_audit_trail",
@@ -241,7 +241,7 @@ class SystemEngine:
 
     # ------------------------------------------------------------------ helpers
     @staticmethod
-    def _serialize(row) -> Dict:
+    def _serialize(row) -> dict:
         d = dict(row)
         for k, v in d.items():
             if isinstance(v, datetime):

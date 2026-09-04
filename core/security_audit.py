@@ -6,8 +6,7 @@
 
 import os
 import re
-from pathlib import Path
-from typing import Dict, List, Tuple
+
 
 class SecurityAudit:
     """مراجعة أمنية شاملة للمنصة"""
@@ -19,7 +18,7 @@ class SecurityAudit:
         self.medium = []
         self.low = []
         
-    def audit_multi_tenancy(self) -> List[Dict]:
+    def audit_multi_tenancy(self) -> list[dict]:
         """مراجعة عزل المستأجرين"""
         findings = []
         
@@ -71,7 +70,7 @@ class SecurityAudit:
             
         return findings
     
-    def audit_rate_limiting(self) -> List[Dict]:
+    def audit_rate_limiting(self) -> list[dict]:
         """مراجعة Rate Limiting"""
         findings = []
         
@@ -128,7 +127,7 @@ class SecurityAudit:
             
         return findings
     
-    def audit_2fa(self) -> List[Dict]:
+    def audit_2fa(self) -> list[dict]:
         """مراجعة 2FA implementation"""
         findings = []
         
@@ -139,7 +138,7 @@ class SecurityAudit:
             # التحقق من التشفير
             has_encryption = 'encrypt' in content.lower() or 'cipher' in content.lower() or 'Fernet' in content
             has_totp = 'totp' in content.lower() or 'TOTP' in content
-            has_recovery = 'recovery' in content.lower()
+            'recovery' in content.lower()
             
             if not has_encryption:
                 finding = {
@@ -193,7 +192,7 @@ class SecurityAudit:
             
         return findings
     
-    def audit_secrets_management(self) -> List[Dict]:
+    def audit_secrets_management(self) -> list[dict]:
         """مراجعة إدارة الأسرار"""
         findings = []
         
@@ -233,7 +232,7 @@ class SecurityAudit:
                                         }
                                         findings.append(finding)
                                         self.high.append(finding)
-                    except:
+                    except Exception:
                         pass
         
         if env_exists:

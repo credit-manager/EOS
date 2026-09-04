@@ -1,17 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import require_permission, get_current_user
+from core.auth import require_permission
 from core.rate_limit import read_limiter, write_limiter
 from core.subscription_engine import SubscriptionEngine
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic/billing", tags=["Subscription & Billing"])
 
 
 @router.get("/subscription",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_subscription(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_subscription(user: dict | None=None, db: Session = Depends(get_db)):
     data = SubscriptionEngine(db).get_subscription(user["tenant_id"])
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -22,7 +22,7 @@ async def get_subscription(user: dict = Depends(get_current_user), db: Session =
 @router.post("/subscription",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_subscription(body: dict,
-                            user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                            user: dict | None=None, db: Session = Depends(get_db)):
     if "plan_id" not in body:
         raise HTTPException(400, detail={"status": "error",
             "error": {"code": "MISSING", "message": "plan_id required"}})
@@ -36,7 +36,7 @@ async def create_subscription(body: dict,
 
 @router.delete("/subscription",
                dependencies=[Depends(require_permission("dynamic", "delete")), Depends(write_limiter.check)])
-async def cancel_subscription(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def cancel_subscription(user: dict | None=None, db: Session = Depends(get_db)):
     result = SubscriptionEngine(db).cancel_subscription(user["tenant_id"])
     db.commit()
     return {"status": "success", "data": result}
@@ -44,8 +44,8 @@ async def cancel_subscription(user: dict = Depends(get_current_user), db: Sessio
 
 @router.get("/subscriptions",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_subscriptions(status: str = None,
-                            user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_subscriptions(status: str | None = None,
+                            user: dict | None=None, db: Session = Depends(get_db)):
     data = SubscriptionEngine(db).list_subscriptions(status=status)
     return {"status": "success", "data": data}
 
@@ -53,8 +53,8 @@ async def list_subscriptions(status: str = None,
 # -------------------------------------------------------- invoices
 @router.get("/invoices",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_invoices(status: str = None,
-                       user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_invoices(status: str | None = None,
+                       user: dict | None=None, db: Session = Depends(get_db)):
     data = SubscriptionEngine(db).list_invoices(user["tenant_id"], status=status)
     return {"status": "success", "data": data}
 
@@ -62,7 +62,7 @@ async def list_invoices(status: str = None,
 @router.post("/invoices",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_invoice(body: dict,
-                       user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                       user: dict | None=None, db: Session = Depends(get_db)):
     required = ["subscription_id", "invoice_number", "amount"]
     for f in required:
         if f not in body:
@@ -79,7 +79,7 @@ async def create_invoice(body: dict,
 @router.get("/invoices/{invoice_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_invoice(invoice_id: str,
-                     user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                     user: dict | None=None, db: Session = Depends(get_db)):
     data = SubscriptionEngine(db).get_invoice(user["tenant_id"], invoice_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -90,7 +90,7 @@ async def get_invoice(invoice_id: str,
 @router.put("/invoices/{invoice_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_invoice(invoice_id: str, body: dict,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                        user: dict | None=None, db: Session = Depends(get_db)):
     if "status" not in body:
         raise HTTPException(400, detail={"status": "error",
             "error": {"code": "MISSING", "message": "status required"}})
@@ -103,7 +103,7 @@ async def update_invoice(invoice_id: str, body: dict,
 # -------------------------------------------------------- payments
 @router.get("/payments",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_payments(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_payments(user: dict | None=None, db: Session = Depends(get_db)):
     data = SubscriptionEngine(db).list_payments(user["tenant_id"])
     return {"status": "success", "data": data}
 
@@ -111,7 +111,7 @@ async def list_payments(user: dict = Depends(get_current_user), db: Session = De
 @router.post("/payments",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_payment(body: dict,
-                       user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                       user: dict | None=None, db: Session = Depends(get_db)):
     required = ["amount"]
     for f in required:
         if f not in body:
@@ -129,8 +129,8 @@ async def create_payment(body: dict,
 # -------------------------------------------------------- licenses
 @router.get("/licenses",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_licenses(status: str = None,
-                       user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_licenses(status: str | None = None,
+                       user: dict | None=None, db: Session = Depends(get_db)):
     data = SubscriptionEngine(db).list_licenses(user["tenant_id"], status=status)
     return {"status": "success", "data": data}
 
@@ -138,7 +138,7 @@ async def list_licenses(status: str = None,
 @router.post("/licenses",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_license(body: dict,
-                       user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                       user: dict | None=None, db: Session = Depends(get_db)):
     required = ["license_key", "license_type"]
     for f in required:
         if f not in body:
@@ -157,7 +157,7 @@ async def create_license(body: dict,
 @router.get("/licenses/{license_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_license(license_id: str,
-                     user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                     user: dict | None=None, db: Session = Depends(get_db)):
     data = SubscriptionEngine(db).get_license(user["tenant_id"], license_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -168,7 +168,7 @@ async def get_license(license_id: str,
 @router.put("/licenses/{license_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_license(license_id: str, body: dict,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                        user: dict | None=None, db: Session = Depends(get_db)):
     result = SubscriptionEngine(db).update_license(user["tenant_id"], license_id, **body)
     if not result:
         raise HTTPException(400, detail={"status": "error",
@@ -180,8 +180,8 @@ async def update_license(license_id: str, body: dict,
 # --------------------------------------------------- usage meters
 @router.get("/usage",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_usage(meter_name: str = None, limit: int = 50,
-                    user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_usage(meter_name: str | None = None, limit: int = 50,
+                    user: dict | None=None, db: Session = Depends(get_db)):
     data = SubscriptionEngine(db).get_usage(user["tenant_id"], meter_name=meter_name, limit=limit)
     return {"status": "success", "data": data}
 
@@ -189,7 +189,7 @@ async def list_usage(meter_name: str = None, limit: int = 50,
 @router.post("/usage",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def record_usage(body: dict,
-                     user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                     user: dict | None=None, db: Session = Depends(get_db)):
     required = ["meter_name", "meter_value"]
     for f in required:
         if f not in body:

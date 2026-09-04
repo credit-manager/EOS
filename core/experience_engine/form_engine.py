@@ -3,9 +3,11 @@ EOS Experience Engine — Form Engine
 Dynamic form generation from entity definitions.
 """
 
-from typing import Dict, List, Any, Optional
+import ast
+import operator
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 
 class FormLayout(str, Enum):
@@ -36,11 +38,11 @@ class FormFieldConfig:
     help_text: str = ""
     help_text_ar: str = ""
     default_value: Any = None
-    options: List[Dict[str, str]] = field(default_factory=list)
-    validation: Dict[str, Any] = field(default_factory=dict)
+    options: list[dict[str, str]] = field(default_factory=list)
+    validation: dict[str, Any] = field(default_factory=dict)
     depends_on: str = ""  # Field this depends on
-    visible_when: Dict[str, Any] = field(default_factory=dict)  # Conditional visibility
-    editable_when: Dict[str, Any] = field(default_factory=dict)  # Conditional editability
+    visible_when: dict[str, Any] = field(default_factory=dict)  # Conditional visibility
+    editable_when: dict[str, Any] = field(default_factory=dict)  # Conditional editability
     formula: str = ""  # Calculated field formula
     width: str = "full"  # full, half, third
     group: str = "general"
@@ -55,11 +57,11 @@ class FormSection:
     title: str
     title_ar: str
     section_type: SectionType = SectionType.GROUP
-    fields: List[FormFieldConfig] = field(default_factory=list)
+    fields: list[FormFieldConfig] = field(default_factory=list)
     columns: int = 2
     is_collapsed: bool = False
     depends_on: str = ""
-    visible_when: Dict[str, Any] = field(default_factory=dict)
+    visible_when: dict[str, Any] = field(default_factory=dict)
     order: int = 0
 
 
@@ -83,8 +85,8 @@ class FormDefinition:
     name_ar: str
     entity: str
     layout: FormLayout = FormLayout.SINGLE_COLUMN
-    sections: List[FormSection] = field(default_factory=list)
-    actions: List[FormAction] = field(default_factory=list)
+    sections: list[FormSection] = field(default_factory=list)
+    actions: list[FormAction] = field(default_factory=list)
     title_field: str = ""  # Field to use as form title
     subtitle_field: str = ""
     readonly: bool = False
@@ -102,7 +104,7 @@ class FormEngine:
     """
 
     def __init__(self):
-        self._forms: Dict[str, FormDefinition] = {}
+        self._forms: dict[str, FormDefinition] = {}
         self._register_builtins()
 
     def _register_builtins(self):
@@ -212,21 +214,21 @@ class FormEngine:
         """Register a form definition."""
         self._forms[form.code] = form
 
-    def get(self, code: str) -> Optional[FormDefinition]:
+    def get(self, code: str) -> FormDefinition | None:
         """Get form by code."""
         return self._forms.get(code)
 
-    def get_for_entity(self, entity_code: str) -> Optional[FormDefinition]:
+    def get_for_entity(self, entity_code: str) -> FormDefinition | None:
         """Get form for an entity."""
         for form in self._forms.values():
             if form.entity == entity_code:
                 return form
         return self._forms.get("generic_create")
 
-    def get_all(self) -> Dict[str, FormDefinition]:
+    def get_all(self) -> dict[str, FormDefinition]:
         return dict(self._forms)
 
-    def generate_form(self, form_code: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
+    def generate_form(self, form_code: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
         """
         Generate complete form JSON for frontend rendering.
         """
@@ -249,7 +251,7 @@ class FormEngine:
             "data": data or {},
         }
 
-    def generate_from_entity(self, entity_code: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
+    def generate_from_entity(self, entity_code: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
         """Generate form from entity definition (auto-generate sections/fields)."""
         # This would use the Entity Engine to auto-generate forms
         # For now, return a basic structure
@@ -267,7 +269,7 @@ class FormEngine:
             "data": data or {},
         }
 
-    def validate_form(self, form_code: str, data: Dict[str, Any]) -> List[str]:
+    def validate_form(self, form_code: str, data: dict[str, Any]) -> list[str]:
         """Validate form data against form definition."""
         form = self._forms.get(form_code)
         if not form:
@@ -290,7 +292,7 @@ class FormEngine:
 
         return errors
 
-    def calculate_fields(self, form_code: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    def calculate_fields(self, form_code: str, data: dict[str, Any]) -> dict[str, Any]:
         """Calculate formula fields."""
         form = self._forms.get(form_code)
         if not form:
@@ -301,27 +303,68 @@ class FormEngine:
             for field in section.fields:
                 if field.formula:
                     try:
-                        # Simple formula evaluation
                         result = self._eval_formula(field.formula, data)
                         results[field.code] = result
-                    except Exception:
+                    except (ValueError, TypeError, SyntaxError):
                         results[field.code] = 0
 
         return results
 
-    def _eval_formula(self, formula: str, data: Dict[str, Any]) -> Any:
-        """Simple formula evaluation."""
-        # Replace field references with values
-        expr = formula
-        for key, value in data.items():
-            if isinstance(value, (int, float)):
-                expr = expr.replace(key, str(value))
-        try:
-            return eval(expr)  # Simple eval for basic formulas
-        except Exception:
-            return 0
+    def _eval_formula(self, formula: str, data: dict[str, Any]) -> Any:
+        """Safely evaluate a limited arithmetic expression.
 
-    def _serialize_section(self, section: FormSection, data: Dict[str, Any]) -> Dict[str, Any]:
+        Only numeric constants, values from ``data``, and arithmetic operators
+        are accepted. Function calls, attribute access, indexing, comprehensions,
+        names outside the supplied data, and other Python execution constructs
+        are rejected.
+        """
+        if not isinstance(formula, str) or not formula.strip():
+            raise ValueError("Formula must be a non-empty string")
+
+        try:
+            tree = ast.parse(formula, mode="eval")
+        except (SyntaxError, ValueError) as exc:
+            raise SyntaxError("Invalid formula") from exc
+
+        allowed_binary_ops = {
+            ast.Add: operator.add,
+            ast.Sub: operator.sub,
+            ast.Mult: operator.mul,
+            ast.Div: operator.truediv,
+            ast.FloorDiv: operator.floordiv,
+            ast.Mod: operator.mod,
+            ast.Pow: operator.pow,
+        }
+        allowed_unary_ops = {
+            ast.UAdd: operator.pos,
+            ast.USub: operator.neg,
+        }
+
+        def evaluate(node: ast.AST) -> Any:
+            if isinstance(node, ast.Expression):
+                return evaluate(node.body)
+            if isinstance(node, ast.Constant):
+                if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
+                    raise ValueError("Only numeric constants are allowed")
+                return node.value
+            if isinstance(node, ast.Name):
+                value = data.get(node.id)
+                if not isinstance(value, (int, float)) or isinstance(value, bool):
+                    raise ValueError(f"Unknown or non-numeric field: {node.id}")
+                return value
+            if isinstance(node, ast.BinOp) and type(node.op) in allowed_binary_ops:
+                left = evaluate(node.left)
+                right = evaluate(node.right)
+                if isinstance(node.op, ast.Pow) and abs(right) > 100:
+                    raise ValueError("Exponent is too large")
+                return allowed_binary_ops[type(node.op)](left, right)
+            if isinstance(node, ast.UnaryOp) and type(node.op) in allowed_unary_ops:
+                return allowed_unary_ops[type(node.op)](evaluate(node.operand))
+            raise ValueError("Unsupported formula expression")
+
+        return evaluate(tree)
+
+    def _serialize_section(self, section: FormSection, data: dict[str, Any]) -> dict[str, Any]:
         return {
             "code": section.code,
             "title": section.title,
@@ -332,7 +375,7 @@ class FormEngine:
             "fields": [self._serialize_field(f, data) for f in section.fields],
         }
 
-    def _serialize_field(self, field: FormFieldConfig, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _serialize_field(self, field: FormFieldConfig, data: dict[str, Any]) -> dict[str, Any]:
         return {
             "code": field.code,
             "label": field.label,
@@ -354,7 +397,7 @@ class FormEngine:
             "suffix": field.suffix,
         }
 
-    def _serialize_action(self, action: FormAction) -> Dict[str, Any]:
+    def _serialize_action(self, action: FormAction) -> dict[str, Any]:
         return {
             "code": action.code,
             "label": action.label_ar or action.label,
@@ -365,7 +408,7 @@ class FormEngine:
             "confirmation": action.confirmation_ar or action.confirmation,
         }
 
-    def export_forms(self, entity_codes: List[str] = None) -> List[Dict[str, Any]]:
+    def export_forms(self, entity_codes: list[str] | None = None) -> list[dict[str, Any]]:
         """Export forms for templates."""
         forms = self._forms.values()
         if entity_codes:

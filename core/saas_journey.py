@@ -4,14 +4,16 @@ Arabic description → AI config → customize → choose plan → pay → launc
 Composes P53 (AIComposerEngine) + P54 (BuilderEngine) + P56 (BillingFlowEngine)
 in-process. No production change before the explicit launch approval gate.
 """
-import uuid, json
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
+import json
+import uuid
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from core.ai_composer import AIComposerEngine
-from core.builder_engine import BuilderEngine
 from core.billing_flow import BillingFlowEngine
+from core.builder_engine import BuilderEngine
 
 JOURNEY_STEPS = ["drafted", "customized", "plan_selected", "paid", "erp_ready"]
 
@@ -27,8 +29,8 @@ class SaaSJourneyEngine:
 
     def start_journey(self, tenant_id: str, user_id: str,
                       business_description: str,
-                      company_name: Optional[str] = None,
-                      admin_email: Optional[str] = None) -> Dict[str, Any]:
+                      company_name: str | None = None,
+                      admin_email: str | None = None) -> dict[str, Any]:
         if not business_description or len(business_description.strip()) < 5:
             return {"success": False, "error": "business_description required"}
 
@@ -74,7 +76,7 @@ class SaaSJourneyEngine:
 
     # ── STEP 2: CUSTOMIZE ──
 
-    def customize(self, tenant_id: str, jid: str, body: Dict) -> Dict[str, Any]:
+    def customize(self, tenant_id: str, jid: str, body: dict) -> dict[str, Any]:
         j = self._get(tenant_id, jid)
         if not j:
             return {"success": False, "error": "Journey not found"}
@@ -104,7 +106,7 @@ class SaaSJourneyEngine:
                       {"customize": {k: v for k, v in body.items()}})
         return {"success": True, "status": "customized"}
 
-    def preview(self, tenant_id: str, jid: str) -> Optional[Dict]:
+    def preview(self, tenant_id: str, jid: str) -> dict | None:
         j = self._get(tenant_id, jid)
         if not j:
             return None
@@ -124,7 +126,7 @@ class SaaSJourneyEngine:
     # ── STEP 3: CHOOSE PLAN ──
 
     def select_plan(self, tenant_id: str, jid: str, plan_code: str,
-                    billing_cycle: str = "monthly") -> Dict[str, Any]:
+                    billing_cycle: str = "monthly") -> dict[str, Any]:
         j = self._get(tenant_id, jid)
         if not j:
             return {"success": False, "error": "Journey not found"}
@@ -146,7 +148,7 @@ class SaaSJourneyEngine:
     # ── STEP 4: PAY ──
 
     def pay(self, tenant_id: str, jid: str,
-            payment_method: str = "card") -> Dict[str, Any]:
+            payment_method: str = "card") -> dict[str, Any]:
         j = self._get(tenant_id, jid)
         if not j:
             return {"success": False, "error": "Journey not found"}
@@ -168,7 +170,7 @@ class SaaSJourneyEngine:
 
     # ── STEP 5: LAUNCH (Approval Gate) ──
 
-    def launch(self, tenant_id: str, jid: str, confirmed: bool) -> Dict[str, Any]:
+    def launch(self, tenant_id: str, jid: str, confirmed: bool) -> dict[str, Any]:
         j = self._get(tenant_id, jid)
         if not j:
             return {"success": False, "error": "Journey not found"}
@@ -193,7 +195,7 @@ class SaaSJourneyEngine:
 
     # ── QUERIES ──
 
-    def get_journey(self, tenant_id: str, jid: str) -> Optional[Dict]:
+    def get_journey(self, tenant_id: str, jid: str) -> dict | None:
         j = self._get(tenant_id, jid)
         if not j:
             return None
@@ -202,7 +204,7 @@ class SaaSJourneyEngine:
         j["steps_remaining"] = JOURNEY_STEPS[step_idx + 1:]
         return j
 
-    def list_journeys(self, tenant_id: str) -> List[Dict]:
+    def list_journeys(self, tenant_id: str) -> list[dict]:
         rows = self.db.execute(text(
             "SELECT id, company_name, detected_industry, status, plan_code, created_at "
             "FROM dbp_saas_journeys WHERE tenant_id = :t ORDER BY created_at DESC"),
@@ -213,7 +215,7 @@ class SaaSJourneyEngine:
 
     # ── INTERNALS ──
 
-    def _get(self, tenant_id: str, jid: str) -> Optional[Dict]:
+    def _get(self, tenant_id: str, jid: str) -> dict | None:
         row = self.db.execute(text(
             "SELECT id, tenant_id, user_id, company_name, admin_email, business_description, "
             "detected_industry, composer_session_id, project_id, plan_code, billing_cycle, "
@@ -233,7 +235,7 @@ class SaaSJourneyEngine:
                 "created_at": str(row[15]) if row[15] else None,
                 "updated_at": str(row[16]) if row[16] else None}
 
-    def _advance(self, tenant_id: str, jid: str, status: str, extra: Dict):
+    def _advance(self, tenant_id: str, jid: str, status: str, extra: dict):
         self.db.execute(text(
             "UPDATE dbp_saas_journeys SET status=:st, updated_at=NOW() WHERE id=:id AND tenant_id=:t"),
             {"st": status, "id": jid, "t": tenant_id})

@@ -4,9 +4,8 @@
 الحالة: Production-Grade Assessment
 """
 
-import os
 from pathlib import Path
-from typing import Dict, List, Tuple
+
 
 class EngineAuditReport:
     """تقرير شامل لمراجعة محركات core/"""
@@ -18,7 +17,7 @@ class EngineAuditReport:
         self.needs_work = []
         self.mocks_placeholders = []
         
-    def scan_engines(self) -> List[Dict]:
+    def scan_engines(self) -> list[dict]:
         """مسح جميع المحركات في core/"""
         engine_files = list(self.core_path.glob("*.py"))
         
@@ -39,7 +38,7 @@ class EngineAuditReport:
         
         return self.engines
     
-    def analyze_engine(self, file_path: Path) -> Dict:
+    def analyze_engine(self, file_path: Path) -> dict:
         """تحليل محرك واحد"""
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()

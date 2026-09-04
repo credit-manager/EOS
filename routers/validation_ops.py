@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import require_permission, get_current_user
+from core.auth import require_permission
 from core.rate_limit import read_limiter, write_limiter
 from core.validation_ops import ProductionValidationEngine
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic/ops", tags=["Production Validation"])
 
@@ -12,8 +12,8 @@ router = APIRouter(prefix="/api/v1/dynamic/ops", tags=["Production Validation"])
 # -------------------------------------------------------- validation rules
 @router.get("/validation-rules",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_validation_rules(rule_type: str = None,
-                               user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_validation_rules(rule_type: str | None = None,
+                               user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionValidationEngine(db).list_validation_rules(
         user["tenant_id"], rule_type=rule_type)
     return {"status": "success", "data": data}
@@ -22,7 +22,7 @@ async def list_validation_rules(rule_type: str = None,
 @router.post("/validation-rules",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_validation_rule(body: dict,
-                                user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                                user: dict | None=None, db: Session = Depends(get_db)):
     required = ["rule_name", "rule_type", "check_command"]
     for f in required:
         if f not in body:
@@ -38,7 +38,7 @@ async def create_validation_rule(body: dict,
 @router.get("/validation-rules/{rule_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_validation_rule(rule_id: str,
-                             user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                             user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionValidationEngine(db).get_validation_rule(user["tenant_id"], rule_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -49,7 +49,7 @@ async def get_validation_rule(rule_id: str,
 @router.put("/validation-rules/{rule_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_validation_rule(rule_id: str, body: dict,
-                                user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                                user: dict | None=None, db: Session = Depends(get_db)):
     result = ProductionValidationEngine(db).update_validation_rule(
         user["tenant_id"], rule_id,
         is_active=body.get("is_active"), severity=body.get("severity"),
@@ -61,8 +61,8 @@ async def update_validation_rule(rule_id: str, body: dict,
 # ------------------------------------------------------ validation results
 @router.get("/validation-results",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_validation_results(check_type: str = None, status: str = None, limit: int = 50,
-                                 user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_validation_results(check_type: str | None = None, status: str | None = None, limit: int = 50,
+                                 user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionValidationEngine(db).list_validation_results(
         user["tenant_id"], check_type=check_type, status=status, limit=limit)
     return {"status": "success", "data": data}
@@ -71,7 +71,7 @@ async def list_validation_results(check_type: str = None, status: str = None, li
 @router.post("/validation-results",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def record_validation_result(body: dict,
-                                  user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                                  user: dict | None=None, db: Session = Depends(get_db)):
     required = ["check_type", "status"]
     for f in required:
         if f not in body:
@@ -89,8 +89,8 @@ async def record_validation_result(body: dict,
 # ----------------------------------------------------------- health checks
 @router.get("/health-checks",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_health_checks(check_type: str = None, status: str = None,
-                            user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_health_checks(check_type: str | None = None, status: str | None = None,
+                            user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionValidationEngine(db).list_health_checks(
         user["tenant_id"], check_type=check_type, status=status)
     return {"status": "success", "data": data}
@@ -99,7 +99,7 @@ async def list_health_checks(check_type: str = None, status: str = None,
 @router.post("/health-checks",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_health_check(body: dict,
-                             user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                             user: dict | None=None, db: Session = Depends(get_db)):
     required = ["check_name", "check_type"]
     for f in required:
         if f not in body:
@@ -115,7 +115,7 @@ async def create_health_check(body: dict,
 @router.get("/health-checks/{check_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_health_check(check_id: str,
-                          user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                          user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionValidationEngine(db).get_health_check(user["tenant_id"], check_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -126,7 +126,7 @@ async def get_health_check(check_id: str,
 @router.put("/health-checks/{check_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_health_check(check_id: str, body: dict,
-                             user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                             user: dict | None=None, db: Session = Depends(get_db)):
     result = ProductionValidationEngine(db).update_health_check(
         user["tenant_id"], check_id, body.get("status", "healthy"),
         response_time_ms=body.get("response_time_ms"),
@@ -138,8 +138,8 @@ async def update_health_check(check_id: str, body: dict,
 # -------------------------------------------------------- ssl certificates
 @router.get("/ssl-certificates",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_ssl_certificates(domain: str = None, status: str = None,
-                               user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_ssl_certificates(domain: str | None = None, status: str | None = None,
+                               user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionValidationEngine(db).list_ssl_certificates(
         user["tenant_id"], domain=domain, status=status)
     return {"status": "success", "data": data}
@@ -148,7 +148,7 @@ async def list_ssl_certificates(domain: str = None, status: str = None,
 @router.post("/ssl-certificates",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def register_ssl_certificate(body: dict,
-                                  user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                                  user: dict | None=None, db: Session = Depends(get_db)):
     required = ["domain"]
     for f in required:
         if f not in body:
@@ -166,7 +166,7 @@ async def register_ssl_certificate(body: dict,
 @router.get("/ssl-certificates/{cert_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_ssl_certificate(cert_id: str,
-                             user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                             user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionValidationEngine(db).get_ssl_certificate(user["tenant_id"], cert_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -177,7 +177,7 @@ async def get_ssl_certificate(cert_id: str,
 @router.put("/ssl-certificates/{cert_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_ssl_certificate(cert_id: str, body: dict,
-                                user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                                user: dict | None=None, db: Session = Depends(get_db)):
     result = ProductionValidationEngine(db).update_ssl_certificate(
         user["tenant_id"], cert_id,
         status=body.get("status"), not_after=body.get("not_after"))
@@ -188,8 +188,8 @@ async def update_ssl_certificate(cert_id: str, body: dict,
 # -------------------------------------------------- environment configs
 @router.get("/env-configs",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_env_configs(environment: str = None,
-                          user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_env_configs(environment: str | None = None,
+                          user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionValidationEngine(db).list_environment_configs(
         user["tenant_id"], environment=environment)
     return {"status": "success", "data": data}
@@ -198,7 +198,7 @@ async def list_env_configs(environment: str = None,
 @router.post("/env-configs",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def set_env_config(body: dict,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                        user: dict | None=None, db: Session = Depends(get_db)):
     required = ["environment", "config_key", "config_value"]
     for f in required:
         if f not in body:
@@ -215,7 +215,7 @@ async def set_env_config(body: dict,
 @router.delete("/env-configs/{config_id}",
                dependencies=[Depends(require_permission("dynamic", "delete")), Depends(write_limiter.check)])
 async def delete_env_config(config_id: str,
-                           user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                           user: dict | None=None, db: Session = Depends(get_db)):
     result = ProductionValidationEngine(db).delete_environment_config(
         user["tenant_id"], config_id)
     if not result:
@@ -228,8 +228,8 @@ async def delete_env_config(config_id: str,
 # --------------------------------------------------------- security scans
 @router.get("/security-scans",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_security_scans(scan_type: str = None, status: str = None,
-                             user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_security_scans(scan_type: str | None = None, status: str | None = None,
+                             user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionValidationEngine(db).list_security_scans(
         user["tenant_id"], scan_type=scan_type, status=status)
     return {"status": "success", "data": data}
@@ -238,7 +238,7 @@ async def list_security_scans(scan_type: str = None, status: str = None,
 @router.post("/security-scans",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_security_scan(body: dict,
-                              user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                              user: dict | None=None, db: Session = Depends(get_db)):
     required = ["scan_type"]
     for f in required:
         if f not in body:
@@ -253,7 +253,7 @@ async def create_security_scan(body: dict,
 @router.get("/security-scans/{scan_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_security_scan(scan_id: str,
-                           user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                           user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionValidationEngine(db).get_security_scan(user["tenant_id"], scan_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -264,7 +264,7 @@ async def get_security_scan(scan_id: str,
 @router.put("/security-scans/{scan_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_security_scan(scan_id: str, body: dict,
-                              user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                              user: dict | None=None, db: Session = Depends(get_db)):
     result = ProductionValidationEngine(db).update_security_scan(
         user["tenant_id"], scan_id, body.get("status", "completed"),
         vulnerabilities_found=body.get("vulnerabilities_found"),

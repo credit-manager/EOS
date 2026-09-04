@@ -4,11 +4,10 @@ P34 API Rate Limiting & Quotas Engine
 import hashlib
 import secrets
 from datetime import datetime, timezone
-from typing import Optional, Dict, List
 from uuid import uuid4
 
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class APIQuotaEngine:
@@ -19,7 +18,7 @@ class APIQuotaEngine:
 
     def create_api_key(self, tenant_id, company_id, name, permissions=None,
                        rate_limit_read=200, rate_limit_write=50,
-                       expires_at=None) -> Dict:
+                       expires_at=None) -> dict:
         kid = str(uuid4())
         plain_key = secrets.token_urlsafe(32)
         key_hash = hashlib.sha256(plain_key.encode()).hexdigest()
@@ -36,7 +35,7 @@ class APIQuotaEngine:
         self.db.flush()
         return {"id": kid, "key": plain_key, "name": name}
 
-    def list_api_keys(self, tenant_id, company_id=None) -> List[Dict]:
+    def list_api_keys(self, tenant_id, company_id=None) -> list[dict]:
         conditions = ["tenant_id = :tid"]
         params: dict = {"tid": tenant_id}
         if company_id:
@@ -58,7 +57,7 @@ class APIQuotaEngine:
                  "created_at": r[10].isoformat() if r[10] else None}
                 for r in rows]
 
-    def revoke_api_key(self, key_id) -> Dict:
+    def revoke_api_key(self, key_id) -> dict:
         row = self.db.execute(text(
             "SELECT id FROM dbp_api_keys WHERE id = :kid"
         ), {"kid": key_id}).fetchone()
@@ -70,7 +69,7 @@ class APIQuotaEngine:
         self.db.flush()
         return {"success": True}
 
-    def validate_api_key(self, plain_key) -> Optional[Dict]:
+    def validate_api_key(self, plain_key) -> dict | None:
         key_hash = hashlib.sha256(plain_key.encode()).hexdigest()
         row = self.db.execute(text(
             "SELECT id, tenant_id, company_id, name, permissions, "
@@ -111,7 +110,7 @@ class APIQuotaEngine:
         return lid
 
     def get_usage_stats(self, tenant_id, api_key_id=None,
-                        from_date=None, to_date=None) -> Dict:
+                        from_date=None, to_date=None) -> dict:
         conditions = ["tenant_id = :tid"]
         params: dict = {"tid": tenant_id}
         if api_key_id:
@@ -179,7 +178,7 @@ class APIQuotaEngine:
         self.db.flush()
         return rid
 
-    def list_rate_limit_rules(self, tenant_id, company_id=None) -> List[Dict]:
+    def list_rate_limit_rules(self, tenant_id, company_id=None) -> list[dict]:
         conditions = ["tenant_id = :tid"]
         params: dict = {"tid": tenant_id}
         if company_id:
@@ -198,7 +197,7 @@ class APIQuotaEngine:
                  "created_at": r[9].isoformat() if r[9] else None}
                 for r in rows]
 
-    def check_rate_limit(self, tenant_id, endpoint, method) -> Dict:
+    def check_rate_limit(self, tenant_id, endpoint, method) -> dict:
         rows = self.db.execute(text(
             "SELECT id, rate_limit, window_seconds "
             "FROM dbp_rate_limit_rules "

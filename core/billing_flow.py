@@ -3,10 +3,13 @@ P56 Billing Flow Engine
 Plan → Checkout (subscription + pending invoice) → Payment → License → Limits.
 Orchestrates existing P41 (plans) and P43 (subscription_engine) primitives.
 """
-import time, uuid, json, secrets
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
+import json
+import secrets
+import time
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from core.subscription_engine import SubscriptionEngine
 
@@ -18,7 +21,7 @@ class BillingFlowEngine:
 
     # ── CATALOG ──
 
-    def get_plan_catalog(self) -> List[Dict]:
+    def get_plan_catalog(self) -> list[dict]:
         rows = self.db.execute(text(
             "SELECT id, plan_name, plan_code, price_monthly, price_yearly, "
             "max_users, max_companies, max_storage_gb, features "
@@ -30,7 +33,7 @@ class BillingFlowEngine:
                  "max_users": r[5], "max_companies": r[6], "max_storage_gb": r[7],
                  "features": self._pj(r[8])} for r in rows]
 
-    def get_plan(self, plan_code: str) -> Optional[Dict]:
+    def get_plan(self, plan_code: str) -> dict | None:
         for p in self.get_plan_catalog():
             if p["plan_code"] == plan_code:
                 return p
@@ -39,7 +42,7 @@ class BillingFlowEngine:
     # ── CHECKOUT ──
 
     def checkout(self, tenant_id: str, plan_code: str,
-                 billing_cycle: str = "monthly") -> Dict[str, Any]:
+                 billing_cycle: str = "monthly") -> dict[str, Any]:
         plan = self.get_plan(plan_code)
         if not plan:
             return {"success": False, "error": f"Plan '{plan_code}' not found"}
@@ -70,7 +73,7 @@ class BillingFlowEngine:
     # ── PAY ──
 
     def pay_invoice(self, tenant_id: str, invoice_id: str,
-                    payment_method: str = "card") -> Dict[str, Any]:
+                    payment_method: str = "card") -> dict[str, Any]:
         inv = self.sub.get_invoice(tenant_id, invoice_id)
         if not inv:
             return {"success": False, "error": "Invoice not found"}
@@ -108,7 +111,7 @@ class BillingFlowEngine:
 
     # ── STATUS ──
 
-    def my_subscription(self, tenant_id: str) -> Optional[Dict]:
+    def my_subscription(self, tenant_id: str) -> dict | None:
         sub = self.sub.get_subscription(tenant_id)
         if not sub:
             return None
@@ -125,7 +128,7 @@ class BillingFlowEngine:
         }
 
     def change_plan(self, tenant_id: str, new_plan_code: str,
-                    billing_cycle: str = "monthly") -> Dict[str, Any]:
+                    billing_cycle: str = "monthly") -> dict[str, Any]:
         current = self.sub.get_subscription(tenant_id)
         if not current or current.get("status") != "active":
             return {"success": False, "error": "No active subscription to change"}
@@ -140,12 +143,12 @@ class BillingFlowEngine:
 
     # ── USAGE ──
 
-    def record_usage(self, tenant_id: str, meter_name: str, meter_value: float) -> Dict:
-        row = self.sub.record_usage(tenant_id, meter_name, meter_value)
+    def record_usage(self, tenant_id: str, meter_name: str, meter_value: float) -> dict:
+        self.sub.record_usage(tenant_id, meter_name, meter_value)
         self.db.commit()
         return {"success": True}
 
-    def usage_summary(self, tenant_id: str) -> Dict[str, Any]:
+    def usage_summary(self, tenant_id: str) -> dict[str, Any]:
         meters = {}
         for u in self.sub.get_usage(tenant_id, limit=500):
             name = u.get("meter_name")
@@ -165,7 +168,7 @@ class BillingFlowEngine:
 
     # ── INTERNALS ──
 
-    def _apply_tenant_limits(self, tenant_id: str, plan: Optional[Dict]):
+    def _apply_tenant_limits(self, tenant_id: str, plan: dict | None):
         if not plan:
             return
         try:
@@ -176,7 +179,7 @@ class BillingFlowEngine:
         except Exception:
             pass
 
-    def _plan_by_id(self, plan_id: str) -> Optional[Dict]:
+    def _plan_by_id(self, plan_id: str) -> dict | None:
         if not plan_id:
             return None
         row = self.db.execute(text(
@@ -191,7 +194,7 @@ class BillingFlowEngine:
                 "features": self._pj(row[5]),
                 "max_companies": row[6], "max_storage_gb": row[7]}
 
-    def _plan_name_by_id(self, plan_id: str) -> Optional[str]:
+    def _plan_name_by_id(self, plan_id: str) -> str | None:
         p = self._plan_by_id(plan_id)
         return p["plan_code"] if p else None
 

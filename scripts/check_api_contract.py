@@ -1,90 +1,66 @@
-"""Fail CI when explicit frontend API paths disappear from the FastAPI contract.
-
-The checker is intentionally static: it does not import the application or require
-production secrets, database drivers, or startup side effects just to validate routes.
-"""
+"""Validate the canonical frontend API service against FastAPI routes."""
 from __future__ import annotations
 
 import ast
 import re
 from pathlib import Path
 
-
-def _literal_string(node: ast.AST) -> str | None:
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return node.value
-    return None
+METHODS = {"get", "post", "put", "patch", "delete", "options", "head"}
 
 
-def _collect_backend_paths() -> set[str]:
-    paths: set[str] = set()
+def literal(node):
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+
+
+def backend_routes():
+    routes = set()
     for file in [Path("main.py"), *sorted(Path("routers").glob("*.py"))]:
         if not file.exists():
             continue
-        tree = ast.parse(file.read_text(encoding="utf-8-sig"), filename=str(file))
-        router_prefixes: dict[str, str] = {}
+        tree = ast.parse(file.read_text(encoding="utf-8"), filename=str(file))
+        prefixes = {}
         for node in ast.walk(tree):
-            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
-                continue
-            func = node.value.func
-            if not (isinstance(func, ast.Name) and func.id == "APIRouter"):
-                continue
-            prefix = ""
-            for keyword in node.value.keywords:
-                if keyword.arg == "prefix":
-                    prefix = _literal_string(keyword.value) or ""
-            for target in node.targets:
-                if isinstance(target, ast.Name):
-                    router_prefixes[target.id] = prefix.rstrip("/")
-
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name) and node.value.func.id == "APIRouter":
+                prefix = next((literal(k.value) for k in node.value.keywords if k.arg == "prefix"), "") or ""
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        prefixes[target.id] = prefix.rstrip("/")
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            for decorator in node.decorator_list:
-                if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
+            for dec in node.decorator_list:
+                if not isinstance(dec, ast.Call) or not isinstance(dec.func, ast.Attribute) or not isinstance(dec.func.value, ast.Name):
                     continue
-                if not isinstance(decorator.func.value, ast.Name):
+                if dec.func.attr.lower() not in METHODS or not dec.args:
                     continue
-                if decorator.func.attr.lower() not in {"get", "post", "put", "patch", "delete", "options", "head"}:
-                    continue
-                if not decorator.args:
-                    continue
-                route = _literal_string(decorator.args[0])
+                route = literal(dec.args[0])
                 if route is None:
                     continue
-                prefix = router_prefixes.get(decorator.func.value.id, "")
-                combined = f"{prefix}/{route.lstrip('/')}" if prefix else route
-                paths.add(re.sub(r"//+", "/", combined))
-    return paths
+                prefix = prefixes.get(dec.func.value.id, "")
+                routes.add(re.sub(r"//+", "/", f"{prefix}/{route.lstrip('/')}" if prefix else route))
+    return routes
 
 
-def _route_matches(client_path: str, route_path: str) -> bool:
-    client_parts = client_path.rstrip("/").split("/")
-    route_parts = route_path.rstrip("/").split("/")
-    if len(client_parts) != len(route_parts):
-        return False
-    return all(a == b or b.startswith("{") for a, b in zip(client_parts, route_parts))
+def normalize(path):
+    path = re.sub(r"\$\{[^}]+\}", "{id}", path)
+    if not path.startswith("/api/v1"):
+        path = "/api/v1" + ("" if path.startswith("/") else "/") + path
+    return re.sub(r"//+", "/", path).rstrip("/") or "/"
 
 
-frontend_api = Path("frontend/src/services/api.js")
-if not frontend_api.exists():
+def matches(client, route):
+    a, b = client.split("/"), route.rstrip("/").split("/")
+    return len(a) == len(b) and all(x == y or (y.startswith("{") and y.endswith("}")) for x, y in zip(a, b))
+
+service = Path("frontend/src/services/api.js")
+if not service.exists():
     raise SystemExit("Canonical frontend API service is missing: frontend/src/services/api.js")
-
-text = frontend_api.read_text(encoding="utf-8-sig")
-prefixes = r"api/v1|auth|users|dashboard|entities|reports|industries|builder|settings|tenants|dynamic"
-raw_paths = set(re.findall(rf"['\"](/(?:{prefixes})[^'\"]*)['\"]", text))
-raw_paths.update(re.findall(rf"`(/(?:{prefixes})[^`]*)`", text))
-paths = {p for p in raw_paths if p != "/api/v1"}
-backend_paths = _collect_backend_paths()
-
-missing = []
-for path in sorted(paths):
-    normalized = re.sub(r"\$\{[^}]+\}", "{id}", path)
-    if not normalized.startswith("/api/v1/"):
-        normalized = "/api/v1" + normalized
-    if not any(_route_matches(normalized, route_path) for route_path in backend_paths):
-        missing.append(path)
-
+text = service.read_text(encoding="utf-8")
+# Catch api.method('...') and api.method(`...`) paths. Dynamic template segments are normalized above.
+pattern = re.compile(r"\bapi\.(?:get|post|put|patch|delete|head|options)\s*\(\s*(['\"`])([^'\"`]*?)\1")
+frontend = {m.group(2) for m in pattern.finditer(text) if m.group(2).startswith("/")}
+routes = backend_routes()
+missing = [p for p in sorted(frontend) if not any(matches(normalize(p), normalize(r)) for r in routes)]
 if missing:
     raise SystemExit("Frontend/backend API contract mismatch:\n" + "\n".join(missing))
-print(f"API contract OK: checked {len(paths)} explicit frontend paths against {len(backend_paths)} backend routes")
+print(f"API contract OK: checked {len(frontend)} explicit frontend paths against {len(routes)} backend routes")

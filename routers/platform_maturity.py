@@ -1,20 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from database import get_db
-from core.auth import require_permission, get_current_user
-from core.rate_limit import read_limiter, write_limiter
+
+from core.auth import require_permission
 from core.platform_maturity import PlatformMaturityEngine
+from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic/platform", tags=["Platform Maturity"])
 
 
 @router.get("/certifications", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_certifications(status: str = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_certifications(status: str | None = None, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": PlatformMaturityEngine(db).list_scores(user["tenant_id"], status=status)}
 
 
 @router.post("/certifications", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_certification(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_certification(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ["certification_level", "total_score", "max_score"]:
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -26,7 +27,7 @@ async def create_certification(body: dict, user: dict = Depends(get_current_user
 
 
 @router.get("/certifications/{score_id}", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_certification(score_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_certification(score_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     data = PlatformMaturityEngine(db).get_score(user["tenant_id"], score_id)
     if not data:
         raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Not found"}})
@@ -34,12 +35,12 @@ async def get_certification(score_id: str, user: dict = Depends(get_current_user
 
 
 @router.get("/metrics", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_metrics(metric_category: str = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_metrics(metric_category: str | None = None, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": PlatformMaturityEngine(db).list_metrics(user["tenant_id"], metric_category=metric_category)}
 
 
 @router.post("/metrics", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def record_metric(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def record_metric(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ["metric_category", "metric_name", "metric_value"]:
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -50,14 +51,14 @@ async def record_metric(body: dict, user: dict = Depends(get_current_user), db: 
 
 
 @router.get("/features", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_features(feature_category: str = None, is_stable: bool = None,
-                       user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_features(feature_category: str | None = None, is_stable: bool | None = None,
+                       user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": PlatformMaturityEngine(db).list_features(
         feature_category=feature_category, is_stable=is_stable)}
 
 
 @router.post("/features", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def register_feature(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def register_feature(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ["feature_name", "feature_category", "version_added"]:
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -68,19 +69,19 @@ async def register_feature(body: dict, user: dict = Depends(get_current_user), d
 
 
 @router.put("/features/{feature_id}", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def update_feature(feature_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def update_feature(feature_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     result = PlatformMaturityEngine(db).update_feature(feature_id, **body)
     db.commit()
     return {"status": "success", "data": result}
 
 
 @router.get("/upgrades", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_upgrades(upgrade_type: str = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_upgrades(upgrade_type: str | None = None, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": PlatformMaturityEngine(db).list_upgrades(user["tenant_id"], upgrade_type=upgrade_type)}
 
 
 @router.post("/upgrades", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def record_upgrade(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def record_upgrade(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ["from_version", "to_version", "upgrade_type"]:
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -91,12 +92,12 @@ async def record_upgrade(body: dict, user: dict = Depends(get_current_user), db:
 
 
 @router.get("/health", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_health(component_name: str = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_health(component_name: str | None = None, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": PlatformMaturityEngine(db).list_health(user["tenant_id"], component_name=component_name)}
 
 
 @router.post("/health", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def record_health(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def record_health(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ["component_name", "health_score", "status"]:
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})

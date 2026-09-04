@@ -2,10 +2,13 @@
 P39 + P59 Production Ops Engine — backups, scheduled jobs, alert rules,
 alert history, deployments, monitoring metrics, SaaS metrics & alerts.
 """
-import uuid, time, json
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
+import json
+import time
+import uuid
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class ProductionOpsEngine:
@@ -14,9 +17,9 @@ class ProductionOpsEngine:
 
     # ── BACKUP JOBS ──
 
-    def create_backup_job(self, tenant_id: str, company_id: Optional[str],
-                          backup_type: str, target_tables: Optional[List[str]] = None,
-                          created_by: Optional[str] = None) -> str:
+    def create_backup_job(self, tenant_id: str, company_id: str | None,
+                          backup_type: str, target_tables: list[str] | None = None,
+                          created_by: str | None = None) -> str:
         bid = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_backup_jobs "
@@ -27,8 +30,8 @@ class ProductionOpsEngine:
         self.db.flush()
         return bid
 
-    def list_backup_jobs(self, tenant_id: str, backup_type: Optional[str] = None,
-                         status: Optional[str] = None, limit: int = 50) -> List[Dict]:
+    def list_backup_jobs(self, tenant_id: str, backup_type: str | None = None,
+                         status: str | None = None, limit: int = 50) -> list[dict]:
         conds, params = ["tenant_id = :t"], {"t": tenant_id, "lim": limit}
         if backup_type:
             conds.append("backup_type = :bt")
@@ -45,7 +48,7 @@ class ProductionOpsEngine:
                  "file_size_bytes": r[4], "created_at": str(r[5]) if r[5] else None}
                 for r in rows]
 
-    def get_backup_job(self, tenant_id: str, backup_id: str) -> Optional[Dict]:
+    def get_backup_job(self, tenant_id: str, backup_id: str) -> dict | None:
         row = self.db.execute(text(
             "SELECT id, backup_type, status, file_path, file_size_bytes, "
             "checksum, started_at, completed_at, error_message "
@@ -60,10 +63,10 @@ class ProductionOpsEngine:
                 "error_message": row[8]}
 
     def update_backup_status(self, tenant_id: str, backup_id: str, status: str,
-                             file_path: Optional[str] = None,
-                             file_size_bytes: Optional[int] = None,
-                             checksum: Optional[str] = None,
-                             error_message: Optional[str] = None) -> Optional[Dict]:
+                             file_path: str | None = None,
+                             file_size_bytes: int | None = None,
+                             checksum: str | None = None,
+                             error_message: str | None = None) -> dict | None:
         row = self.db.execute(text(
             "SELECT id FROM dbp_backup_jobs WHERE id = :id AND tenant_id = :t"
         ), {"id": backup_id, "t": tenant_id}).fetchone()
@@ -101,9 +104,9 @@ class ProductionOpsEngine:
     # ── SCHEDULED JOBS ──
 
     def create_scheduled_job(self, tenant_id: str, job_name: str, job_type: str,
-                             cron_expression: Optional[str] = None,
-                             interval_seconds: Optional[int] = None,
-                             payload: Optional[Dict] = None) -> str:
+                             cron_expression: str | None = None,
+                             interval_seconds: int | None = None,
+                             payload: dict | None = None) -> str:
         jid = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_scheduled_jobs "
@@ -116,7 +119,7 @@ class ProductionOpsEngine:
         self.db.flush()
         return jid
 
-    def list_scheduled_jobs(self, tenant_id: str) -> List[Dict]:
+    def list_scheduled_jobs(self, tenant_id: str) -> list[dict]:
         rows = self.db.execute(text(
             "SELECT id, job_name, job_type, cron_expression, interval_seconds, "
             "is_active, last_run_at, run_count FROM dbp_scheduled_jobs "
@@ -127,7 +130,7 @@ class ProductionOpsEngine:
                  "is_active": r[5], "last_run_at": str(r[6]) if r[6] else None,
                  "run_count": r[7]} for r in rows]
 
-    def get_scheduled_job(self, tenant_id: str, job_id: str) -> Optional[Dict]:
+    def get_scheduled_job(self, tenant_id: str, job_id: str) -> dict | None:
         row = self.db.execute(text(
             "SELECT id, job_name, job_type, cron_expression, interval_seconds, "
             "payload, is_active, last_run_at, run_count, error_count "
@@ -143,10 +146,10 @@ class ProductionOpsEngine:
                 "run_count": row[8], "error_count": row[9]}
 
     def update_scheduled_job(self, tenant_id: str, job_id: str,
-                             is_active: Optional[bool] = None,
-                             cron_expression: Optional[str] = None,
-                             interval_seconds: Optional[int] = None,
-                             payload: Optional[Dict] = None) -> Dict:
+                             is_active: bool | None = None,
+                             cron_expression: str | None = None,
+                             interval_seconds: int | None = None,
+                             payload: dict | None = None) -> dict:
         sets, params = [], {"id": job_id, "t": tenant_id}
         if is_active is not None:
             sets.append("is_active = :ia")
@@ -185,9 +188,9 @@ class ProductionOpsEngine:
     def create_alert_rule(self, tenant_id: str, rule_name: str,
                           metric_name: str, condition_op: str,
                           threshold_value: float,
-                          company_id: Optional[str] = None,
+                          company_id: str | None = None,
                           severity: str = "warning",
-                          notification_channels: Optional[List[str]] = None,
+                          notification_channels: list[str] | None = None,
                           cooldown_minutes: int = 5) -> str:
         rid = str(uuid.uuid4())
         self.db.execute(text(
@@ -203,7 +206,7 @@ class ProductionOpsEngine:
         self.db.flush()
         return rid
 
-    def list_alert_rules(self, tenant_id: str) -> List[Dict]:
+    def list_alert_rules(self, tenant_id: str) -> list[dict]:
         rows = self.db.execute(text(
             "SELECT id, rule_name, metric_name, condition_op, threshold_value, "
             "severity, is_active FROM dbp_alert_rules "
@@ -214,7 +217,7 @@ class ProductionOpsEngine:
                  "severity": r[5], "is_active": r[6]}
                 for r in rows]
 
-    def get_alert_rule(self, tenant_id: str, rule_id: str) -> Optional[Dict]:
+    def get_alert_rule(self, tenant_id: str, rule_id: str) -> dict | None:
         row = self.db.execute(text(
             "SELECT id, rule_name, metric_name, condition_op, threshold_value, "
             "severity, notification_channels, cooldown_minutes, is_active, "
@@ -230,9 +233,9 @@ class ProductionOpsEngine:
                 "last_triggered_at": str(row[9]) if row[9] else None}
 
     def update_alert_rule(self, tenant_id: str, rule_id: str,
-                          is_active: Optional[bool] = None,
-                          threshold_value: Optional[float] = None,
-                          severity: Optional[str] = None) -> Dict:
+                          is_active: bool | None = None,
+                          threshold_value: float | None = None,
+                          severity: str | None = None) -> dict:
         sets, params = [], {"id": rule_id, "t": tenant_id}
         if is_active is not None:
             sets.append("is_active = :ia")
@@ -256,7 +259,7 @@ class ProductionOpsEngine:
     def trigger_alert(self, tenant_id: str, rule_id: str, rule_name: str,
                       metric_name: str, actual_value: float,
                       threshold_value: float, severity: str = "warning",
-                      message: Optional[str] = None) -> str:
+                      message: str | None = None) -> str:
         aid = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_alert_history "
@@ -272,8 +275,8 @@ class ProductionOpsEngine:
         self.db.flush()
         return aid
 
-    def list_alert_history(self, tenant_id: str, status: Optional[str] = None,
-                           severity: Optional[str] = None, limit: int = 50) -> List[Dict]:
+    def list_alert_history(self, tenant_id: str, status: str | None = None,
+                           severity: str | None = None, limit: int = 50) -> list[dict]:
         conds, params = ["tenant_id = :t"], {"t": tenant_id, "lim": limit}
         if status:
             conds.append("status = :st")
@@ -296,7 +299,7 @@ class ProductionOpsEngine:
                  "resolved_at": str(r[10]) if r[10] else None} for r in rows]
 
     def acknowledge_alert(self, tenant_id: str, alert_id: str,
-                          acknowledged_by: str = "system") -> Dict:
+                          acknowledged_by: str = "system") -> dict:
         row = self.db.execute(text(
             "SELECT id FROM dbp_alert_history WHERE id = :id AND tenant_id = :t"
         ), {"id": alert_id, "t": tenant_id}).fetchone()
@@ -309,7 +312,7 @@ class ProductionOpsEngine:
         self.db.flush()
         return {"success": True}
 
-    def resolve_alert(self, tenant_id: str, alert_id: str) -> Dict:
+    def resolve_alert(self, tenant_id: str, alert_id: str) -> dict:
         row = self.db.execute(text(
             "SELECT id FROM dbp_alert_history WHERE id = :id AND tenant_id = :t"
         ), {"id": alert_id, "t": tenant_id}).fetchone()
@@ -325,9 +328,9 @@ class ProductionOpsEngine:
     # ── DEPLOYMENTS ──
 
     def create_deployment(self, tenant_id: str, version: str, environment: str,
-                          deployed_by: Optional[str] = None,
-                          commit_sha: Optional[str] = None,
-                          release_notes: Optional[str] = None) -> str:
+                          deployed_by: str | None = None,
+                          commit_sha: str | None = None,
+                          release_notes: str | None = None) -> str:
         did = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_deployments "
@@ -339,8 +342,8 @@ class ProductionOpsEngine:
         self.db.flush()
         return did
 
-    def list_deployments(self, tenant_id: str, environment: Optional[str] = None,
-                         status: Optional[str] = None, limit: int = 20) -> List[Dict]:
+    def list_deployments(self, tenant_id: str, environment: str | None = None,
+                         status: str | None = None, limit: int = 20) -> list[dict]:
         conds, params = ["tenant_id = :t"], {"t": tenant_id, "lim": limit}
         if environment:
             conds.append("environment = :env")
@@ -357,7 +360,7 @@ class ProductionOpsEngine:
                  "status": r[3], "deployed_by": r[4],
                  "deployed_at": str(r[5]) if r[5] else None} for r in rows]
 
-    def get_deployment(self, tenant_id: str, deployment_id: str) -> Optional[Dict]:
+    def get_deployment(self, tenant_id: str, deployment_id: str) -> dict | None:
         row = self.db.execute(text(
             "SELECT id, version, environment, status, deployed_by, commit_sha, "
             "release_notes, started_at, completed_at, rollback_reason "
@@ -374,7 +377,7 @@ class ProductionOpsEngine:
 
     def update_deployment_status(self, tenant_id: str, deployment_id: str,
                                  status: str,
-                                 rollback_reason: Optional[str] = None) -> Dict:
+                                 rollback_reason: str | None = None) -> dict:
         row = self.db.execute(text(
             "SELECT id FROM dbp_deployments WHERE id = :id AND tenant_id = :t"
         ), {"id": deployment_id, "t": tenant_id}).fetchone()
@@ -396,8 +399,8 @@ class ProductionOpsEngine:
     # ── MONITORING METRICS (P39 original) ──
 
     def record_metric(self, tenant_id: str, metric_name: str,
-                      metric_value: float, unit: Optional[str] = None,
-                      tags: Optional[Dict] = None, source: Optional[str] = None) -> str:
+                      metric_value: float, unit: str | None = None,
+                      tags: dict | None = None, source: str | None = None) -> str:
         mid = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_monitoring_metrics "
@@ -408,8 +411,8 @@ class ProductionOpsEngine:
         self.db.flush()
         return mid
 
-    def list_metrics(self, tenant_id: str, metric_name: Optional[str] = None,
-                     source: Optional[str] = None, limit: int = 100) -> List[Dict]:
+    def list_metrics(self, tenant_id: str, metric_name: str | None = None,
+                     source: str | None = None, limit: int = 100) -> list[dict]:
         conds, params = ["tenant_id = :t"], {"t": tenant_id, "lim": limit}
         if metric_name:
             conds.append("metric_name = :mn")
@@ -427,7 +430,7 @@ class ProductionOpsEngine:
                  "source": r[5], "recorded_at": str(r[6]) if r[6] else None}
                 for r in rows]
 
-    def get_latest_metric(self, tenant_id: str, metric_name: str) -> Optional[Dict]:
+    def get_latest_metric(self, tenant_id: str, metric_name: str) -> dict | None:
         row = self.db.execute(text(
             "SELECT id, metric_name, metric_value, unit, tags, source, recorded_at "
             "FROM dbp_monitoring_metrics WHERE tenant_id = :t AND metric_name = :mn "
@@ -442,7 +445,7 @@ class ProductionOpsEngine:
     # ── SAAS METRICS (P59) ──
 
     def record_saas_metric(self, tenant_id: str, metric_name: str,
-                           metric_value: float, labels: Optional[Dict] = None) -> str:
+                           metric_value: float, labels: dict | None = None) -> str:
         mid = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_saas_metrics (id, tenant_id, metric_name, metric_value, labels) "
@@ -452,8 +455,8 @@ class ProductionOpsEngine:
         self.db.flush()
         return mid
 
-    def get_saas_metrics(self, tenant_id: str, metric_name: Optional[str] = None,
-                         limit: int = 100) -> List[Dict]:
+    def get_saas_metrics(self, tenant_id: str, metric_name: str | None = None,
+                         limit: int = 100) -> list[dict]:
         conds, params = ["tenant_id = :t"], {"t": tenant_id, "lim": limit}
         if metric_name:
             conds.append("metric_name = :n")
@@ -491,8 +494,8 @@ class ProductionOpsEngine:
         self.db.flush()
         return True
 
-    def list_saas_alerts(self, tenant_id: str, status: Optional[str] = None,
-                         limit: int = 50) -> List[Dict]:
+    def list_saas_alerts(self, tenant_id: str, status: str | None = None,
+                         limit: int = 50) -> list[dict]:
         conds, params = ["tenant_id = :t"], {"t": tenant_id, "lim": limit}
         if status:
             conds.append("status = :st")
@@ -506,7 +509,7 @@ class ProductionOpsEngine:
                  "message": r[3], "status": r[4],
                  "created_at": str(r[5]) if r[5] else None} for r in rows]
 
-    def health_check(self, tenant_id: str) -> Dict[str, Any]:
+    def health_check(self, tenant_id: str) -> dict[str, Any]:
         db_ok = False
         try:
             self.db.execute(text("SELECT 1"))

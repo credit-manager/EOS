@@ -2,21 +2,25 @@
 P74.9 Two-Factor Authentication — API
 ======================================
 """
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from typing import Optional
-
-from database import get_db
 from sqlalchemy import text
+
 from core.auth import get_current_user
-from core.industry_security import success_response, audit_log
+from core.industry_security import audit_log, success_response
 from core.two_factor import (
-    get_2fa_status, enable_2fa, disable_2fa,
-    verify_totp, verify_recovery_code,
+    disable_2fa,
+    enable_2fa,
+    get_2fa_status,
+    verify_recovery_code,
+    verify_totp,
 )
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/auth/2fa", tags=["Two-Factor Authentication"])
 
@@ -80,15 +84,15 @@ def verify_recovery(body: VerifyRecovery, request: Request, user: dict = Depends
 
 @router.get("/attempts")
 def get_attempts(
-    limit: int = Query(20, ge=1, le=100),
+    limit: int | None = None,
     user: dict = Depends(get_current_user),
-    db=Depends(get_db)
+    db=Depends(get_db),
 ):
     rows = db.execute(text(
         "SELECT id, method, success, ip_address, attempted_at "
         "FROM dbp_2fa_attempts WHERE user_id = :uid "
         "ORDER BY attempted_at DESC LIMIT :limit"
     ), {"uid": user["id"], "limit": limit}).fetchall()
-    
+
     data = [{"id": r[0], "method": r[1], "success": r[2], "ip_address": r[3], "attempted_at": str(r[4]) if r[4] else None} for r in rows]
     return success_response("2FA attempts", {"attempts": data, "count": len(data)})

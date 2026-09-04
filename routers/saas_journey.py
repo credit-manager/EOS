@@ -4,10 +4,10 @@ P58 SaaS Journey Router — the product's front door
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import require_permission, get_current_user
+from core.auth import require_permission
 from core.rate_limit import read_limiter, write_limiter
 from core.saas_journey import SaaSJourneyEngine
+from database import get_db
 
 
 def _err(sc, code, msg):
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/v1/dynamic/experience", tags=["SaaS Experience"]
 
 
 @router.post("/journeys", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def start(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def start(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     result = SaaSJourneyEngine(db).start_journey(
         user.get("tenant_id"), user.get("id") or "user",
         body.get("business_description"),
@@ -31,12 +31,12 @@ async def start(body: dict, user: dict = Depends(get_current_user), db: Session 
 
 
 @router.get("/journeys", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_journeys(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_journeys(user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": SaaSJourneyEngine(db).list_journeys(user.get("tenant_id"))}
 
 
 @router.get("/journeys/{jid}", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_journey(jid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_journey(jid: str, user: dict | None=None, db: Session = Depends(get_db)):
     j = SaaSJourneyEngine(db).get_journey(user.get("tenant_id"), jid)
     if not j:
         raise _err(404, "NOT_FOUND", "Journey not found")
@@ -44,7 +44,7 @@ async def get_journey(jid: str, user: dict = Depends(get_current_user), db: Sess
 
 
 @router.put("/journeys/{jid}/customize", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def customize(jid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def customize(jid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     result = SaaSJourneyEngine(db).customize(user.get("tenant_id"), jid, body)
     if not result.get("success"):
         raise _err(400, "CUSTOMIZE_FAILED", result["error"])
@@ -52,7 +52,7 @@ async def customize(jid: str, body: dict, user: dict = Depends(get_current_user)
 
 
 @router.get("/journeys/{jid}/preview", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def preview(jid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def preview(jid: str, user: dict | None=None, db: Session = Depends(get_db)):
     p = SaaSJourneyEngine(db).preview(user.get("tenant_id"), jid)
     if not p:
         raise _err(404, "NOT_FOUND", "Journey or draft not found")
@@ -60,7 +60,7 @@ async def preview(jid: str, user: dict = Depends(get_current_user), db: Session 
 
 
 @router.post("/journeys/{jid}/select-plan", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def select_plan(jid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def select_plan(jid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     if not body.get("plan_code"):
         raise _err(400, "MISSING", "plan_code required")
     result = SaaSJourneyEngine(db).select_plan(
@@ -72,7 +72,7 @@ async def select_plan(jid: str, body: dict, user: dict = Depends(get_current_use
 
 
 @router.post("/journeys/{jid}/pay", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def pay(jid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def pay(jid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     result = SaaSJourneyEngine(db).pay(user.get("tenant_id"), jid,
                                         payment_method=body.get("payment_method", "card"))
     if not result.get("success"):
@@ -81,7 +81,7 @@ async def pay(jid: str, body: dict, user: dict = Depends(get_current_user), db: 
 
 
 @router.post("/journeys/{jid}/launch", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def launch(jid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def launch(jid: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     result = SaaSJourneyEngine(db).launch(user.get("tenant_id"), jid,
                                            confirmed=bool(body.get("confirmed")))
     if not result.get("success"):

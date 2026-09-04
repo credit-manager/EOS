@@ -1,0 +1,16 @@
+name: EOS API Contract
+on:
+  pull_request: {branches: [main, develop]}
+  push: {branches: [main, develop]}
+permissions: {contents: read}
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with: {python-version: '3.12'}
+      - run: pip install -r requirements.txt
+      - name: Verify frontend/backend route contract
+        env: {DATABASE_URL: sqlite:///./contract.db, SECRET_KEY: contract_secret_key_for_ci_only_12345678901234567890, EOS_TEST_SECRET_KEY: contract_test_secret_key_for_ci_only_12345678901234567890, EOS_AUTH_MODE: testing}
+        run: python scripts/check_api_contract.py

@@ -2,26 +2,25 @@
 EOS Inventory API Router — /api/v1/inventory
 """
 import uuid
-from typing import Optional
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-from database import get_db
 from core.auth import get_current_user
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/inventory", tags=["Inventory API"])
 
 
 @router.get("/products")
 async def list_products(
-    category_id: Optional[str] = None,
-    search: Optional[str] = None,
-    is_active: Optional[bool] = None,
-    low_stock: Optional[bool] = None,
-    page: int = Query(1, ge=1),
+    category_id: str | None = None,
+    search: str | None = None,
+    is_active: bool | None = None,
+    low_stock: bool | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -187,10 +186,10 @@ async def delete_warehouse(warehouse_id: str, user: dict = Depends(get_current_u
 
 @router.get("/stock/movements")
 async def list_stock_movements(
-    product_id: Optional[str] = None,
-    warehouse_id: Optional[str] = None,
-    movement_type: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    product_id: str | None = None,
+    warehouse_id: str | None = None,
+    movement_type: str | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -289,8 +288,8 @@ async def list_categories(user: dict = Depends(get_current_user), db: Session = 
 
 @router.get("/suppliers")
 async def list_suppliers(
-    search: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    search: str | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -368,9 +367,9 @@ async def delete_supplier(supplier_id: str, user: dict = Depends(get_current_use
 
 @router.get("/purchase-orders")
 async def list_purchase_orders(
-    status: Optional[str] = None,
-    supplier_id: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    status: str | None = None,
+    supplier_id: str | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),

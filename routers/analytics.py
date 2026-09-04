@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
+from core.analytics_engine import AnalyticsEngine
 from core.auth import require_permission, get_current_user
 from core.rate_limit import read_limiter, write_limiter
-from core.analytics_engine import AnalyticsEngine
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic/analytics", tags=["Analytics & Pipelines"])
 
@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/v1/dynamic/analytics", tags=["Analytics & Pipeli
 # ------------------------------------------------ dashboards
 @router.get("/dashboards",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_dashboards(dashboard_type: str = None,
+async def list_dashboards(dashboard_type: str | None = None,
                          user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     data = AnalyticsEngine(db).list_dashboards(user["tenant_id"], dashboard_type=dashboard_type)
     return {"status": "success", "data": data}
@@ -100,7 +100,7 @@ async def delete_widget(widget_id: str,
 # ------------------------------------------------ pipelines
 @router.get("/pipelines",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_pipelines(status: str = None,
+async def list_pipelines(status: str | None = None,
                         user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     data = AnalyticsEngine(db).list_pipelines(user["tenant_id"], status=status)
     return {"status": "success", "data": data}
@@ -146,7 +146,7 @@ async def update_pipeline(pipeline_id: str, body: dict,
 # -------------------------------------------------- pipeline runs
 @router.get("/pipeline-runs",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_pipeline_runs(pipeline_id: str = None, status: str = None, limit: int = 20,
+async def list_pipeline_runs(pipeline_id: str | None = None, status: str | None = None, limit: int = 20,
                             user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     data = AnalyticsEngine(db).list_pipeline_runs(
         user["tenant_id"], pipeline_id=pipeline_id, status=status, limit=limit)
@@ -182,7 +182,7 @@ async def complete_pipeline_run(run_id: str, body: dict,
 # ------------------------------------------------ analytics alerts
 @router.get("/alerts",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_alerts(is_active: bool = None,
+async def list_alerts(is_active: bool | None = None,
                      user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     data = AnalyticsEngine(db).list_alerts(user["tenant_id"], is_active=is_active)
     return {"status": "success", "data": data}

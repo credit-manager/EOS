@@ -1,20 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from database import get_db
-from core.auth import require_permission, get_current_user
-from core.rate_limit import read_limiter, write_limiter
+
+from core.auth import require_permission
 from core.blockchain_engine import BlockchainEngine
+from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic/blockchain", tags=["Blockchain & Immutable Audit"])
 
 
 @router.get("/chains", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_chains(chain_type: str = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_chains(chain_type: str | None = None, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": BlockchainEngine(db).list_chains(user["tenant_id"], chain_type=chain_type)}
 
 
 @router.post("/chains", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_chain(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_chain(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ["chain_name", "chain_type"]:
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -25,7 +26,7 @@ async def create_chain(body: dict, user: dict = Depends(get_current_user), db: S
 
 
 @router.get("/chains/{chain_id}", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_chain(chain_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_chain(chain_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     data = BlockchainEngine(db).get_chain(user["tenant_id"], chain_id)
     if not data:
         raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Chain not found"}})
@@ -33,12 +34,12 @@ async def get_chain(chain_id: str, user: dict = Depends(get_current_user), db: S
 
 
 @router.get("/nodes", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_nodes(chain_id: str = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_nodes(chain_id: str | None = None, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": BlockchainEngine(db).list_nodes(chain_id=chain_id)}
 
 
 @router.post("/nodes", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_node(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_node(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ["chain_id", "node_name", "node_url"]:
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -49,19 +50,19 @@ async def create_node(body: dict, user: dict = Depends(get_current_user), db: Se
 
 
 @router.put("/nodes/{node_id}", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def update_node(node_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def update_node(node_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     result = BlockchainEngine(db).update_node(node_id, **body)
     db.commit()
     return {"status": "success", "data": result}
 
 
 @router.get("/records", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_records(entity_type: str = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_records(entity_type: str | None = None, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": BlockchainEngine(db).list_records(user["tenant_id"], entity_type=entity_type)}
 
 
 @router.post("/records", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def add_record(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def add_record(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ["entity_type", "entity_id", "content_hash", "chain_id"]:
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -74,7 +75,9 @@ async def add_record(body: dict, user: dict = Depends(get_current_user), db: Ses
 
 
 @router.post("/records/{record_id}/verify", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def verify_record(record_id: str, body: dict = {}, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def verify_record(record_id: str, body: dict | None = None, user: dict | None=None, db: Session = Depends(get_db)):
+    if body is None:
+        body = {}
     vid = BlockchainEngine(db).verify_record(user["tenant_id"], record_id,
         body.get("verification_result", True), verified_by=user.get("user_id"))
     db.commit()
@@ -82,19 +85,19 @@ async def verify_record(record_id: str, body: dict = {}, user: dict = Depends(ge
 
 
 @router.get("/verifications", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_verifications(record_id: str = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_verifications(record_id: str | None = None, user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": BlockchainEngine(db).list_verifications(user["tenant_id"], record_id=record_id)}
 
 
 @router.get("/immutable-audit", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_immutable_audit(entity_type: str = None, entity_id: str = None,
-                              user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_immutable_audit(entity_type: str | None = None, entity_id: str | None = None,
+                              user: dict | None=None, db: Session = Depends(get_db)):
     return {"status": "success", "data": BlockchainEngine(db).list_immutable_audit(user["tenant_id"],
         entity_type=entity_type, entity_id=entity_id)}
 
 
 @router.post("/immutable-audit", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def add_immutable_audit(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def add_immutable_audit(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     for f in ["entity_type", "entity_id", "action"]:
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})

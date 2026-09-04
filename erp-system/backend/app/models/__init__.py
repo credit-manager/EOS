@@ -1,9 +1,20 @@
 """
 نماذج قاعدة البيانات الأساسية
 """
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Float, Date
-from sqlalchemy.orm import relationship, declarative_base
-from datetime import datetime
+from datetime import datetime, timezone
+
+from sqlalchemy import (
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
+from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 

@@ -3,9 +3,10 @@ P21 ERP Foundation Engine
   Company, Branch, Department, Fiscal Year, Currency, Cost Center CRUD
 """
 import uuid
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class ERPFoundationEngine:
@@ -53,7 +54,7 @@ class ERPFoundationEngine:
         self.db.flush()
         return cid
 
-    def get_companies(self, tenant_id: str) -> List[Dict]:
+    def get_companies(self, tenant_id: str) -> list[dict]:
         rows = self.db.execute(text(
             "SELECT id, code, name_en, name_ar, country, base_currency, is_active, created_at "
             "FROM dbp_companies WHERE tenant_id = :tid ORDER BY code"
@@ -62,9 +63,9 @@ class ERPFoundationEngine:
                  "country": r[4], "base_currency": r[5], "is_active": bool(r[6]),
                  "created_at": r[7].isoformat() if r[7] else None} for r in rows]
 
-    def get_company(self, company_id: str, tenant_id: Optional[str] = None) -> Optional[Dict]:
+    def get_company(self, company_id: str, tenant_id: str | None = None) -> dict | None:
         conditions = ["id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id}
+        params: dict[str, Any] = {"cid": company_id}
         if tenant_id:
             conditions.append("tenant_id = :tid")
             params["tid"] = tenant_id
@@ -85,11 +86,11 @@ class ERPFoundationEngine:
                 "is_active": bool(r[15]),
                 "created_at": r[16].isoformat() if r[16] else None}
 
-    def update_company(self, company_id: str, data: Dict[str, Any], tenant_id: str) -> bool:
+    def update_company(self, company_id: str, data: dict[str, Any], tenant_id: str) -> bool:
         allowed = {"name_en", "name_ar", "legal_name", "tax_number", "address",
                     "city", "country", "phone", "email", "base_currency", "is_active"}
         sets = []
-        params: Dict[str, Any] = {"cid": company_id, "tid": tenant_id}
+        params: dict[str, Any] = {"cid": company_id, "tid": tenant_id}
         for k, v in data.items():
             if k in allowed:
                 sets.append(f"{k} = :{k}")
@@ -117,7 +118,7 @@ class ERPFoundationEngine:
         self.db.flush()
         return bid
 
-    def get_branches(self, company_id: str, tenant_id: str) -> List[Dict]:
+    def get_branches(self, company_id: str, tenant_id: str) -> list[dict]:
         rows = self.db.execute(text(
             "SELECT id, code, name_en, name_ar, city, is_headquarters, is_active "
             "FROM dbp_branches WHERE company_id = :cid AND tenant_id = :t ORDER BY code"
@@ -142,7 +143,7 @@ class ERPFoundationEngine:
         self.db.flush()
         return did
 
-    def get_departments(self, company_id: str, tenant_id: str) -> List[Dict]:
+    def get_departments(self, company_id: str, tenant_id: str) -> list[dict]:
         rows = self.db.execute(text(
             "SELECT id, parent_id, branch_id, code, name_en, name_ar, manager_id, is_active "
             "FROM dbp_departments WHERE company_id = :cid AND tenant_id = :t ORDER BY code"
@@ -151,7 +152,7 @@ class ERPFoundationEngine:
                  "name_en": r[4], "name_ar": r[5], "manager_id": r[6],
                  "is_active": bool(r[7])} for r in rows]
 
-    def get_department_tree(self, company_id: str, tenant_id: str) -> List[Dict]:
+    def get_department_tree(self, company_id: str, tenant_id: str) -> list[dict]:
         """Get departments as nested tree."""
         all_deps = self.get_departments(company_id, tenant_id)
         by_parent = {}
@@ -181,7 +182,7 @@ class ERPFoundationEngine:
         self.db.flush()
         return fyid
 
-    def get_fiscal_years(self, company_id: str, tenant_id: str) -> List[Dict]:
+    def get_fiscal_years(self, company_id: str, tenant_id: str) -> list[dict]:
         rows = self.db.execute(text(
             "SELECT id, code, name, start_date, end_date, is_closed, is_active "
             "FROM dbp_fiscal_years WHERE company_id = :cid AND tenant_id = :t ORDER BY start_date DESC"
@@ -201,7 +202,7 @@ class ERPFoundationEngine:
 
     # ── CURRENCY ──
 
-    def get_currencies(self, tenant_id: Optional[str] = None) -> List[Dict]:
+    def get_currencies(self, tenant_id: str | None = None) -> list[dict]:
         rows = self.db.execute(text(
             "SELECT id, code, name_en, name_ar, symbol, decimal_places, is_base "
             "FROM dbp_currencies WHERE (tenant_id = :tid OR tenant_id IS NULL) AND is_active = true "
@@ -225,7 +226,7 @@ class ERPFoundationEngine:
         self.db.flush()
         return ccid
 
-    def get_cost_centers(self, company_id: str, tenant_id: str) -> List[Dict]:
+    def get_cost_centers(self, company_id: str, tenant_id: str) -> list[dict]:
         rows = self.db.execute(text(
             "SELECT id, parent_id, code, name_en, name_ar, budget_amount, is_active "
             "FROM dbp_cost_centers WHERE company_id = :cid AND tenant_id = :t ORDER BY code"

@@ -3,10 +3,10 @@ P13 Security Engine — Field-Level Security, Row-Level Security,
 Sensitive Data Masking, Advanced Input Validation.
 """
 import re
-from typing import Dict, Any, List, Optional, Set
-from sqlalchemy.orm import Session
-from sqlalchemy import text
+from typing import Any
 
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 # ──────────────────────────────────────────────────────────────
 # FIELD-LEVEL SECURITY
@@ -23,7 +23,7 @@ class FieldSecurity:
     """
 
     @staticmethod
-    def get_field_security_map(db: Session, entity_id: str) -> Dict[str, Dict]:
+    def get_field_security_map(db: Session, entity_id: str) -> dict[str, dict]:
         """Returns {field_code: {is_sensitive, writable_roles, visible_roles}}."""
         rows = db.execute(
             text(
@@ -50,9 +50,9 @@ class FieldSecurity:
 
     @staticmethod
     def filter_writable_columns(
-        payload: Dict[str, Any],
-        field_security: Dict[str, Dict],
-        user_roles: List[str],
+        payload: dict[str, Any],
+        field_security: dict[str, dict],
+        user_roles: list[str],
     ) -> tuple:
         """
         Filter payload to only allow writable fields.
@@ -77,11 +77,11 @@ class FieldSecurity:
 
     @staticmethod
     def filter_visible_columns(
-        data: Dict[str, Any],
-        field_security: Dict[str, Dict],
-        user_roles: List[str],
+        data: dict[str, Any],
+        field_security: dict[str, dict],
+        user_roles: list[str],
         is_admin: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Filter output data to hide non-visible fields.
         Admins see everything (except masked sensitive fields).
@@ -119,9 +119,9 @@ class RowSecurity:
     def get_user_row_filter(
         db: Session,
         entity_id: str,
-        user_roles: List[str],
-        user_attrs: Dict[str, str],
-    ) -> Optional[str]:
+        user_roles: list[str],
+        user_attrs: dict[str, str],
+    ) -> str | None:
         """
         Returns a SQL WHERE clause fragment (without WHERE keyword)
         or None if no filter applies.
@@ -166,9 +166,9 @@ class RowSecurity:
     def get_rls_params(
         db: Session,
         entity_id: str,
-        user_roles: List[str],
-        user_attrs: Dict[str, str],
-    ) -> Dict[str, str]:
+        user_roles: list[str],
+        user_attrs: dict[str, str],
+    ) -> dict[str, str]:
         """Returns bind parameters for the RLS WHERE clause."""
         rows = db.execute(
             text(
@@ -215,9 +215,9 @@ REDACT_VALUE = "***REDACTED***"
 
 
 def mask_sensitive_data(
-    data: Dict[str, Any],
-    field_security: Dict[str, Dict],
-) -> Dict[str, Any]:
+    data: dict[str, Any],
+    field_security: dict[str, dict],
+) -> dict[str, Any]:
     """Mask values of fields marked as is_sensitive."""
     if not field_security:
         return data
@@ -232,7 +232,7 @@ def mask_sensitive_data(
     return masked
 
 
-def redact_audit_values(values: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def redact_audit_values(values: dict[str, Any] | None) -> dict[str, Any] | None:
     """
     Redact sensitive keys from audit old_values/new_values.
     Matches field names against known sensitive patterns.
@@ -281,8 +281,8 @@ class InputValidator:
     def validate_field(
         field_code: str,
         value: Any,
-        field_meta: Dict[str, Any],
-    ) -> List[str]:
+        field_meta: dict[str, Any],
+    ) -> list[str]:
         """
         Validate a single field value against its metadata.
         Returns list of error messages (empty = valid).
@@ -334,16 +334,16 @@ class InputValidator:
 
     @staticmethod
     def validate_record(
-        data: Dict[str, Any],
-        field_metadata: List[Dict[str, Any]],
+        data: dict[str, Any],
+        field_metadata: list[dict[str, Any]],
         partial: bool = False,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Validate a full record against entity field metadata.
         partial=True skips required checks (for updates).
         """
         all_errors = []
-        meta_map = {f["code"]: f for f in field_metadata}
+        {f["code"]: f for f in field_metadata}
 
         for fm in field_metadata:
             code = fm["code"]
@@ -365,7 +365,7 @@ class InputValidator:
 # HELPER
 # ──────────────────────────────────────────────────────────────
 
-def _role_matches(user_roles: List[str], required_roles: List[str]) -> bool:
+def _role_matches(user_roles: list[str], required_roles: list[str]) -> bool:
     """
     Check if any user role matches any required role.
     Supports prefix matching: 'dynamic_manager' matches 'dynamic_manager'.

@@ -1,22 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Query
-from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from typing import Dict, Any, Optional, List
-from datetime import datetime
-import uuid
-import csv
-import io
+from datetime import datetime, timezone
+from typing import Any
 
-from database import get_db
-from core.metadata_engine import MetadataEngine
-from core.dynamic_verification import DynamicVerificationEngine
-from core.auth import get_current_user, optional_get_current_user, require_permission
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
 from core.audit import log_dynamic_audit
-from core.errors import secure_db_error, ErrorCodes, create_error_response
-from core.rate_limit import read_limiter, write_limiter
-from core.query_parser import QueryParser, QueryParseError
+from core.auth import optional_get_current_user, require_permission
+from core.dynamic_verification import DynamicVerificationEngine
+from core.errors import ErrorCodes, create_error_response, secure_db_error
 from core.event_bus import EventBus
+from core.metadata_engine import MetadataEngine
+from core.query_parser import QueryParseError, QueryParser
+from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic", tags=["Dynamic CRUD"])
 BULK_MAX_RECORDS = 500
@@ -25,14 +22,14 @@ BULK_MAX_RECORDS = 500
 def get_verification_engine(
     entity_code: str,
     db: Session = Depends(get_db),
-    current_user: Optional[dict] = Depends(optional_get_current_user),
+    current_user: dict | None = Depends(optional_get_current_user),
 ):
     """Resolve entity metadata only within the authenticated tenant context."""
     tenant_id = current_user.get("tenant_id") if current_user else None
     return DynamicVerificationEngine(db, entity_code, tenant_id=tenant_id)
 
 
-def _require_tenant(current_user: Optional[dict]) -> str:
+def _require_tenant(current_user: dict | None) -> str:
     if not current_user or not current_user.get("tenant_id"):
         raise HTTPException(status_code=401, detail="Authentication required for SCOPED entity")
     return current_user["tenant_id"]
@@ -43,6 +40,19 @@ def _validate_identifier(identifier: str) -> str:
     if not isinstance(identifier, str) or not re.fullmatch(r"[a-z0-9_]+", identifier):
         raise HTTPException(status_code=400, detail="Invalid SQL identifier")
     return identifier
+
+
+def _junction_has_tenant_column(db: Session, junction_table: str) -> bool:
+    """Return whether an M2M junction table carries an explicit tenant scope."""
+    junction_table = _validate_identifier(junction_table)
+    row = db.execute(
+        text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = :table_name AND column_name = 'tenant_id' LIMIT 1"
+        ),
+        {"table_name": junction_table},
+    ).fetchone()
+    return bool(row)
 
 
 @router.get("/entities/{entity_code}/schema", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
@@ -57,7 +67,7 @@ async def get_schema(entity_code: str, db: Session = Depends(get_db), verificati
 
 
 @router.get("/entities/{entity_code}/records", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_records(entity_code: str, filters: Optional[str] = None, sort: Optional[str] = None, limit: int = 100, offset: int = 0, include: Optional[str] = None, include_deleted: bool = False, db: Session = Depends(get_db), current_user: Optional[dict] = Depends(optional_get_current_user)):
+async def list_records(entity_code: str, filters: str | None = None, sort: str | None = None, limit: int = 100, offset: int = 0, include: str | None = None, include_deleted: bool = False, db: Session = Depends(get_db), current_user: dict | None = Depends(optional_get_current_user)):
     tenant_id = current_user.get("tenant_id") if current_user else None
     ent_sql = "SELECT id, table_mapping, tenant_id FROM dbp_entities WHERE code = :code"
     ent_params = {"code": entity_code}
@@ -146,7 +156,15 @@ async def list_records(entity_code: str, filters: Optional[str] = None, sort: Op
                         record[inc] = []
                         continue
                     junction, j_src, j_tgt = map(_validate_identifier, (junction, j_src, j_tgt))
-                    rows = db.execute(text(f"SELECT t.* FROM {target_table} t INNER JOIN {junction} j ON j.{j_tgt} = t.{target_col} WHERE j.{j_src} = :sv LIMIT 100"), {"sv": source_value}).fetchall()
+                    where_parts = [f"j.{j_src} = :sv"]
+                    rel_params = {"sv": source_value}
+                    if tenant_scope and tenant_id:
+                        where_parts.append("t.tenant_id = :tid")
+                        rel_params["tid"] = tenant_id
+                        if _junction_has_tenant_column(db, junction):
+                            where_parts.append("j.tenant_id = :tid")
+                    rel_where = " AND ".join(where_parts)
+                    rows = db.execute(text(f"SELECT t.* FROM {target_table} t INNER JOIN {junction} j ON j.{j_tgt} = t.{target_col} WHERE {rel_where} LIMIT 100"), rel_params).fetchall()
                     record[inc] = [{k: v for k, v in row._mapping.items() if k != "tenant_id"} for row in rows]
                 else:
                     rows = db.execute(text(f"SELECT * FROM {target_table} WHERE {rel_where} LIMIT 100"), rel_params).fetchall()
@@ -155,7 +173,7 @@ async def list_records(entity_code: str, filters: Optional[str] = None, sort: Op
 
 
 @router.post("/entities/{entity_code}/records", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_record(entity_code: str, payload: Dict[str, Any], request: Request, db: Session = Depends(get_db), verification: DynamicVerificationEngine = Depends(get_verification_engine), current_user: Optional[dict] = Depends(optional_get_current_user)):
+async def create_record(entity_code: str, payload: dict[str, Any], request: Request, db: Session = Depends(get_db), verification: DynamicVerificationEngine = Depends(get_verification_engine), current_user: dict | None = Depends(optional_get_current_user)):
     if not verification.entity_exists(): raise HTTPException(status_code=404, detail=f"الكيان '{entity_code}' غير موجود")
     table_error = verification.validate_table_mapping()
     if table_error: raise HTTPException(status_code=400, detail=table_error)
@@ -186,7 +204,7 @@ async def create_record(entity_code: str, payload: Dict[str, Any], request: Requ
 
 
 @router.put("/entities/{entity_code}/records/{record_id}", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def update_record(entity_code: str, record_id: str, payload: Dict[str, Any], request: Request, db: Session = Depends(get_db), verification: DynamicVerificationEngine = Depends(get_verification_engine), current_user: Optional[dict] = Depends(optional_get_current_user)):
+async def update_record(entity_code: str, record_id: str, payload: dict[str, Any], request: Request, db: Session = Depends(get_db), verification: DynamicVerificationEngine = Depends(get_verification_engine), current_user: dict | None = Depends(optional_get_current_user)):
     if not verification.entity_exists(): raise HTTPException(status_code=404, detail=f"الكيان '{entity_code}' غير موجود")
     table_error = verification.validate_table_mapping()
     if table_error: raise HTTPException(status_code=400, detail=table_error)
@@ -210,7 +228,7 @@ async def update_record(entity_code: str, record_id: str, payload: Dict[str, Any
 
 
 @router.delete("/entities/{entity_code}/records/{record_id}", dependencies=[Depends(require_permission("dynamic", "delete")), Depends(write_limiter.check)])
-async def delete_record(entity_code: str, record_id: str, request: Request, db: Session = Depends(get_db), current_user: Optional[dict] = Depends(optional_get_current_user)):
+async def delete_record(entity_code: str, record_id: str, request: Request, db: Session = Depends(get_db), current_user: dict | None = Depends(optional_get_current_user)):
     tenant_id = current_user.get("tenant_id") if current_user else None
     ent_sql = "SELECT table_mapping, tenant_id FROM dbp_entities WHERE code = :code"
     ent_params = {"code": entity_code}
@@ -225,7 +243,7 @@ async def delete_record(entity_code: str, record_id: str, request: Request, db: 
     user_id = current_user.get("id") if current_user else None
     if has_deleted:
         q = f"UPDATE {table_name} SET deleted_at = :deleted_at, deleted_by = :deleted_by WHERE id = :id AND deleted_at IS NULL" + (" AND tenant_id = :tenant_id" if has_tenant else "")
-        p = {"deleted_at": datetime.utcnow(), "deleted_by": user_id, "id": record_id}
+        p = {"deleted_at": datetime.now(timezone.utc), "deleted_by": user_id, "id": record_id}
         if has_tenant: p["tenant_id"] = effective_tenant
     else:
         q = f"DELETE FROM {table_name} WHERE id = :id" + (" AND tenant_id = :tenant_id" if has_tenant else "")
@@ -242,7 +260,7 @@ async def delete_record(entity_code: str, record_id: str, request: Request, db: 
 
 
 @router.post("/entities/{entity_code}/records/{record_id}/restore", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def restore_record(entity_code: str, record_id: str, request: Request, db: Session = Depends(get_db), verification: DynamicVerificationEngine = Depends(get_verification_engine), current_user: Optional[dict] = Depends(optional_get_current_user)):
+async def restore_record(entity_code: str, record_id: str, request: Request, db: Session = Depends(get_db), verification: DynamicVerificationEngine = Depends(get_verification_engine), current_user: dict | None = Depends(optional_get_current_user)):
     if not verification.entity_exists(): raise HTTPException(status_code=404, detail=f"الكيان '{entity_code}' غير موجود")
     table_error = verification.validate_table_mapping()
     if table_error: raise HTTPException(status_code=400, detail=table_error)
@@ -250,7 +268,7 @@ async def restore_record(entity_code: str, record_id: str, request: Request, db:
     auth_tenant_id = _require_tenant(current_user) if verification.has_tenant_id_column() else current_user.get("tenant_id")
     table_name = _validate_identifier(verification.entity_meta["table_mapping"])
     where = "WHERE id = :id" + (" AND tenant_id = :tenant_id" if verification.has_tenant_id_column() else "")
-    params = {"id": record_id};
+    params = {"id": record_id}
     if verification.has_tenant_id_column(): params["tenant_id"] = auth_tenant_id
     row = db.execute(text(f"SELECT deleted_at FROM {table_name} {where}"), params).fetchone()
     if not row: raise HTTPException(status_code=404, detail="السجل غير موجود")

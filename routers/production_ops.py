@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import require_permission, get_current_user
-from core.rate_limit import read_limiter, write_limiter
+from core.auth import require_permission
 from core.production_ops import ProductionOpsEngine
+from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic", tags=["Production Operations"])
 
@@ -12,8 +12,8 @@ router = APIRouter(prefix="/api/v1/dynamic", tags=["Production Operations"])
 # -------------------------------------------------------------- backup jobs
 @router.get("/backup-jobs",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_backup_jobs(backup_type: str = None, status: str = None, limit: int = 50,
-                          user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_backup_jobs(backup_type: str | None = None, status: str | None = None, limit: int = 50,
+                          user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionOpsEngine(db).list_backup_jobs(
         user["tenant_id"], backup_type=backup_type, status=status, limit=limit)
     return {"status": "success", "data": data}
@@ -22,7 +22,7 @@ async def list_backup_jobs(backup_type: str = None, status: str = None, limit: i
 @router.post("/backup-jobs",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_backup_job(body: dict,
-                           user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                           user: dict | None=None, db: Session = Depends(get_db)):
     required = ["backup_type"]
     for f in required:
         if f not in body:
@@ -39,7 +39,7 @@ async def create_backup_job(body: dict,
 @router.get("/backup-jobs/{backup_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_backup_job(backup_id: str,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                        user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionOpsEngine(db).get_backup_job(user["tenant_id"], backup_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -50,7 +50,7 @@ async def get_backup_job(backup_id: str,
 @router.put("/backup-jobs/{backup_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_backup_job(backup_id: str, body: dict,
-                           user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                           user: dict | None=None, db: Session = Depends(get_db)):
     result = ProductionOpsEngine(db).update_backup_status(
         user["tenant_id"], backup_id, body.get("status", "running"),
         file_path=body.get("file_path"), file_size_bytes=body.get("file_size_bytes"),
@@ -65,7 +65,7 @@ async def update_backup_job(backup_id: str, body: dict,
 # ----------------------------------------------------------- scheduled jobs
 @router.get("/scheduled-jobs",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_scheduled_jobs(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_scheduled_jobs(user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionOpsEngine(db).list_scheduled_jobs(user["tenant_id"])
     return {"status": "success", "data": data}
 
@@ -73,7 +73,7 @@ async def list_scheduled_jobs(user: dict = Depends(get_current_user), db: Sessio
 @router.post("/scheduled-jobs",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_scheduled_job(body: dict,
-                              user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                              user: dict | None=None, db: Session = Depends(get_db)):
     required = ["job_name", "job_type"]
     for f in required:
         if f not in body:
@@ -91,7 +91,7 @@ async def create_scheduled_job(body: dict,
 @router.get("/scheduled-jobs/{job_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_scheduled_job(job_id: str,
-                           user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                           user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionOpsEngine(db).get_scheduled_job(user["tenant_id"], job_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -102,7 +102,7 @@ async def get_scheduled_job(job_id: str,
 @router.put("/scheduled-jobs/{job_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_scheduled_job(job_id: str, body: dict,
-                              user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                              user: dict | None=None, db: Session = Depends(get_db)):
     result = ProductionOpsEngine(db).update_scheduled_job(
         user["tenant_id"], job_id,
         is_active=body.get("is_active"),
@@ -116,7 +116,7 @@ async def update_scheduled_job(job_id: str, body: dict,
 @router.delete("/scheduled-jobs/{job_id}",
                dependencies=[Depends(require_permission("dynamic", "delete")), Depends(write_limiter.check)])
 async def delete_scheduled_job(job_id: str,
-                              user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                              user: dict | None=None, db: Session = Depends(get_db)):
     result = ProductionOpsEngine(db).delete_scheduled_job(user["tenant_id"], job_id)
     if not result:
         raise HTTPException(404, detail={"status": "error",
@@ -128,7 +128,7 @@ async def delete_scheduled_job(job_id: str,
 # ------------------------------------------------------------ alert rules
 @router.get("/alert-rules",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_alert_rules(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_alert_rules(user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionOpsEngine(db).list_alert_rules(user["tenant_id"])
     return {"status": "success", "data": data}
 
@@ -136,7 +136,7 @@ async def list_alert_rules(user: dict = Depends(get_current_user), db: Session =
 @router.post("/alert-rules",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_alert_rule(body: dict,
-                           user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                           user: dict | None=None, db: Session = Depends(get_db)):
     required = ["rule_name", "metric_name", "condition_op", "threshold_value"]
     for f in required:
         if f not in body:
@@ -156,7 +156,7 @@ async def create_alert_rule(body: dict,
 @router.get("/alert-rules/{rule_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_alert_rule(rule_id: str,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                        user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionOpsEngine(db).get_alert_rule(user["tenant_id"], rule_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -167,7 +167,7 @@ async def get_alert_rule(rule_id: str,
 @router.put("/alert-rules/{rule_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_alert_rule(rule_id: str, body: dict,
-                           user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                           user: dict | None=None, db: Session = Depends(get_db)):
     result = ProductionOpsEngine(db).update_alert_rule(
         user["tenant_id"], rule_id,
         is_active=body.get("is_active"),
@@ -180,8 +180,8 @@ async def update_alert_rule(rule_id: str, body: dict,
 # ----------------------------------------------------------- alert history
 @router.get("/alert-history",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_alert_history(status: str = None, severity: str = None, limit: int = 50,
-                            user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_alert_history(status: str | None = None, severity: str | None = None, limit: int = 50,
+                            user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionOpsEngine(db).list_alert_history(
         user["tenant_id"], status=status, severity=severity, limit=limit)
     return {"status": "success", "data": data}
@@ -190,7 +190,7 @@ async def list_alert_history(status: str = None, severity: str = None, limit: in
 @router.post("/alert-history",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def trigger_alert(body: dict,
-                       user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                       user: dict | None=None, db: Session = Depends(get_db)):
     required = ["rule_id", "rule_name", "metric_name", "actual_value", "threshold_value"]
     for f in required:
         if f not in body:
@@ -207,7 +207,7 @@ async def trigger_alert(body: dict,
 @router.put("/alert-history/{alert_id}/acknowledge",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def acknowledge_alert(alert_id: str, body: dict,
-                           user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                           user: dict | None=None, db: Session = Depends(get_db)):
     result = ProductionOpsEngine(db).acknowledge_alert(
         user["tenant_id"], alert_id, body.get("acknowledged_by", user.get("user_id", "system")))
     db.commit()
@@ -217,7 +217,7 @@ async def acknowledge_alert(alert_id: str, body: dict,
 @router.put("/alert-history/{alert_id}/resolve",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def resolve_alert(alert_id: str,
-                       user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                       user: dict | None=None, db: Session = Depends(get_db)):
     result = ProductionOpsEngine(db).resolve_alert(user["tenant_id"], alert_id)
     db.commit()
     return {"status": "success", "data": result}
@@ -226,8 +226,8 @@ async def resolve_alert(alert_id: str,
 # ------------------------------------------------------------- deployments
 @router.get("/deployments",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_deployments(environment: str = None, status: str = None, limit: int = 20,
-                          user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_deployments(environment: str | None = None, status: str | None = None, limit: int = 20,
+                          user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionOpsEngine(db).list_deployments(
         user["tenant_id"], environment=environment, status=status, limit=limit)
     return {"status": "success", "data": data}
@@ -236,7 +236,7 @@ async def list_deployments(environment: str = None, status: str = None, limit: i
 @router.post("/deployments",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_deployment(body: dict,
-                           user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                           user: dict | None=None, db: Session = Depends(get_db)):
     required = ["version", "environment"]
     for f in required:
         if f not in body:
@@ -254,7 +254,7 @@ async def create_deployment(body: dict,
 @router.get("/deployments/{deployment_id}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_deployment(deployment_id: str,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                        user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionOpsEngine(db).get_deployment(user["tenant_id"], deployment_id)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -265,7 +265,7 @@ async def get_deployment(deployment_id: str,
 @router.put("/deployments/{deployment_id}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_deployment(deployment_id: str, body: dict,
-                           user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                           user: dict | None=None, db: Session = Depends(get_db)):
     result = ProductionOpsEngine(db).update_deployment_status(
         user["tenant_id"], deployment_id, body.get("status", "completed"),
         rollback_reason=body.get("rollback_reason"))
@@ -276,8 +276,8 @@ async def update_deployment(deployment_id: str, body: dict,
 # -------------------------------------------------------- monitoring metrics
 @router.get("/metrics",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_metrics(metric_name: str = None, source: str = None, limit: int = 100,
-                      user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_metrics(metric_name: str | None = None, source: str | None = None, limit: int = 100,
+                      user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionOpsEngine(db).list_metrics(
         user["tenant_id"], metric_name=metric_name, source=source, limit=limit)
     return {"status": "success", "data": data}
@@ -286,7 +286,7 @@ async def list_metrics(metric_name: str = None, source: str = None, limit: int =
 @router.post("/metrics",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def record_metric(body: dict,
-                       user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                       user: dict | None=None, db: Session = Depends(get_db)):
     required = ["metric_name", "metric_value"]
     for f in required:
         if f not in body:
@@ -302,7 +302,7 @@ async def record_metric(body: dict,
 @router.get("/metrics/{metric_name}/latest",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_latest_metric(metric_name: str,
-                           user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                           user: dict | None=None, db: Session = Depends(get_db)):
     data = ProductionOpsEngine(db).get_latest_metric(user["tenant_id"], metric_name)
     if not data:
         raise HTTPException(404, detail={"status": "error",

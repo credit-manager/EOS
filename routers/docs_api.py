@@ -3,20 +3,26 @@ P71.3 Universal Document Manager — API
 ========================================
 File metadata, folders, versions, cross-module linking.
 """
-import sys, os, json
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Any
 
-from database import get_db
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from pydantic import BaseModel
 from sqlalchemy import text
+
 from core.auth import get_current_user
 from core.industry_security import (
-    now, uid, check_permission, audit_log,
-    success_response, list_response,
+    audit_log,
+    check_permission,
+    list_response,
+    success_response,
+    uid,
 )
+from database import get_db
 
 router = APIRouter(prefix="/docs", tags=["Document Manager"])
 
@@ -27,12 +33,12 @@ router = APIRouter(prefix="/docs", tags=["Document Manager"])
 
 class FolderCreate(BaseModel):
     folder_name: str
-    parent_id: Optional[str] = None
-    description: Optional[str] = None
-    source_module: Optional[str] = None
+    parent_id: str | None = None
+    description: str | None = None
+    source_module: str | None = None
 
 @router.post("/folders")
-def create_folder(body: FolderCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_folder(body: FolderCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     if body.parent_id:
@@ -50,11 +56,11 @@ def create_folder(body: FolderCreate, user: dict = Depends(get_current_user), db
     return success_response("Folder created", {"id": fid})
 
 @router.get("/folders")
-def list_folders(parent_id: Optional[str] = None, source_module: Optional[str] = None,
-                 user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_folders(parent_id: str | None = None, source_module: str | None = None,
+                 user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     where = "WHERE tenant_id=:t"
-    params: Dict[str, Any] = {"t": t}
+    params: dict[str, Any] = {"t": t}
     if parent_id:
         where += " AND parent_id=:pid"
         params["pid"] = parent_id
@@ -72,7 +78,7 @@ def list_folders(parent_id: Optional[str] = None, source_module: Optional[str] =
     return list_response(data, len(data))
 
 @router.get("/folders/{folder_id}")
-def get_folder(folder_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_folder(folder_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     r = db.execute(text(
         "SELECT id,folder_name,parent_id,description,source_module,created_by,created_at "
@@ -91,7 +97,7 @@ def get_folder(folder_id: str, user: dict = Depends(get_current_user), db=Depend
     })
 
 @router.delete("/folders/{folder_id}")
-def delete_folder(folder_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def delete_folder(folder_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "delete")
     t = user["tenant_id"]
     f = db.execute(text("SELECT id FROM dbp_doc_folders WHERE id=:id AND tenant_id=:t"),
@@ -118,17 +124,17 @@ def delete_folder(folder_id: str, user: dict = Depends(get_current_user), db=Dep
 
 class FileUpload(BaseModel):
     file_name: str
-    folder_id: Optional[str] = None
-    mime_type: Optional[str] = None
+    folder_id: str | None = None
+    mime_type: str | None = None
     file_size: int = 0
-    storage_path: Optional[str] = None
-    description: Optional[str] = None
-    tags: Optional[str] = None
-    source_module: Optional[str] = None
-    source_id: Optional[str] = None
+    storage_path: str | None = None
+    description: str | None = None
+    tags: str | None = None
+    source_module: str | None = None
+    source_id: str | None = None
 
 @router.post("/files")
-def upload_file(body: FileUpload, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def upload_file(body: FileUpload, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     if body.folder_id:
@@ -157,11 +163,11 @@ def upload_file(body: FileUpload, user: dict = Depends(get_current_user), db=Dep
 
 @router.post("/upload")
 async def upload_actual_file(
-    file: UploadFile = File(...),
-    folder_id: Optional[str] = None,
-    description: Optional[str] = None,
-    source_module: Optional[str] = None,
-    source_id: Optional[str] = None,
+    file: UploadFile=None,
+    folder_id: str | None = None,
+    description: str | None = None,
+    source_module: str | None = None,
+    source_id: str | None = None,
     user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ):
@@ -210,12 +216,12 @@ async def upload_actual_file(
     })
 
 @router.get("/files")
-def list_files(folder_id: Optional[str] = None, source_module: Optional[str] = None,
-               source_id: Optional[str] = None, tags: Optional[str] = None,
-               search: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_files(folder_id: str | None = None, source_module: str | None = None,
+               source_id: str | None = None, tags: str | None = None,
+               search: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     where = "WHERE tenant_id=:t AND is_archived=FALSE"
-    params: Dict[str, Any] = {"t": t}
+    params: dict[str, Any] = {"t": t}
     if folder_id:
         where += " AND folder_id=:fi"
         params["fi"] = folder_id
@@ -241,7 +247,7 @@ def list_files(folder_id: Optional[str] = None, source_module: Optional[str] = N
     return list_response(data, len(data))
 
 @router.get("/files/{file_id}")
-def get_file(file_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_file(file_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     r = db.execute(text(
         "SELECT id,folder_id,file_name,original_name,mime_type,file_size,storage_path,"
@@ -270,7 +276,7 @@ def get_file(file_id: str, user: dict = Depends(get_current_user), db=Depends(ge
     })
 
 @router.put("/files/{file_id}/archive")
-def archive_file(file_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def archive_file(file_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     r = db.execute(text("SELECT is_archived FROM dbp_doc_files WHERE id=:id AND tenant_id=:t"),
@@ -286,7 +292,7 @@ def archive_file(file_id: str, user: dict = Depends(get_current_user), db=Depend
     return success_response("File archive toggled", {"is_archived": new_val})
 
 @router.delete("/files/{file_id}")
-def delete_file(file_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def delete_file(file_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "delete")
     t = user["tenant_id"]
     f = db.execute(text("SELECT id FROM dbp_doc_files WHERE id=:id AND tenant_id=:t"),
@@ -308,12 +314,12 @@ def delete_file(file_id: str, user: dict = Depends(get_current_user), db=Depends
 
 class VersionUpload(BaseModel):
     file_name: str
-    storage_path: Optional[str] = None
+    storage_path: str | None = None
     file_size: int = 0
-    change_notes: Optional[str] = None
+    change_notes: str | None = None
 
 @router.post("/files/{file_id}/versions")
-def upload_version(file_id: str, body: VersionUpload, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def upload_version(file_id: str, body: VersionUpload, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     f = db.execute(text("SELECT id FROM dbp_doc_files WHERE id=:id AND tenant_id=:t"),
@@ -346,7 +352,7 @@ class ShareCreate(BaseModel):
     permission: str = "view"
 
 @router.post("/files/{file_id}/shares")
-def share_file(file_id: str, body: ShareCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def share_file(file_id: str, body: ShareCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     f = db.execute(text("SELECT id FROM dbp_doc_files WHERE id=:id AND tenant_id=:t"),
@@ -369,7 +375,7 @@ def share_file(file_id: str, body: ShareCreate, user: dict = Depends(get_current
     return success_response("File shared", {"id": sid})
 
 @router.delete("/files/{file_id}/shares/{share_id}")
-def revoke_share(file_id: str, share_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def revoke_share(file_id: str, share_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     db.execute(text("DELETE FROM dbp_doc_shares WHERE id=:id AND file_id=:fi AND tenant_id=:t"),
@@ -384,7 +390,7 @@ def revoke_share(file_id: str, share_id: str, user: dict = Depends(get_current_u
 # ═══════════════════════════════════════════════════
 
 @router.get("/search")
-def search_files(q: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def search_files(q: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text(
         "SELECT id,file_name,mime_type,file_size,source_module,source_id,created_at "
@@ -403,7 +409,7 @@ def search_files(q: str, user: dict = Depends(get_current_user), db=Depends(get_
 # ═══════════════════════════════════════════════════
 
 @router.get("/stats")
-def doc_stats(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def doc_stats(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     folders = db.execute(text("SELECT COUNT(*) FROM dbp_doc_folders WHERE tenant_id=:t"), {"t": t}).fetchone()[0] or 0
     files = db.execute(text("SELECT COUNT(*) FROM dbp_doc_files WHERE tenant_id=:t AND is_archived=FALSE"), {"t": t}).fetchone()[0] or 0

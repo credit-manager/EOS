@@ -3,9 +3,9 @@ EOS Industry Engine — Accounting Mapping
 Maps operations to journal entries per industry.
 """
 
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 
 class JournalType(str, Enum):
@@ -43,19 +43,19 @@ class AccountMapping:
     cost_center_field: str = ""       # Which field contains cost center
     description_template: str = ""    # e.g. "Invoice {number}"
     posting_trigger: PostingTrigger = PostingTrigger.ON_APPROVE
-    conditions: List[Dict[str, Any]] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    conditions: list[dict[str, Any]] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class IndustryAccountingMapping:
     """Accounting mappings for a specific industry."""
     industry: str
-    mappings: List[AccountMapping] = field(default_factory=list)
+    mappings: list[AccountMapping] = field(default_factory=list)
     # Account code patterns
-    account_patterns: Dict[str, str] = field(default_factory=dict)
+    account_patterns: dict[str, str] = field(default_factory=dict)
     # Tax configuration
-    tax_config: Dict[str, Any] = field(default_factory=dict)
+    tax_config: dict[str, Any] = field(default_factory=dict)
 
 
 class AccountingMappingEngine:
@@ -65,7 +65,7 @@ class AccountingMappingEngine:
     """
 
     def __init__(self):
-        self._mappings: Dict[str, IndustryAccountingMapping] = {}
+        self._mappings: dict[str, IndustryAccountingMapping] = {}
         self._register_builtins()
 
     def _register_builtins(self):
@@ -362,11 +362,11 @@ class AccountingMappingEngine:
         """Register industry accounting mappings."""
         self._mappings[mapping.industry] = mapping
 
-    def get(self, industry: str) -> Optional[IndustryAccountingMapping]:
+    def get(self, industry: str) -> IndustryAccountingMapping | None:
         """Get accounting mapping for an industry."""
         return self._mappings.get(industry)
 
-    def get_mapping(self, industry: str, event: str) -> Optional[AccountMapping]:
+    def get_mapping(self, industry: str, event: str) -> AccountMapping | None:
         """Get specific mapping for an event in an industry."""
         mapping = self._mappings.get(industry)
         if not mapping:
@@ -388,7 +388,7 @@ class AccountingMappingEngine:
             return mapping.account_patterns.get(pattern, pattern)
         return pattern
 
-    def generate_journal_entry(self, industry: str, event: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    def generate_journal_entry(self, industry: str, event: str, data: dict[str, Any]) -> dict[str, Any]:
         """
         Generate journal entry lines for a business event.
         Returns dict with debit_lines and credit_lines.
@@ -399,7 +399,7 @@ class AccountingMappingEngine:
 
         amount = float(data.get(mapping.amount_field, 0))
         tax = float(data.get(mapping.tax_field, 0))
-        total = amount + tax
+        amount + tax
 
         debit_account = self.get_account_code(industry, mapping.debit_account)
         credit_account = self.get_account_code(industry, mapping.credit_account)
@@ -438,14 +438,14 @@ class AccountingMappingEngine:
             "total_credit": sum(l["credit"] for l in lines),
         }
 
-    def get_all_events(self, industry: str) -> List[str]:
+    def get_all_events(self, industry: str) -> list[str]:
         """Get all bookable events for an industry."""
         mapping = self._mappings.get(industry)
         if not mapping:
             return []
         return [m.event for m in mapping.mappings]
 
-    def export_mappings(self, industry: str) -> List[Dict[str, Any]]:
+    def export_mappings(self, industry: str) -> list[dict[str, Any]]:
         """Export mappings for templates."""
         mapping = self._mappings.get(industry)
         if not mapping:

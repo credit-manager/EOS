@@ -1,4 +1,4 @@
-﻿"""
+"""
 EOS Advanced Analytics Engine — P65
 Executive Dashboard + KPIs + Period Comparisons + Drill-Down.
 
@@ -15,15 +15,15 @@ Provides:
 - Business alerts (anomalies, thresholds)
 """
 
-import os
-import logging
-from datetime import datetime, timedelta, date
-from typing import Dict, Any, List, Optional, Tuple
-from decimal import Decimal
 import json
+import logging
+import uuid
+from datetime import date, datetime, timedelta, timezone
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+
 from database import SessionLocal
 
 logger = logging.getLogger("eos.analytics")
@@ -41,7 +41,7 @@ def _safe_float(val, default=0.0) -> float:
         return default
 
 
-def _period_range(period: str, reference_date: date = None) -> Tuple[date, date]:
+def _period_range(period: str, reference_date: date | None = None) -> tuple[date, date]:
     """Return (start, end) dates for a named period."""
     ref = reference_date or date.today()
     if period == "today":
@@ -81,7 +81,7 @@ def _period_range(period: str, reference_date: date = None) -> Tuple[date, date]
     return ref, ref
 
 
-def _execute_query(sql: str, params: dict = None, tenant_id: str = None) -> List[dict]:
+def _execute_query(sql: str, params: dict | None = None, tenant_id: str | None = None) -> list[dict]:
     """Execute SQL and return list of dicts."""
     db = SessionLocal()
     try:
@@ -100,11 +100,11 @@ def _execute_query(sql: str, params: dict = None, tenant_id: str = None) -> List
         db.close()
 
 
-def _execute_scalar(sql: str, params: dict = None, tenant_id: str = None) -> float:
+def _execute_scalar(sql: str, params: dict | None = None, tenant_id: str | None = None) -> float:
     """Execute SQL and return single scalar value."""
     rows = _execute_query(sql, params, tenant_id)
     if rows:
-        val = list(rows[0].values())[0]
+        val = next(iter(rows[0].values()))
         return _safe_float(val)
     return 0.0
 
@@ -113,7 +113,7 @@ def _execute_scalar(sql: str, params: dict = None, tenant_id: str = None) -> flo
 # Executive Dashboard
 # ═══════════════════════════════════════════════
 
-def get_executive_summary(tenant_id: str, period: str = "this_month") -> Dict[str, Any]:
+def get_executive_summary(tenant_id: str, period: str = "this_month") -> dict[str, Any]:
     """Get executive summary for the given period."""
     start, end = _period_range(period)
 
@@ -174,7 +174,7 @@ def get_executive_summary(tenant_id: str, period: str = "this_month") -> Dict[st
     }
 
 
-def get_revenue_trend(tenant_id: str, months: int = 12) -> List[Dict[str, Any]]:
+def get_revenue_trend(tenant_id: str, months: int = 12) -> list[dict[str, Any]]:
     """Get monthly revenue trend for the last N months."""
     rows = _execute_query(f"""
         SELECT
@@ -192,7 +192,7 @@ def get_revenue_trend(tenant_id: str, months: int = 12) -> List[Dict[str, Any]]:
              "invoice_count": int(r["invoice_count"])} for r in rows]
 
 
-def get_expenses_trend(tenant_id: str, months: int = 12) -> List[Dict[str, Any]]:
+def get_expenses_trend(tenant_id: str, months: int = 12) -> list[dict[str, Any]]:
     """Get monthly expenses trend."""
     rows = _execute_query(f"""
         SELECT
@@ -210,7 +210,7 @@ def get_expenses_trend(tenant_id: str, months: int = 12) -> List[Dict[str, Any]]
              "order_count": int(r["order_count"])} for r in rows]
 
 
-def get_profit_trend(tenant_id: str, months: int = 12) -> List[Dict[str, Any]]:
+def get_profit_trend(tenant_id: str, months: int = 12) -> list[dict[str, Any]]:
     """Get monthly profit trend (revenue - expenses)."""
     rev = {r["month"]: _safe_float(r["revenue"]) for r in get_revenue_trend(tenant_id, months)}
     exp = {r["month"]: _safe_float(r["expenses"]) for r in get_expenses_trend(tenant_id, months)}
@@ -219,7 +219,7 @@ def get_profit_trend(tenant_id: str, months: int = 12) -> List[Dict[str, Any]]:
              "profit": rev.get(m, 0) - exp.get(m, 0)} for m in all_months]
 
 
-def get_cash_flow(tenant_id: str, months: int = 6) -> List[Dict[str, Any]]:
+def get_cash_flow(tenant_id: str, months: int = 6) -> list[dict[str, Any]]:
     """Get cash flow analysis."""
     rows = _execute_query(f"""
         SELECT
@@ -253,7 +253,7 @@ def get_cash_flow(tenant_id: str, months: int = 6) -> List[Dict[str, Any]]:
 # Sales Analytics
 # ═══════════════════════════════════════════════
 
-def get_sales_summary(tenant_id: str, period: str = "this_month") -> Dict[str, Any]:
+def get_sales_summary(tenant_id: str, period: str = "this_month") -> dict[str, Any]:
     """Get sales summary for period."""
     start, end = _period_range(period)
 
@@ -301,7 +301,7 @@ def get_sales_summary(tenant_id: str, period: str = "this_month") -> Dict[str, A
     }
 
 
-def get_top_customers(tenant_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+def get_top_customers(tenant_id: str, limit: int = 10) -> list[dict[str, Any]]:
     """Get top customers by revenue."""
     rows = _execute_query(f"""
         SELECT
@@ -322,7 +322,7 @@ def get_top_customers(tenant_id: str, limit: int = 10) -> List[Dict[str, Any]]:
              "invoices": int(r["invoice_count"])} for r in rows]
 
 
-def get_sales_by_period(tenant_id: str) -> Dict[str, Any]:
+def get_sales_by_period(tenant_id: str) -> dict[str, Any]:
     """Get sales comparison across periods."""
     this_month = get_sales_summary(tenant_id, "this_month")
     last_month = get_sales_summary(tenant_id, "last_month")
@@ -348,7 +348,7 @@ def get_sales_by_period(tenant_id: str) -> Dict[str, Any]:
 # Purchase Analytics
 # ═══════════════════════════════════════════════
 
-def get_purchase_summary(tenant_id: str, period: str = "this_month") -> Dict[str, Any]:
+def get_purchase_summary(tenant_id: str, period: str = "this_month") -> dict[str, Any]:
     """Get purchase summary for period."""
     start, end = _period_range(period)
 
@@ -381,7 +381,7 @@ def get_purchase_summary(tenant_id: str, period: str = "this_month") -> Dict[str
     }
 
 
-def get_top_suppliers(tenant_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+def get_top_suppliers(tenant_id: str, limit: int = 10) -> list[dict[str, Any]]:
     """Get top suppliers by purchase amount."""
     rows = _execute_query(f"""
         SELECT
@@ -406,7 +406,7 @@ def get_top_suppliers(tenant_id: str, limit: int = 10) -> List[Dict[str, Any]]:
 # Inventory Analytics
 # ═══════════════════════════════════════════════
 
-def get_inventory_summary(tenant_id: str) -> Dict[str, Any]:
+def get_inventory_summary(tenant_id: str) -> dict[str, Any]:
     """Get inventory summary."""
     total_items = _execute_scalar(f"""
         SELECT COUNT(*) FROM dbp_items WHERE tenant_id = '{tenant_id}'
@@ -436,7 +436,7 @@ def get_inventory_summary(tenant_id: str) -> Dict[str, Any]:
     }
 
 
-def get_stock_movements(tenant_id: str, days: int = 30) -> List[Dict[str, Any]]:
+def get_stock_movements(tenant_id: str, days: int = 30) -> list[dict[str, Any]]:
     """Get stock movements trend."""
     rows = _execute_query(f"""
         SELECT
@@ -457,7 +457,7 @@ def get_stock_movements(tenant_id: str, days: int = 30) -> List[Dict[str, Any]]:
 # Project Analytics
 # ═══════════════════════════════════════════════
 
-def get_project_summary(tenant_id: str) -> Dict[str, Any]:
+def get_project_summary(tenant_id: str) -> dict[str, Any]:
     """Get project portfolio summary."""
     total = _execute_scalar(f"""
         SELECT COUNT(*) FROM dbp_projects WHERE tenant_id = '{tenant_id}'
@@ -501,7 +501,7 @@ def get_project_summary(tenant_id: str) -> Dict[str, Any]:
     }
 
 
-def get_project_cost_breakdown(tenant_id: str) -> List[Dict[str, Any]]:
+def get_project_cost_breakdown(tenant_id: str) -> list[dict[str, Any]]:
     """Get cost breakdown per project."""
     rows = _execute_query(f"""
         SELECT
@@ -530,7 +530,7 @@ def get_project_cost_breakdown(tenant_id: str) -> List[Dict[str, Any]]:
 # HR Analytics
 # ═══════════════════════════════════════════════
 
-def get_hr_summary(tenant_id: str) -> Dict[str, Any]:
+def get_hr_summary(tenant_id: str) -> dict[str, Any]:
     """Get HR summary."""
     total_employees = _execute_scalar(f"""
         SELECT COUNT(*) FROM dbp_employees WHERE tenant_id = '{tenant_id}' AND status = 'active'
@@ -563,14 +563,14 @@ def get_hr_summary(tenant_id: str) -> Dict[str, Any]:
 # KPI Engine
 # ═══════════════════════════════════════════════
 
-def get_kpis(tenant_id: str, period: str = "this_month") -> List[Dict[str, Any]]:
+def get_kpis(tenant_id: str, period: str = "this_month") -> list[dict[str, Any]]:
     """Get all KPIs with period-over-period comparison."""
     exec_summary = get_executive_summary(tenant_id, period)
     prev_period = "last_month" if period == "this_month" else "last_year"
     prev_summary = get_executive_summary(tenant_id, prev_period)
 
     def _kpi(name: str, current: float, previous: float, format_type: str = "number",
-             higher_is_better: bool = True) -> Dict[str, Any]:
+             higher_is_better: bool = True) -> dict[str, Any]:
         change = ((current - previous) / previous * 100) if previous != 0 else (100.0 if current > 0 else 0.0)
         trend = "up" if change > 0 else ("down" if change < 0 else "flat")
         if not higher_is_better:
@@ -600,12 +600,12 @@ def get_kpis(tenant_id: str, period: str = "this_month") -> List[Dict[str, Any]]
 # Role-Based Dashboards
 # ═══════════════════════════════════════════════
 
-def get_dashboard_for_role(tenant_id: str, role: str, period: str = "this_month") -> Dict[str, Any]:
+def get_dashboard_for_role(tenant_id: str, role: str, period: str = "this_month") -> dict[str, Any]:
     """Get dashboard data tailored to a specific role."""
     base = {
         "role": role,
         "period": period,
-        "generated_at": datetime.now().isoformat(),
+        "generated_at": datetime.now(tz=timezone.utc).isoformat(),
     }
 
     if role in ("owner", "ceo", "admin"):
@@ -653,7 +653,7 @@ def get_dashboard_for_role(tenant_id: str, role: str, period: str = "this_month"
 # Business Alerts Engine
 # ═══════════════════════════════════════════════
 
-def get_business_alerts(tenant_id: str) -> List[Dict[str, Any]]:
+def get_business_alerts(tenant_id: str) -> list[dict[str, Any]]:
     """Generate business alerts based on thresholds and anomalies."""
     alerts = []
     summary = get_executive_summary(tenant_id, "this_month")
@@ -728,7 +728,7 @@ def get_business_alerts(tenant_id: str) -> List[Dict[str, Any]]:
 # Drill-Down
 # ═══════════════════════════════════════════════
 
-def drill_down(tenant_id: str, entity_type: str, entity_id: str) -> Dict[str, Any]:
+def drill_down(tenant_id: str, entity_type: str, entity_id: str) -> dict[str, Any]:
     """Drill-down from KPI to source documents."""
     db = SessionLocal()
     try:
@@ -780,7 +780,7 @@ class AnalyticsEngine:
 
     # ── Dashboards ──────────────────────────────────────────
 
-    def list_dashboards(self, tenant_id: str, dashboard_type: str = None):
+    def list_dashboards(self, tenant_id: str, dashboard_type: str | None = None):
         sql = "SELECT id, dashboard_name, dashboard_type, layout_config, is_shared, owner_id, created_at FROM dbp_dashboards WHERE tenant_id = :tid"
         params: dict = {"tid": tenant_id}
         if dashboard_type:
@@ -842,7 +842,7 @@ class AnalyticsEngine:
 
     # ── Pipelines ───────────────────────────────────────────
 
-    def list_pipelines(self, tenant_id: str, status: str = None):
+    def list_pipelines(self, tenant_id: str, status: str | None = None):
         sql = "SELECT id, pipeline_name, source_type, target_type, config, schedule, status, created_at FROM dbp_pipelines WHERE tenant_id = :tid"
         params: dict = {"tid": tenant_id}
         if status:
@@ -885,8 +885,8 @@ class AnalyticsEngine:
 
     # ── Pipeline Runs ───────────────────────────────────────
 
-    def list_pipeline_runs(self, tenant_id: str, pipeline_id: str = None,
-                           status: str = None, limit: int = 20):
+    def list_pipeline_runs(self, tenant_id: str, pipeline_id: str | None = None,
+                           status: str | None = None, limit: int = 20):
         sql = "SELECT id, pipeline_id, status, started_at, completed_at, records_processed, records_failed FROM dbp_pipeline_runs WHERE tenant_id = :tid"
         params: dict = {"tid": tenant_id}
         if pipeline_id:
@@ -909,7 +909,7 @@ class AnalyticsEngine:
         return rid
 
     def complete_pipeline_run(self, run_id: str, records_processed: int = 0,
-                              records_failed: int = 0, error_message: str = None):
+                              records_failed: int = 0, error_message: str | None = None):
         self.db.execute(text(
             "UPDATE dbp_pipeline_runs SET status = 'completed', completed_at = NOW(), "
             "records_processed = :rp, records_failed = :rf, error_message = :em WHERE id = :id"
@@ -918,7 +918,7 @@ class AnalyticsEngine:
 
     # ── Alerts ──────────────────────────────────────────────
 
-    def list_alerts(self, tenant_id: str, is_active: bool = None):
+    def list_alerts(self, tenant_id: str, is_active: bool | None = None):
         sql = "SELECT id, alert_name, metric_name, condition, threshold_value, is_active, created_at FROM dbp_alerts WHERE tenant_id = :tid"
         params: dict = {"tid": tenant_id}
         if is_active is not None:
@@ -955,10 +955,16 @@ class AnalyticsEngine:
 
     # ── Dashboard execution (for dashboards.py) ─────────────
 
-    def execute_dashboard(self, dashboard_id: str):
-        dash = self.db.execute(text(
-            "SELECT id, dashboard_name, dashboard_type FROM dbp_dashboards WHERE id = :id"
-        ), {"id": dashboard_id}).mappings().first()
+    def execute_dashboard(self, dashboard_id: str, tenant_id: str | None = None):
+        if tenant_id:
+            dash = self.db.execute(text(
+                "SELECT id, dashboard_name, dashboard_type FROM dbp_dashboards "
+                "WHERE id = :id AND (tenant_id = :tid OR tenant_id IS NULL)"
+            ), {"id": dashboard_id, "tid": tenant_id}).mappings().first()
+        else:
+            dash = self.db.execute(text(
+                "SELECT id, dashboard_name, dashboard_type FROM dbp_dashboards WHERE id = :id"
+            ), {"id": dashboard_id}).mappings().first()
         if not dash:
             return {"error": "Dashboard not found"}
         widgets = self.db.execute(text(

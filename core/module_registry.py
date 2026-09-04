@@ -3,13 +3,13 @@ EOS Industry Framework — Module Registry & Industry Templates
 Defines modules, their capabilities, and which industries use them.
 """
 
-from typing import Dict, List, Any
+from typing import Any
 
 # ═══════════════════════════════════════════════════
 # Module Registry — every module registers itself
 # ═══════════════════════════════════════════════════
 
-MODULE_REGISTRY: Dict[str, Dict[str, Any]] = {
+MODULE_REGISTRY: dict[str, dict[str, Any]] = {
     # ─── Core Modules ───────────────────────────
     "accounting": {
         "name": "Accounting",
@@ -236,7 +236,7 @@ MODULE_REGISTRY: Dict[str, Dict[str, Any]] = {
 # Industry Templates — which modules each industry uses
 # ═══════════════════════════════════════════════════
 
-INDUSTRY_TEMPLATES: Dict[str, Dict[str, Any]] = {
+INDUSTRY_TEMPLATES: dict[str, dict[str, Any]] = {
     "construction": {
         "name": "Construction & Contracting",
         "name_ar": "مقاولات وإنشاءات",
@@ -330,33 +330,33 @@ INDUSTRY_TEMPLATES: Dict[str, Dict[str, Any]] = {
 }
 
 
-def get_module(module_code: str) -> Dict[str, Any]:
+def get_module(module_code: str) -> dict[str, Any]:
     """Get module definition from registry."""
     return MODULE_REGISTRY.get(module_code, {})
 
 
-def get_industry_modules(industry_code: str) -> List[str]:
+def get_industry_modules(industry_code: str) -> list[str]:
     """Get list of module codes for an industry."""
     template = INDUSTRY_TEMPLATES.get(industry_code, {})
     return template.get("base_modules", []) + template.get("optional_modules", [])
 
 
-def get_industry_template(industry_code: str) -> Dict[str, Any]:
+def get_industry_template(industry_code: str) -> dict[str, Any]:
     """Get full industry template."""
     return INDUSTRY_TEMPLATES.get(industry_code, {})
 
 
-def get_all_modules() -> Dict[str, Dict[str, Any]]:
+def get_all_modules() -> dict[str, dict[str, Any]]:
     """Get all registered modules."""
     return MODULE_REGISTRY
 
 
-def get_all_industries() -> Dict[str, Dict[str, Any]]:
+def get_all_industries() -> dict[str, dict[str, Any]]:
     """Get all industry templates."""
     return INDUSTRY_TEMPLATES
 
 
-def build_sidebar_menu(modules: List[str]) -> List[Dict[str, Any]]:
+def build_sidebar_menu(modules: list[str]) -> list[dict[str, Any]]:
     """Build sidebar menu from list of enabled module codes."""
     menu = []
     for code in modules:
@@ -372,7 +372,7 @@ def build_sidebar_menu(modules: List[str]) -> List[Dict[str, Any]]:
     return menu
 
 
-def build_dashboard_widgets(modules: List[str]) -> List[str]:
+def build_dashboard_widgets(modules: list[str]) -> list[str]:
     """Build list of dashboard widget codes from enabled modules."""
     widgets = []
     for code in modules:

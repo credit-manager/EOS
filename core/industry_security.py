@@ -14,16 +14,15 @@ Provides:
 - H6: Error Handling (standardized responses)
 - H7: Journal Posting (balanced debit/credit)
 """
-import uuid
 import json
+import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional, List, Dict, Any
+from typing import Any, List
 
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-
 
 # ═══════════════════════════════════════════════════
 # CORE UTILITIES
@@ -37,98 +36,49 @@ def uid():
     return str(uuid.uuid4())
 
 
+def success_response(message: str = "Success", data: Any = None) -> dict:
+    return {"success": True, "message": message, "data": data}
+
+
+def list_response(data: List[Any], total: int, page: int = 1, page_size: int = 50) -> dict:
+    page, page_size, total = max(int(page or 1), 1), max(int(page_size or 50), 1), max(int(total or 0), 0)
+    return {"success": True, "data": data, "pagination": {"page": page, "page_size": page_size, "total": total, "pages": (total + page_size - 1) // page_size if total else 0}}
+
+
+def error_response(message: str = "Request failed", status_code: int = 400, details: Any = None) -> dict:
+    payload = {"success": False, "message": message}
+    if details is not None: payload["details"] = details
+    return payload
+
+
 def get_company_id(db: Session, tenant_id: str) -> str:
-    """Get the primary company_id for a tenant."""
-    row = db.execute(text("SELECT id FROM dbp_companies WHERE tenant_id=:t LIMIT 1"),
-                     {"t": tenant_id}).fetchone()
+    row = db.execute(text("SELECT id FROM dbp_companies WHERE tenant_id=:t LIMIT 1"), {"t": tenant_id}).fetchone()
     return row[0] if row else ""
 
 
 def get_tenant_config(db: Session, tenant_id: str, key: str, default=None):
-    """
-    Read a tenant-scoped configuration value from dbp_system_config.
-
-    Fixed H11/H12/H13: replace hardcoded VAT/labor settings with values
-    that can be configured per tenant. Falls back to `default` when the
-    key is not set.
-    """
-    if not tenant_id:
-        return default
+    if not tenant_id: return default
     try:
-        row = db.execute(text(
-            "SELECT config_value FROM dbp_system_config "
-            "WHERE tenant_id=:t AND config_key=:k LIMIT 1"
-        ), {"t": tenant_id, "k": key}).fetchone()
-    except Exception:
-        return default
-    if not row:
-        return default
+        row = db.execute(text("SELECT config_value FROM dbp_system_config WHERE tenant_id=:t AND config_key=:k LIMIT 1"), {"t": tenant_id, "k": key}).fetchone()
+    except Exception: return default
+    if not row: return default
     val = row[0]
-    if isinstance(val, dict) and "value" in val:
-        return val["value"]
-    return val or default
+    return val.get("value") if isinstance(val, dict) and "value" in val else (val or default)
 
-
-# ═══════════════════════════════════════════════════
-# H2: RBAC — Role-Based Access Control
-# ═══════════════════════════════════════════════════
-
-# Role hierarchy: platform_owner > admin > manager > accountant > user > viewer
-ROLE_HIERARCHY = {
-    "platform_owner": 100,
-    "admin": 90,
-    "manager": 70,
-    "accountant": 60,
-    "user": 40,
-    "viewer": 20,
-}
-
-# Permission matrix: which roles can do what
-PERMISSION_MATRIX = {
-    "read":      ["viewer", "user", "accountant", "manager", "admin", "platform_owner"],
-    "create":    ["user", "accountant", "manager", "admin", "platform_owner"],
-    "update":    ["user", "accountant", "manager", "admin", "platform_owner"],
-    "delete":    ["manager", "admin", "platform_owner"],
-    "approve":   ["manager", "admin", "platform_owner"],
-    "export":    ["accountant", "manager", "admin", "platform_owner"],
-    "settings":  ["admin", "platform_owner"],
-}
+ROLE_HIERARCHY = {"platform_owner":100,"admin":90,"manager":70,"accountant":60,"user":40,"viewer":20}
+PERMISSION_MATRIX = {"read":["viewer","user","accountant","manager","admin","platform_owner"],"create":["user","accountant","manager","admin","platform_owner"],"update":["user","accountant","manager","admin","platform_owner"],"delete":["manager","admin","platform_owner"],"approve":["manager","admin","platform_owner"],"export":["accountant","manager","admin","platform_owner"],"settings":["admin","platform_owner"]}
 
 
 def check_permission(user: dict, action: str):
-    """
-    Check if user has permission for the given action.
-    Raises HTTPException 403 if not authorized.
-    """
     roles = user.get("roles", [])
-    if not roles:
-        raise HTTPException(403, detail="No roles assigned")
-
-    # Wildcard admin check
-    if "platform_owner" in roles or "admin" in roles:
-        return True
-
-    allowed_roles = PERMISSION_MATRIX.get(action, [])
-    for role in roles:
-        if role in allowed_roles:
-            return True
-
+    if not roles: raise HTTPException(403, detail="No roles assigned")
+    if "platform_owner" in roles or "admin" in roles or any(r in PERMISSION_MATRIX.get(action, []) for r in roles): return True
     raise HTTPException(403, detail=f"Insufficient permissions for: {action}")
 
 
-# ═══════════════════════════════════════════════════
-# H1: TENANT ISOLATION — Query Filtering
-# ═══════════════════════════════════════════════════
-
-def tenant_filter(user: dict) -> str:
-    """Returns the tenant_id for filtering queries."""
-    return user.get("tenant_id", "")
-
-
+def tenant_filter(user: dict) -> str: return user.get("tenant_id", "")
 def verify_tenant_access(user: dict, record_tenant_id: str):
-    """Verify a record belongs to the user's tenant."""
-    if user.get("tenant_id", "") != record_tenant_id:
-        raise HTTPException(403, detail="Access denied: cross-tenant violation")
+    if user.get("tenant_id", "") != record_tenant_id: raise HTTPException(403, detail="Access denied: cross-tenant violation")
 
 
 # ═══════════════════════════════════════════════════
@@ -137,7 +87,7 @@ def verify_tenant_access(user: dict, record_tenant_id: str):
 
 def audit_log(db: Session, tenant_id: str, user_id: str, action: str,
               entity_type: str, entity_id: str,
-              old_values: dict = None, new_values: dict = None):
+              old_values: dict | None = None, new_values: dict | None = None):
     """Log an audit entry for any mutation."""
     db.execute(
         text("INSERT INTO dbp_construction_audit "
@@ -156,7 +106,7 @@ def audit_log(db: Session, tenant_id: str, user_id: str, action: str,
 
 def post_journal(db: Session, tenant_id: str, company_id: str,
                  journal_type: str, description: str,
-                 lines: List[Dict[str, Any]],
+                 lines: list[dict[str, Any]],
                  ref_entity: str = "", ref_id: str = "") -> str:
     """
     Post a journal entry. Enforces balanced debits=credits.
@@ -189,13 +139,6 @@ def post_journal(db: Session, tenant_id: str, company_id: str,
              "cr": line.get("credit", 0), "cc": line.get("cost_center", ""),
              "ord": i + 1, "now": now()},
         )
-        # P80.5D FIX: Keep the GL in sync. Posting a journal must flow into
-        # dbp_accounts.current_balance, which the trial balance / income
-        # statement / balance sheet reports read directly. Previously this
-        # path inserted lines marked posted but never updated current_balance,
-        # so journals posted here silently disappeared from reported balances.
-        # Journal lines carry the ACCOUNT CODE (primary key of a trading entry);
-        # map it to dbp_accounts.code scoped by tenant (same scope as the reports).
         dr = Decimal(str(line.get("debit", 0)))
         cr = Decimal(str(line.get("credit", 0)))
         if line.get("account_code"):
@@ -207,47 +150,18 @@ def post_journal(db: Session, tenant_id: str, company_id: str,
     return jid
 
 
-# ═══════════════════════════════════════════════════
-# H4: CONCURRENCY — Atomic Stock Operations
-# ═══════════════════════════════════════════════════
-
-def atomic_stock_issue(db: Session, tenant_id: str, item_id: str,
-                       qty: float, warehouse_id: str = "default",
-                       stock_table: str = "dbp_construction_stock",
-                       item_column: str = "item_code"):
-    """
-    Atomically issue stock with row-level locking.
-    Returns (stock_id, unit_cost) or raises.
-    """
-    stock = db.execute(
-        text(f"SELECT id, on_hand, unit_cost FROM {stock_table} "
-             f"WHERE tenant_id=:t AND {item_column}=:ic AND warehouse_id=:w FOR UPDATE"),
-        {"t": tenant_id, "ic": item_id, "w": warehouse_id},
-    ).fetchone()
-    if not stock:
-        raise HTTPException(404, detail=f"Item not found: {item_id}")
-    available = Decimal(str(stock[1] or 0))
-    if available < Decimal(str(qty)):
-        raise HTTPException(400, detail=f"Insufficient stock: {item_id} has {available}, need {qty}")
-    new_qty = available - Decimal(str(qty))
-    db.execute(text(f"UPDATE {stock_table} SET on_hand=:q WHERE id=:sid"),
-               {"q": new_qty, "sid": stock[0]})
+def atomic_stock_issue(db: Session, tenant_id: str, item_id: str, qty: float, warehouse_id: str = "default", stock_table: str = "dbp_construction_stock", item_column: str = "item_code"):
+    stock=db.execute(text(f"SELECT id,on_hand,unit_cost FROM {stock_table} WHERE tenant_id=:t AND {item_column}=:ic AND warehouse_id=:w FOR UPDATE"), {"t":tenant_id,"ic":item_id,"w":warehouse_id}).fetchone()
+    if not stock: raise HTTPException(404, detail=f"Item not found: {item_id}")
+    available=Decimal(str(stock[1] or 0))
+    if available < Decimal(str(qty)): raise HTTPException(400, detail=f"Insufficient stock: {item_id} has {available}, need {qty}")
+    db.execute(text(f"UPDATE {stock_table} SET on_hand=:q WHERE id=:sid"), {"q":available-Decimal(str(qty)),"sid":stock[0]})
     return stock[0], float(stock[2] or 0)
 
 
-def atomic_stock_receive(db: Session, tenant_id: str, item_id: str,
-                         qty: float, price: float, warehouse_id: str = "default",
-                         stock_table: str = "dbp_construction_stock",
-                         item_column: str = "item_code"):
-    """
-    Atomically receive stock with row-level locking and weighted average cost.
-    """
-    existing = db.execute(
-        text(f"SELECT id, on_hand, unit_cost FROM {stock_table} "
-             f"WHERE tenant_id=:t AND {item_column}=:ic AND warehouse_id=:w FOR UPDATE"),
-        {"t": tenant_id, "ic": item_id, "w": warehouse_id},
-    ).fetchone()
-    total_cost = Decimal(str(qty)) * Decimal(str(price))
+def atomic_stock_receive(db: Session, tenant_id: str, item_id: str, qty: float, price: float, warehouse_id: str = "default", stock_table: str = "dbp_construction_stock", item_column: str = "item_code"):
+    existing=db.execute(text(f"SELECT id,on_hand,unit_cost FROM {stock_table} WHERE tenant_id=:t AND {item_column}=:ic AND warehouse_id=:w FOR UPDATE"), {"t":tenant_id,"ic":item_id,"w":warehouse_id}).fetchone()
+    total_cost=Decimal(str(qty))*Decimal(str(price))
     if existing:
         old_qty = Decimal(str(existing[1] or 0))
         new_qty = old_qty + Decimal(str(qty))
@@ -266,22 +180,10 @@ def atomic_stock_receive(db: Session, tenant_id: str, item_id: str,
         return sid
 
 
-# ═══════════════════════════════════════════════════
-# H3: SEQUENCE GENERATORS (Unique per tenant)
-# ═══════════════════════════════════════════════════
-
 def generate_sequence(db: Session, tenant_id: str, prefix: str, table: str,
-                      column: str = "number", entity_type: str = None) -> str:
-    """
-    Generate a unique sequential number per tenant.
-
-    Fixed H7: Previously used COUNT(*)+1 which is racy under concurrency.
-    Now uses an atomic per-tenant counter in the number_sequences table so
-    concurrent callers never receive the same sequence number.
-    E.g., SO-202608-A1B2C3 for Sales Orders.
-    """
+                      column: str = "number", entity_type: str | None = None) -> str:
+    """Generate a unique sequential number per tenant."""
     seq_name = f"{prefix}-{entity_type or table}"
-    # Atomic increment of the per-tenant counter
     row = db.execute(
         text(
             "INSERT INTO number_sequences "
@@ -303,8 +205,8 @@ def generate_sequence(db: Session, tenant_id: str, prefix: str, table: str,
 # H6: STANDARDIZED RESPONSES
 # ═══════════════════════════════════════════════════
 
-def success_response(message: str, data: dict = None) -> dict:
-    """Standard success response."""
+# Keep the original response contract used by the industry routers.
+def success_response(message: str, data: dict | None = None) -> dict:
     resp = {"status": "success", "message": message}
     if data:
         resp["data"] = data
@@ -312,10 +214,8 @@ def success_response(message: str, data: dict = None) -> dict:
 
 
 def list_response(data: list, total: int, page: int = 1, page_size: int = 50) -> dict:
-    """Standard list response with pagination."""
     return {"data": data, "total": total, "page": page, "page_size": page_size}
 
 
 def error_response(status_code: int, message: str) -> HTTPException:
-    """Standard error response."""
     return HTTPException(status_code, detail=message)

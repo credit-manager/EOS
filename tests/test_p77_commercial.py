@@ -4,7 +4,11 @@ P77 COMMERCIAL SaaS & CUSTOMER LAUNCH
 Tests the COMPLETE customer journey from signup to running a business.
 Simulates a real tenant onboarding, company setup, and full operations.
 """
-import sys, io, json, uuid, time
+import io
+import json
+import sys
+import uuid
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import urllib.request
 
@@ -39,7 +43,7 @@ def test(name, cond):
 
 _rid = uuid.uuid4().hex[:8].upper()
 TENANT_NAME = f"Acme Corp {_rid}"
-COMPANY_NAME = f"Acme Trading LLC"
+COMPANY_NAME = "Acme Trading LLC"
 ADMIN_EMAIL = f"admin@acme-{_rid.lower()}.com"
 ADMIN_PASS = "SecureP@ss123!"
 

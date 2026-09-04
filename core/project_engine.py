@@ -2,9 +2,10 @@
 P28 Project Management Engine
 """
 import uuid
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class ProjectEngine:
@@ -36,10 +37,10 @@ class ProjectEngine:
         self.db.flush()
         return pid
 
-    def list_projects(self, company_id: str, tenant_id: str = None,
-                      status: str = None) -> List[Dict[str, Any]]:
+    def list_projects(self, company_id: str, tenant_id: str | None = None,
+                      status: str | None = None) -> list[dict[str, Any]]:
         conditions = ["company_id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id}
+        params: dict[str, Any] = {"cid": company_id}
         if tenant_id:
             conditions.append("tenant_id = :tid")
             params["tid"] = tenant_id
@@ -61,7 +62,7 @@ class ProjectEngine:
                  "manager_id": r[9],
                  "created_at": r[10].isoformat() if r[10] else None} for r in rows]
 
-    def get_project(self, project_id: str) -> Optional[Dict[str, Any]]:
+    def get_project(self, project_id: str) -> dict[str, Any] | None:
         row = self.db.execute(text(
             "SELECT id, tenant_id, company_id, code, name, description, "
             "start_date, end_date, status, budget, actual_cost, manager_id, created_at "
@@ -88,7 +89,7 @@ class ProjectEngine:
                 "task_count": int(task_count or 0),
                 "completed_task_count": int(completed_count or 0)}
 
-    def update_project(self, project_id: str, **kw) -> Dict[str, Any]:
+    def update_project(self, project_id: str, **kw) -> dict[str, Any]:
         fields = {k: v for k, v in kw.items()
                   if k in self.PROJECT_FIELDS and v is not None}
         if not fields:
@@ -99,7 +100,7 @@ class ProjectEngine:
         if not exists:
             return {"success": False, "error": "Project not found"}
         sets = ", ".join(f"{k} = :{k}" for k in fields)
-        params: Dict[str, Any] = dict(fields)
+        params: dict[str, Any] = dict(fields)
         params["pid"] = project_id
         self.db.execute(text(
             f"UPDATE dbp_projects SET {sets} WHERE id = :pid"
@@ -131,10 +132,10 @@ class ProjectEngine:
         self.db.flush()
         return tid
 
-    def list_tasks(self, project_id: str, status: str = None,
-                   assigned_to: str = None) -> List[Dict[str, Any]]:
+    def list_tasks(self, project_id: str, status: str | None = None,
+                   assigned_to: str | None = None) -> list[dict[str, Any]]:
         conditions = ["project_id = :pid"]
-        params: Dict[str, Any] = {"pid": project_id}
+        params: dict[str, Any] = {"pid": project_id}
         if status:
             conditions.append("status = :st")
             params["st"] = status
@@ -157,7 +158,7 @@ class ProjectEngine:
                  "actual_hours": float(r[11]) if r[11] is not None else 0,
                  "sort_order": r[12]} for r in rows]
 
-    def update_task(self, task_id: str, tenant_guard: str = None, **kw) -> Dict[str, Any]:
+    def update_task(self, task_id: str, tenant_guard: str | None = None, **kw) -> dict[str, Any]:
         row = self.db.execute(text(
             "SELECT tenant_id FROM dbp_project_tasks WHERE id = :tid"
         ), {"tid": task_id}).fetchone()
@@ -168,7 +169,7 @@ class ProjectEngine:
         if not fields:
             return {"success": False, "error": "No valid fields to update"}
         sets = ", ".join(f"{k} = :{k}" for k in fields)
-        params: Dict[str, Any] = dict(fields)
+        params: dict[str, Any] = dict(fields)
         params["tid"] = task_id
         self.db.execute(text(
             f"UPDATE dbp_project_tasks SET {sets} WHERE id = :tid"
@@ -176,7 +177,7 @@ class ProjectEngine:
         self.db.flush()
         return {"success": True}
 
-    def reorder_tasks(self, project_id: str, task_ids: List[str]) -> Dict[str, Any]:
+    def reorder_tasks(self, project_id: str, task_ids: list[str]) -> dict[str, Any]:
         rows = self.db.execute(text(
             "SELECT id FROM dbp_project_tasks WHERE project_id = :pid"
         ), {"pid": project_id}).fetchall()
@@ -209,7 +210,7 @@ class ProjectEngine:
         self.db.flush()
         return mid
 
-    def list_milestones(self, project_id: str) -> List[Dict[str, Any]]:
+    def list_milestones(self, project_id: str) -> list[dict[str, Any]]:
         rows = self.db.execute(text(
             "SELECT id, tenant_id, name, due_date, status, completed_at, created_at "
             "FROM dbp_project_milestones WHERE project_id = :pid "
@@ -223,7 +224,7 @@ class ProjectEngine:
                  "created_at": r[6].isoformat() if r[6] else None} for r in rows]
 
     def complete_milestone(self, milestone_id: str,
-                           tenant_guard: str = None) -> Dict[str, Any]:
+                           tenant_guard: str | None = None) -> dict[str, Any]:
         row = self.db.execute(text(
             "SELECT tenant_id, status FROM dbp_project_milestones WHERE id = :mid"
         ), {"mid": milestone_id}).fetchone()
@@ -241,7 +242,7 @@ class ProjectEngine:
     # ── TIME ENTRIES ──
 
     def log_time(self, tenant_id: str, project_id: str, task_id: str,
-                 employee_id: str, work_date, hours, notes: str = None) -> str:
+                 employee_id: str, work_date, hours, notes: str | None = None) -> str:
         proj = self.db.execute(text(
             "SELECT tenant_id FROM dbp_projects WHERE id = :pid"
         ), {"pid": project_id}).fetchone()
@@ -268,10 +269,10 @@ class ProjectEngine:
         self.db.flush()
         return teid
 
-    def get_time_entries(self, project_id: str, task_id: str = None,
-                         employee_id: str = None) -> List[Dict[str, Any]]:
+    def get_time_entries(self, project_id: str, task_id: str | None = None,
+                         employee_id: str | None = None) -> list[dict[str, Any]]:
         conditions = ["project_id = :pid"]
-        params: Dict[str, Any] = {"pid": project_id}
+        params: dict[str, Any] = {"pid": project_id}
         if task_id:
             conditions.append("task_id = :tid")
             params["tid"] = task_id
@@ -291,7 +292,7 @@ class ProjectEngine:
                  "notes": r[6],
                  "created_at": r[7].isoformat() if r[7] else None} for r in rows]
 
-    def get_project_time_summary(self, project_id: str) -> Dict[str, Any]:
+    def get_project_time_summary(self, project_id: str) -> dict[str, Any]:
         total = self.db.execute(text(
             "SELECT COALESCE(SUM(hours), 0) FROM dbp_project_time_entries "
             "WHERE project_id = :pid"

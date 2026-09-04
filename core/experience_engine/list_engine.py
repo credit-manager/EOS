@@ -3,9 +3,9 @@ EOS Experience Engine — List/Grid Engine
 Search, filters, sorting, saved views, export, bulk actions.
 """
 
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 
 class ViewType(str, Enum):
@@ -74,7 +74,7 @@ class FilterDef:
     field_type: str
     field: str
     operator: FilterOperator = FilterOperator.EQ
-    options: List[Dict[str, str]] = field(default_factory=list)
+    options: list[dict[str, str]] = field(default_factory=list)
     default_value: Any = None
     is_visible: bool = True
     group: str = ""
@@ -92,9 +92,9 @@ class SavedView:
     name: str
     name_ar: str
     user_id: str
-    columns: List[str] = field(default_factory=list)
-    filters: Dict[str, Any] = field(default_factory=dict)
-    sort: List[SortConfig] = field(default_factory=list)
+    columns: list[str] = field(default_factory=list)
+    filters: dict[str, Any] = field(default_factory=dict)
+    sort: list[SortConfig] = field(default_factory=list)
     view_type: ViewType = ViewType.TABLE
     page_size: int = 20
     is_default: bool = False
@@ -107,17 +107,17 @@ class ListConfig:
     entity: str
     title: str
     title_ar: str
-    columns: List[ColumnDef] = field(default_factory=list)
-    filters: List[FilterDef] = field(default_factory=list)
-    default_sort: List[SortConfig] = field(default_factory=list)
+    columns: list[ColumnDef] = field(default_factory=list)
+    filters: list[FilterDef] = field(default_factory=list)
+    default_sort: list[SortConfig] = field(default_factory=list)
     default_view: ViewType = ViewType.TABLE
     page_size: int = 20
-    page_size_options: List[int] = field(default_factory=lambda: [10, 20, 50, 100])
+    page_size_options: list[int] = field(default_factory=lambda: [10, 20, 50, 100])
     searchable: bool = True
-    search_fields: List[str] = field(default_factory=list)
-    bulk_actions: List[BulkAction] = field(default_factory=list)
-    export_formats: List[str] = field(default_factory=lambda: ["csv", "excel", "pdf"])
-    row_actions: List[str] = field(default_factory=lambda: ["view", "edit", "delete"])
+    search_fields: list[str] = field(default_factory=list)
+    bulk_actions: list[BulkAction] = field(default_factory=list)
+    export_formats: list[str] = field(default_factory=lambda: ["csv", "excel", "pdf"])
+    row_actions: list[str] = field(default_factory=lambda: ["view", "edit", "delete"])
     row_click: str = "view"  # view, edit, none
     empty_state_icon: str = "InboxOutlined"
     empty_state_text: str = "No data"
@@ -137,8 +137,8 @@ class ListEngine:
     """
 
     def __init__(self):
-        self._lists: Dict[str, ListConfig] = {}
-        self._views: Dict[str, List[SavedView]] = {}
+        self._lists: dict[str, ListConfig] = {}
+        self._views: dict[str, list[SavedView]] = {}
         self._register_builtins()
 
     def _register_builtins(self):
@@ -267,14 +267,14 @@ class ListEngine:
         """Register a list configuration."""
         self._lists[config.entity] = config
 
-    def get(self, entity: str) -> Optional[ListConfig]:
+    def get(self, entity: str) -> ListConfig | None:
         """Get list config for an entity."""
         return self._lists.get(entity)
 
-    def get_all(self) -> Dict[str, ListConfig]:
+    def get_all(self) -> dict[str, ListConfig]:
         return dict(self._lists)
 
-    def generate_list_config(self, entity: str, user_id: str = "") -> Dict[str, Any]:
+    def generate_list_config(self, entity: str, user_id: str = "") -> dict[str, Any]:
         """
         Generate complete list configuration for frontend rendering.
         """
@@ -320,7 +320,7 @@ class ListEngine:
         self._views[key] = [v for v in self._views[key] if v.code != view.code]
         self._views[key].append(view)
 
-    def get_views(self, entity: str, user_id: str) -> List[SavedView]:
+    def get_views(self, entity: str, user_id: str) -> list[SavedView]:
         """Get user's saved views for an entity."""
         return self._views.get(f"{entity}:{user_id}", [])
 
@@ -330,7 +330,7 @@ class ListEngine:
         if key in self._views:
             self._views[key] = [v for v in self._views[key] if v.code != view_code]
 
-    def _serialize_column(self, col: ColumnDef) -> Dict[str, Any]:
+    def _serialize_column(self, col: ColumnDef) -> dict[str, Any]:
         return {
             "code": col.code, "title": col.title, "title_ar": col.title_ar,
             "type": col.field_type, "width": col.width,
@@ -340,7 +340,7 @@ class ListEngine:
             "format": col.format, "render": col.render,
         }
 
-    def _serialize_filter(self, f: FilterDef) -> Dict[str, Any]:
+    def _serialize_filter(self, f: FilterDef) -> dict[str, Any]:
         return {
             "code": f.code, "label": f.label, "label_ar": f.label_ar,
             "type": f.field_type, "field": f.field,
@@ -348,7 +348,7 @@ class ListEngine:
             "default": f.default_value, "visible": f.is_visible,
         }
 
-    def export_lists(self, entity_codes: List[str] = None) -> List[Dict[str, Any]]:
+    def export_lists(self, entity_codes: list[str] | None = None) -> list[dict[str, Any]]:
         """Export list configs for templates."""
         lists = self._lists.values()
         if entity_codes:

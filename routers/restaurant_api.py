@@ -4,30 +4,32 @@ P70.7 Restaurant ERP Professional — API
 Built on Commerce Engine (items, stock, customers, suppliers) + Core (accounting, audit).
 Restaurant-specific: Menu, Recipes, Tables, Reservations, Orders, KDS, Waste, Cash Drawer.
 """
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
-from typing import Optional, List
-from datetime import date, datetime, time
+from datetime import date
 
-from database import SessionLocal, get_db
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import text
+
 from core.auth import get_current_user
-from core.industry_security import (
-    now, uid, get_company_id, check_permission,
-    audit_log, post_journal,
-    atomic_stock_receive, atomic_stock_issue,
-    success_response, list_response, error_response,
-    get_tenant_config,
-)
 from core.commerce_engine import (
     get_item as _ce_get_item,
-    get_stock as _ce_get_stock,
-    atomic_stock_receive as _ce_stock_receive,
-    atomic_stock_issue as _ce_stock_issue,
 )
+from core.industry_security import (
+    audit_log,
+    check_permission,
+    get_company_id,
+    get_tenant_config,
+    list_response,
+    post_journal,
+    success_response,
+    uid,
+)
+from database import get_db
 
 router = APIRouter(prefix="/restaurant", tags=["Restaurant ERP"])
 
@@ -58,51 +60,51 @@ def _next_waste_number(db, tenant_id):
 
 class SectionCreate(BaseModel):
     name: str
-    name_ar: Optional[str] = None
+    name_ar: str | None = None
     sort_order: int = 0
 
 class TableCreate(BaseModel):
     table_number: str
-    section_id: Optional[str] = None
+    section_id: str | None = None
     capacity: int = 4
     x_pos: int = 0
     y_pos: int = 0
 
 class ReservationCreate(BaseModel):
     customer_name: str
-    customer_phone: Optional[str] = None
-    customer_id: Optional[str] = None
-    table_id: Optional[str] = None
+    customer_phone: str | None = None
+    customer_id: str | None = None
+    table_id: str | None = None
     reservation_date: str
     reservation_time: str
     party_size: int = 2
-    notes: Optional[str] = None
+    notes: str | None = None
 
 class MenuCategoryCreate(BaseModel):
     name: str
-    name_ar: Optional[str] = None
-    description: Optional[str] = None
-    description_ar: Optional[str] = None
+    name_ar: str | None = None
+    description: str | None = None
+    description_ar: str | None = None
     sort_order: int = 0
-    icon: Optional[str] = None
+    icon: str | None = None
 
 class MenuItemCreate(BaseModel):
     item_code: str
     name: str
-    name_ar: Optional[str] = None
-    description: Optional[str] = None
-    description_ar: Optional[str] = None
-    category_id: Optional[str] = None
-    commerce_item_id: Optional[str] = None
+    name_ar: str | None = None
+    description: str | None = None
+    description_ar: str | None = None
+    category_id: str | None = None
+    commerce_item_id: str | None = None
     selling_price: float = 0
     cost_price: float = 0
     prep_time_minutes: int = 0
-    kitchen_station: Optional[str] = None
-    tags: Optional[str] = None
+    kitchen_station: str | None = None
+    tags: str | None = None
 
 class ModifierGroupCreate(BaseModel):
     name: str
-    name_ar: Optional[str] = None
+    name_ar: str | None = None
     selection_type: str = "single"
     min_select: int = 0
     max_select: int = 1
@@ -110,9 +112,9 @@ class ModifierGroupCreate(BaseModel):
 class ModifierCreate(BaseModel):
     group_id: str
     name: str
-    name_ar: Optional[str] = None
+    name_ar: str | None = None
     price_adjustment: float = 0
-    commerce_item_id: Optional[str] = None
+    commerce_item_id: str | None = None
 
 class MenuItemModifierLink(BaseModel):
     menu_item_id: str
@@ -121,7 +123,7 @@ class MenuItemModifierLink(BaseModel):
 
 class RecipeLineIn(BaseModel):
     commerce_item_id: str
-    ingredient_name: Optional[str] = None
+    ingredient_name: str | None = None
     qty: float = 1
     unit: str = "gram"
     unit_cost: float = 0
@@ -129,13 +131,13 @@ class RecipeLineIn(BaseModel):
 
 class RecipeCreate(BaseModel):
     menu_item_id: str
-    recipe_name: Optional[str] = None
+    recipe_name: str | None = None
     yield_qty: float = 1
     yield_unit: str = "portion"
     prep_time_minutes: int = 0
     cook_time_minutes: int = 0
-    instructions: Optional[str] = None
-    lines: List[RecipeLineIn] = []
+    instructions: str | None = None
+    lines: list[RecipeLineIn] = []
 
 class ComboItemIn(BaseModel):
     menu_item_id: str
@@ -143,28 +145,28 @@ class ComboItemIn(BaseModel):
 
 class ComboCreate(BaseModel):
     name: str
-    name_ar: Optional[str] = None
-    description: Optional[str] = None
+    name_ar: str | None = None
+    description: str | None = None
     combo_price: float = 0
-    items: List[ComboItemIn] = []
+    items: list[ComboItemIn] = []
 
 class OrderLineIn(BaseModel):
     menu_item_id: str
     qty: int = 1
     unit_price: float = 0
     discount_pct: float = 0
-    modifier_ids: List[str] = []
-    notes: Optional[str] = None
+    modifier_ids: list[str] = []
+    notes: str | None = None
 
 class OrderCreate(BaseModel):
     order_type: str = "dine_in"
-    table_id: Optional[str] = None
-    customer_id: Optional[str] = None
-    customer_name: Optional[str] = None
-    waiter_id: Optional[str] = None
+    table_id: str | None = None
+    customer_id: str | None = None
+    customer_name: str | None = None
+    waiter_id: str | None = None
     guests_count: int = 1
-    lines: List[OrderLineIn] = []
-    notes: Optional[str] = None
+    lines: list[OrderLineIn] = []
+    notes: str | None = None
 
 class OrderLineStatusUpdate(BaseModel):
     status: str
@@ -175,17 +177,17 @@ class PaymentIn(BaseModel):
 
 class WasteItemIn(BaseModel):
     commerce_item_id: str
-    item_name: Optional[str] = None
+    item_name: str | None = None
     qty: float = 1
     unit: str = "gram"
     unit_cost: float = 0
-    reason: Optional[str] = None
+    reason: str | None = None
 
 class WasteCreate(BaseModel):
     waste_type: str = "production"
-    reason: Optional[str] = None
-    notes: Optional[str] = None
-    items: List[WasteItemIn] = []
+    reason: str | None = None
+    notes: str | None = None
+    items: list[WasteItemIn] = []
 
 class CashDrawerOpen(BaseModel):
     opening_amount: float = 0
@@ -197,9 +199,9 @@ class CashDrawerClose(BaseModel):
 
 class WaiterCreate(BaseModel):
     name: str
-    employee_id: Optional[str] = None
-    pin: Optional[str] = None
-    section_id: Optional[str] = None
+    employee_id: str | None = None
+    pin: str | None = None
+    section_id: str | None = None
 
 class ShiftCreate(BaseModel):
     shift_name: str
@@ -208,12 +210,12 @@ class ShiftCreate(BaseModel):
 
 class ShiftAssignmentIn(BaseModel):
     waiter_id: str
-    section_id: Optional[str] = None
+    section_id: str | None = None
 
 class ShiftAssignmentCreate(BaseModel):
     shift_id: str
     assignment_date: str
-    assignments: List[ShiftAssignmentIn] = []
+    assignments: list[ShiftAssignmentIn] = []
 
 
 # ═══════════════════════════════════════════════════
@@ -221,7 +223,7 @@ class ShiftAssignmentCreate(BaseModel):
 # ═══════════════════════════════════════════════════
 
 @router.get("/dashboard")
-def restaurant_dashboard(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def restaurant_dashboard(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     today = date.today().isoformat()
 
@@ -272,7 +274,7 @@ def restaurant_dashboard(user: dict = Depends(get_current_user), db=Depends(get_
 # ═══════════════════════════════════════════════════
 
 @router.post("/sections")
-def create_section(body: SectionCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_section(body: SectionCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     sid = uid()
@@ -284,7 +286,7 @@ def create_section(body: SectionCreate, user: dict = Depends(get_current_user), 
 
 
 @router.get("/sections")
-def list_sections(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_sections(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,name,name_ar,sort_order,status "
                           "FROM dbp_restaurant_sections WHERE tenant_id=:t ORDER BY sort_order"),
@@ -298,7 +300,7 @@ def list_sections(user: dict = Depends(get_current_user), db=Depends(get_db)):
 # ═══════════════════════════════════════════════════
 
 @router.post("/tables")
-def create_table(body: TableCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_table(body: TableCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     tid = uid()
@@ -312,7 +314,7 @@ def create_table(body: TableCreate, user: dict = Depends(get_current_user), db=D
 
 
 @router.get("/tables")
-def list_tables(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_tables(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT rt.id,rt.table_number,rt.capacity,rt.status,rt.current_order_id,"
                           "rs.name,rt.section_id,rt.x_pos,rt.y_pos "
@@ -327,7 +329,7 @@ def list_tables(user: dict = Depends(get_current_user), db=Depends(get_db)):
 
 
 @router.post("/tables/{table_id}/status")
-def update_table_status(table_id: str, status: str = Query(...),
+def update_table_status(table_id: str, status: str | None=None,
                        user: dict = Depends(get_current_user), db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
@@ -349,7 +351,7 @@ def update_table_status(table_id: str, status: str = Query(...),
 # ═══════════════════════════════════════════════════
 
 @router.post("/reservations")
-def create_reservation(body: ReservationCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_reservation(body: ReservationCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     rid = uid()
@@ -371,7 +373,7 @@ def create_reservation(body: ReservationCreate, user: dict = Depends(get_current
 
 
 @router.get("/reservations")
-def list_reservations(status: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_reservations(status: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     q = "SELECT id,customer_name,customer_phone,table_id,reservation_date," \
         "reservation_time,party_size,status,notes FROM dbp_restaurant_reservations " \
@@ -389,7 +391,7 @@ def list_reservations(status: Optional[str] = None, user: dict = Depends(get_cur
 
 
 @router.post("/reservations/{res_id}/checkin")
-def checkin_reservation(res_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def checkin_reservation(res_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     res = db.execute(text("SELECT id,table_id FROM dbp_restaurant_reservations "
@@ -411,7 +413,7 @@ def checkin_reservation(res_id: str, user: dict = Depends(get_current_user), db=
 # ═══════════════════════════════════════════════════
 
 @router.post("/menu/categories")
-def create_menu_category(body: MenuCategoryCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_menu_category(body: MenuCategoryCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     cid = uid()
@@ -426,7 +428,7 @@ def create_menu_category(body: MenuCategoryCreate, user: dict = Depends(get_curr
 
 
 @router.get("/menu/categories")
-def list_menu_categories(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_menu_categories(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,name,name_ar,description,sort_order,icon,status "
                           "FROM dbp_restaurant_menu_categories WHERE tenant_id=:t ORDER BY sort_order"),
@@ -441,7 +443,7 @@ def list_menu_categories(user: dict = Depends(get_current_user), db=Depends(get_
 # ═══════════════════════════════════════════════════
 
 @router.post("/menu/items")
-def create_menu_item(body: MenuItemCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_menu_item(body: MenuItemCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     mid = uid()
@@ -460,7 +462,7 @@ def create_menu_item(body: MenuItemCreate, user: dict = Depends(get_current_user
 
 
 @router.get("/menu/items")
-def list_menu_items(category_id: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_menu_items(category_id: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     q = "SELECT mi.id,mi.item_code,mi.name,mi.name_ar,mc.name,mi.selling_price," \
         "mi.cost_price,mi.is_available,mi.prep_time_minutes,mi.kitchen_station," \
@@ -482,7 +484,7 @@ def list_menu_items(category_id: Optional[str] = None, user: dict = Depends(get_
 
 
 @router.put("/menu/items/{item_id}")
-def update_menu_item(item_id: str, body: MenuItemCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def update_menu_item(item_id: str, body: MenuItemCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     db.execute(text("UPDATE dbp_restaurant_menu_items SET "
@@ -500,7 +502,7 @@ def update_menu_item(item_id: str, body: MenuItemCreate, user: dict = Depends(ge
 
 
 @router.get("/menu/items/{item_id}")
-def get_menu_item(item_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_menu_item(item_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     row = db.execute(text("SELECT id,item_code,name,name_ar,description,description_ar,"
                          "category_id,commerce_item_id,selling_price,cost_price,"
@@ -519,7 +521,7 @@ def get_menu_item(item_id: str, user: dict = Depends(get_current_user), db=Depen
 
 
 @router.post("/menu/items/{item_id}/availability")
-def toggle_menu_item_availability(item_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def toggle_menu_item_availability(item_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     row = db.execute(text("SELECT is_available FROM dbp_restaurant_menu_items "
@@ -539,7 +541,7 @@ def toggle_menu_item_availability(item_id: str, user: dict = Depends(get_current
 # ═══════════════════════════════════════════════════
 
 @router.post("/menu/modifier-groups")
-def create_modifier_group(body: ModifierGroupCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_modifier_group(body: ModifierGroupCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     gid = uid()
@@ -553,7 +555,7 @@ def create_modifier_group(body: ModifierGroupCreate, user: dict = Depends(get_cu
 
 
 @router.get("/menu/modifier-groups")
-def list_modifier_groups(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_modifier_groups(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,name,name_ar,selection_type,min_select,max_select "
                           "FROM dbp_restaurant_modifier_groups WHERE tenant_id=:t ORDER BY name"),
@@ -564,7 +566,7 @@ def list_modifier_groups(user: dict = Depends(get_current_user), db=Depends(get_
 
 
 @router.post("/menu/modifiers")
-def create_modifier(body: ModifierCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_modifier(body: ModifierCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     mid = uid()
@@ -578,7 +580,7 @@ def create_modifier(body: ModifierCreate, user: dict = Depends(get_current_user)
 
 
 @router.post("/menu/item-modifiers")
-def link_menu_item_modifier(body: MenuItemModifierLink, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def link_menu_item_modifier(body: MenuItemModifierLink, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     lid = uid()
@@ -596,7 +598,7 @@ def link_menu_item_modifier(body: MenuItemModifierLink, user: dict = Depends(get
 # ═══════════════════════════════════════════════════
 
 @router.post("/menu/combos")
-def create_combo(body: ComboCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_combo(body: ComboCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     cid = uid()
@@ -615,7 +617,7 @@ def create_combo(body: ComboCreate, user: dict = Depends(get_current_user), db=D
 
 
 @router.get("/menu/combos")
-def list_combos(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_combos(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,name,name_ar,description,combo_price,is_active "
                           "FROM dbp_restaurant_combos WHERE tenant_id=:t ORDER BY name"),
@@ -630,7 +632,7 @@ def list_combos(user: dict = Depends(get_current_user), db=Depends(get_db)):
 # ═══════════════════════════════════════════════════
 
 @router.post("/recipes")
-def create_recipe(body: RecipeCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_recipe(body: RecipeCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     rid = uid()
@@ -669,7 +671,7 @@ def create_recipe(body: RecipeCreate, user: dict = Depends(get_current_user), db
 
 
 @router.get("/recipes")
-def list_recipes(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_recipes(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT r.id,r.recipe_name,mi.name,r.yield_qty,r.yield_unit,"
                           "r.total_cost,r.cost_per_portion,r.status "
@@ -685,7 +687,7 @@ def list_recipes(user: dict = Depends(get_current_user), db=Depends(get_db)):
 
 
 @router.get("/recipes/{recipe_id}")
-def get_recipe(recipe_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_recipe(recipe_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     row = db.execute(text("SELECT r.id,r.recipe_name,r.menu_item_id,mi.name,r.yield_qty,r.yield_unit,"
                          "r.prep_time_minutes,r.cook_time_minutes,r.instructions,"
@@ -718,7 +720,7 @@ def get_recipe(recipe_id: str, user: dict = Depends(get_current_user), db=Depend
 # ═══════════════════════════════════════════════════
 
 @router.post("/orders")
-def create_order(body: OrderCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_order(body: OrderCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     valid_types = ["dine_in", "takeaway", "delivery"]
@@ -734,7 +736,6 @@ def create_order(body: OrderCreate, user: dict = Depends(get_current_user), db=D
     oid = uid()
     order_num = _next_order_number(db, t)
     subtotal = 0
-    total_cost = 0
 
     for l in body.lines:
         line_total = l.unit_price * l.qty
@@ -797,8 +798,8 @@ def _get_menu_item_name(db, tenant_id, item_id):
 
 
 @router.get("/orders")
-def list_orders(status: Optional[str] = None, order_type: Optional[str] = None,
-               user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_orders(status: str | None = None, order_type: str | None = None,
+               user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     q = "SELECT o.id,o.order_number,o.order_type,o.table_id,o.customer_name," \
         "o.subtotal,o.tax_amount,o.total,o.status,o.kitchen_status," \
@@ -821,7 +822,7 @@ def list_orders(status: Optional[str] = None, order_type: Optional[str] = None,
 
 
 @router.get("/orders/{order_id}")
-def get_order(order_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_order(order_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     row = db.execute(text("SELECT id,order_number,order_type,table_id,customer_id,customer_name,"
                          "waiter_id,subtotal,tax_amount,discount_amount,total,paid_amount,"
@@ -861,7 +862,7 @@ def get_order(order_id: str, user: dict = Depends(get_current_user), db=Depends(
 
 
 @router.post("/orders/{order_id}/send-to-kitchen")
-def send_to_kitchen(order_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def send_to_kitchen(order_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     order = db.execute(text("SELECT id,table_id FROM dbp_restaurant_orders "
@@ -895,7 +896,7 @@ def send_to_kitchen(order_id: str, user: dict = Depends(get_current_user), db=De
 
 
 @router.post("/orders/{order_id}/pay")
-def pay_order(order_id: str, body: PaymentIn, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def pay_order(order_id: str, body: PaymentIn, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     valid_payments = ["cash", "card", "mobile"]
@@ -934,7 +935,7 @@ def pay_order(order_id: str, body: PaymentIn, user: dict = Depends(get_current_u
 
 
 @router.post("/orders/{order_id}/void")
-def void_order(order_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def void_order(order_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "delete")
     t = user["tenant_id"]
     order = db.execute(text("SELECT id,total,status,table_id,order_number "
@@ -965,7 +966,7 @@ def void_order(order_id: str, user: dict = Depends(get_current_user), db=Depends
 # ═══════════════════════════════════════════════════
 
 @router.get("/kitchen/orders")
-def kitchen_orders(station_id: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def kitchen_orders(station_id: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     q = "SELECT ko.id,o.order_number,ol.item_name,ol.qty,ko.status," \
         "ko.priority,ko.fired_at,ko.started_at,ko.eta_minutes,r.table_number " \
@@ -988,7 +989,7 @@ def kitchen_orders(station_id: Optional[str] = None, user: dict = Depends(get_cu
 
 
 @router.post("/kitchen/orders/{ko_id}/start")
-def start_kitchen_order(ko_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def start_kitchen_order(ko_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     db.execute(text("UPDATE dbp_restaurant_kitchen_orders SET status='started',started_at=NOW() "
                    "WHERE id=:id AND tenant_id=:t AND status IN ('pending','fired')"),
@@ -1000,7 +1001,7 @@ def start_kitchen_order(ko_id: str, user: dict = Depends(get_current_user), db=D
 
 
 @router.post("/kitchen/orders/{ko_id}/complete")
-def complete_kitchen_order(ko_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def complete_kitchen_order(ko_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     ko = db.execute(text("SELECT id,order_id,order_line_id FROM dbp_restaurant_kitchen_orders "
                         "WHERE id=:id AND tenant_id=:t"),
@@ -1024,7 +1025,7 @@ def complete_kitchen_order(ko_id: str, user: dict = Depends(get_current_user), d
 
 
 @router.get("/kitchen/stations")
-def list_kitchen_stations(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_kitchen_stations(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,station_code,name,name_ar,station_type,status "
                           "FROM dbp_restaurant_kitchen_stations WHERE tenant_id=:t"),
@@ -1039,7 +1040,7 @@ def list_kitchen_stations(user: dict = Depends(get_current_user), db=Depends(get
 # ═══════════════════════════════════════════════════
 
 @router.post("/waste")
-def create_waste(body: WasteCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_waste(body: WasteCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     if not body.items:
@@ -1075,7 +1076,7 @@ def create_waste(body: WasteCreate, user: dict = Depends(get_current_user), db=D
 
 
 @router.get("/waste")
-def list_waste(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_waste(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,waste_number,waste_date,waste_type,reason,total_cost,status "
                           "FROM dbp_restaurant_waste WHERE tenant_id=:t ORDER BY waste_date DESC"),
@@ -1090,7 +1091,7 @@ def list_waste(user: dict = Depends(get_current_user), db=Depends(get_db)):
 # ═══════════════════════════════════════════════════
 
 @router.post("/cash-drawer/open")
-def open_cash_drawer(body: CashDrawerOpen, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def open_cash_drawer(body: CashDrawerOpen, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     today = date.today().isoformat()
@@ -1109,7 +1110,7 @@ def open_cash_drawer(body: CashDrawerOpen, user: dict = Depends(get_current_user
 
 
 @router.post("/cash-drawer/close")
-def close_cash_drawer(body: CashDrawerClose, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def close_cash_drawer(body: CashDrawerClose, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "approve")
     t = user["tenant_id"]
     today = date.today().isoformat()
@@ -1139,7 +1140,7 @@ def close_cash_drawer(body: CashDrawerClose, user: dict = Depends(get_current_us
 
 
 @router.get("/cash-drawer")
-def get_cash_drawer(date_filter: Optional[str] = None, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_cash_drawer(date_filter: str | None = None, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     q = "SELECT id,drawer_date,opening_amount,closing_amount,expected_cash," \
         "actual_cash,variance,status FROM dbp_restaurant_cash_drawer " \
@@ -1164,7 +1165,7 @@ def get_cash_drawer(date_filter: Optional[str] = None, user: dict = Depends(get_
 # ═══════════════════════════════════════════════════
 
 @router.post("/waiters")
-def create_waiter(body: WaiterCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_waiter(body: WaiterCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     wid = uid()
@@ -1178,7 +1179,7 @@ def create_waiter(body: WaiterCreate, user: dict = Depends(get_current_user), db
 
 
 @router.get("/waiters")
-def list_waiters(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_waiters(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT w.id,w.name,w.status,rs.name "
                           "FROM dbp_restaurant_waiters w "
@@ -1194,7 +1195,7 @@ def list_waiters(user: dict = Depends(get_current_user), db=Depends(get_db)):
 # ═══════════════════════════════════════════════════
 
 @router.post("/shifts")
-def create_shift(body: ShiftCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_shift(body: ShiftCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     sid = uid()
@@ -1207,7 +1208,7 @@ def create_shift(body: ShiftCreate, user: dict = Depends(get_current_user), db=D
 
 
 @router.get("/shifts")
-def list_shifts(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_shifts(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,shift_name,start_time,end_time,status "
                           "FROM dbp_restaurant_shifts WHERE tenant_id=:t ORDER BY start_time"),
@@ -1218,7 +1219,7 @@ def list_shifts(user: dict = Depends(get_current_user), db=Depends(get_db)):
 
 
 @router.post("/shifts/assign")
-def assign_shift(body: ShiftAssignmentCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def assign_shift(body: ShiftAssignmentCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     count = 0
@@ -1239,7 +1240,7 @@ def assign_shift(body: ShiftAssignmentCreate, user: dict = Depends(get_current_u
 # ═══════════════════════════════════════════════════
 
 @router.get("/analytics/popular-items")
-def popular_items(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def popular_items(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT ol.item_name,SUM(ol.qty) as total_qty,"
                           "SUM(ol.line_total) as total_revenue "
@@ -1254,7 +1255,7 @@ def popular_items(user: dict = Depends(get_current_user), db=Depends(get_db)):
 
 
 @router.get("/analytics/revenue-by-type")
-def revenue_by_type(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def revenue_by_type(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT order_type,COUNT(*),SUM(total) "
                           "FROM dbp_restaurant_orders "
@@ -1267,7 +1268,7 @@ def revenue_by_type(user: dict = Depends(get_current_user), db=Depends(get_db)):
 
 
 @router.get("/analytics/food-cost")
-def food_cost_analytics(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def food_cost_analytics(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT mi.name,r.total_cost,r.cost_per_portion,"
                           "mi.selling_price,"
@@ -1285,7 +1286,7 @@ def food_cost_analytics(user: dict = Depends(get_current_user), db=Depends(get_d
 
 
 @router.get("/analytics/table-turnover")
-def table_turnover(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def table_turnover(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT rt.table_number,COUNT(o.id) as orders,"
                           "AVG(EXTRACT(EPOCH FROM (o.completed_at - o.opened_at))/60) as avg_minutes "

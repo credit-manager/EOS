@@ -3,20 +3,18 @@ P63 Monitoring — Prometheus Metrics for FastAPI
 Provides /metrics endpoint and custom business metrics.
 """
 import time
-import os
+from collections.abc import Callable
 from functools import wraps
-from typing import Callable
 
-from prometheus_client import (
-    Counter,
-    Histogram,
-    Gauge,
-    CollectorRegistry,
-    generate_latest,
-    CONTENT_TYPE_LATEST,
-)
 from fastapi import Request, Response
-from fastapi.responses import PlainTextResponse
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    Counter,
+    Gauge,
+    Histogram,
+    generate_latest,
+)
 
 # ═══════════════════════════════════════════════
 # Registry
@@ -179,7 +177,7 @@ async def metrics_middleware(request: Request, call_next: Callable):
     try:
         response = await call_next(request)
         status_code = response.status_code
-    except Exception as e:
+    except Exception:
         status_code = 500
         raise
     finally:
@@ -198,7 +196,6 @@ async def metrics_endpoint():
     """Prometheus metrics endpoint."""
     update_uptime()
     data = generate_latest(registry)
-    from fastapi import Response
     return Response(
         content=data,
         media_type=CONTENT_TYPE_LATEST,

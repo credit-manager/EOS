@@ -2,8 +2,10 @@
 EOS Customer Portal Engine
 Self-service portal for customers to view invoices, quotes, orders, payments
 """
-import uuid, secrets, hashlib
-from datetime import datetime, timedelta
+import hashlib
+import secrets
+import uuid
+
 from sqlalchemy import text
 
 

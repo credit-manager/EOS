@@ -13,9 +13,10 @@ Endpoints:
     GET  /api/v1/whitelabel/public/{domain_or_slug}  — PUBLIC login-page branding (no auth)
 """
 
-from fastapi import APIRouter, Query, HTTPException, Depends
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
 
 from core import whitelabel_engine as wl
 from core.auth import get_current_user
@@ -24,24 +25,24 @@ router = APIRouter(prefix="/api/v1/whitelabel", tags=["White-Label"])
 
 
 class BrandingPayload(BaseModel):
-    system_name_en: Optional[str] = None
-    system_name_ar: Optional[str] = None
-    logo_url: Optional[str] = None
-    favicon_url: Optional[str] = None
-    primary_color: Optional[str] = None
-    secondary_color: Optional[str] = None
-    theme_mode: Optional[str] = None          # light | dark
-    direction: Optional[str] = None           # rtl | ltr
-    login_title_en: Optional[str] = None
-    login_title_ar: Optional[str] = None
-    login_subtitle_en: Optional[str] = None
-    login_subtitle_ar: Optional[str] = None
-    email_footer_text: Optional[str] = None
-    report_header_text: Optional[str] = None
-    report_footer_text: Optional[str] = None
-    show_powered_by: Optional[bool] = None
-    enable_custom_branding: Optional[bool] = None
-    enable_custom_login: Optional[bool] = None
+    system_name_en: str | None = None
+    system_name_ar: str | None = None
+    logo_url: str | None = None
+    favicon_url: str | None = None
+    primary_color: str | None = None
+    secondary_color: str | None = None
+    theme_mode: str | None = None          # light | dark
+    direction: str | None = None           # rtl | ltr
+    login_title_en: str | None = None
+    login_title_ar: str | None = None
+    login_subtitle_en: str | None = None
+    login_subtitle_ar: str | None = None
+    email_footer_text: str | None = None
+    report_header_text: str | None = None
+    report_footer_text: str | None = None
+    show_powered_by: bool | None = None
+    enable_custom_branding: bool | None = None
+    enable_custom_login: bool | None = None
 
 
 class DomainClaim(BaseModel):
@@ -58,13 +59,13 @@ class DomainClaim(BaseModel):
 
 
 @router.get("/branding")
-async def get_own_branding(user: dict = Depends(get_current_user)):
+async def get_own_branding(user: dict | None=None):
     """Full white-label settings for the caller's tenant."""
     return {"status": "success", "data": wl.get_branding(user["tenant_id"])}
 
 
 @router.put("/branding")
-async def update_own_branding(payload: BrandingPayload, user: dict = Depends(get_current_user)):
+async def update_own_branding(payload: BrandingPayload, user: dict | None=None):
     """Update the caller's OWN branding (fields not sent remain unchanged)."""
     tenant_id = user["tenant_id"]
     data = payload.model_dump(exclude_none=False)
@@ -75,7 +76,7 @@ async def update_own_branding(payload: BrandingPayload, user: dict = Depends(get
 
 
 @router.get("/branding/flags")
-async def get_flags(user: dict = Depends(get_current_user)):
+async def get_flags(user: dict | None=None):
     b = wl.get_branding(user["tenant_id"])
     flags = {k: b[k] for k in (
         "show_powered_by", "enable_custom_domain",
@@ -84,7 +85,7 @@ async def get_flags(user: dict = Depends(get_current_user)):
 
 
 @router.put("/branding/flags/{flag}")
-async def set_flag(flag: str, enabled: bool = Query(...), user: dict = Depends(get_current_user)):
+async def set_flag(flag: str, enabled: bool | None=None, user: dict = Depends(get_current_user)):
     try:
         result = wl.reset_feature_flags_gate(user["tenant_id"], flag, enabled)
     except ValueError as e:
@@ -96,7 +97,7 @@ async def set_flag(flag: str, enabled: bool = Query(...), user: dict = Depends(g
 
 
 @router.post("/domain/claim")
-async def claim_domain(payload: DomainClaim, user: dict = Depends(get_current_user)):
+async def claim_domain(payload: DomainClaim, user: dict | None=None):
     try:
         result = wl.issue_domain_verification(user["tenant_id"], payload.custom_domain)
     except ValueError as e:
@@ -105,7 +106,7 @@ async def claim_domain(payload: DomainClaim, user: dict = Depends(get_current_us
 
 
 @router.post("/domain/verify")
-async def verify_domain(user: dict = Depends(get_current_user)):
+async def verify_domain(user: dict | None=None):
     try:
         result = wl.verify_domain(user["tenant_id"])
     except ValueError as e:
@@ -114,7 +115,7 @@ async def verify_domain(user: dict = Depends(get_current_user)):
 
 
 @router.delete("/domain")
-async def remove_domain(user: dict = Depends(get_current_user)):
+async def remove_domain(user: dict | None=None):
     result = wl.delete_custom_domain(user["tenant_id"])
     return {"status": "success", "data": result}
 
@@ -122,7 +123,7 @@ async def remove_domain(user: dict = Depends(get_current_user)):
 @router.get("/public/{domain_or_slug}")
 async def public_branding(domain_or_slug: str):
     """Safe public projection for branded login pages (isolation-checked)."""
-    result: Optional[Dict[str, Any]] = wl.get_public_branding_by_domain(domain_or_slug)
+    result: dict[str, Any] | None = wl.get_public_branding_by_domain(domain_or_slug)
     if not result:
         platform_default = {
             k: v for k, v in wl.DEFAULT_BRANDING.items() if k in wl.PUBLIC_FIELDS

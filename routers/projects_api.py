@@ -2,24 +2,23 @@
 EOS Projects API Router — /api/v1/projects
 """
 import uuid
-from typing import Optional
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-from database import get_db
 from core.auth import get_current_user
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/projects", tags=["Projects API"])
 
 
 @router.get("")
 async def list_projects(
-    status: Optional[str] = None,
-    search: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    status: str | None = None,
+    search: str | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -145,8 +144,8 @@ async def update_project_progress(project_id: str, body: dict, user: dict = Depe
 @router.get("/{project_id}/tasks")
 async def list_tasks(
     project_id: str,
-    status: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    status: str | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -257,8 +256,8 @@ async def update_task_status(project_id: str, task_id: str, body: dict, user: di
 
 @router.get("/time-entries")
 async def list_time_entries(
-    project_id: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    project_id: str | None = None,
+    page: int | None=None,
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -381,8 +380,8 @@ async def project_progress_report(user: dict = Depends(get_current_user), db: Se
 
 @router.get("/reports/time-tracking")
 async def time_tracking_report(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

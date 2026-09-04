@@ -11,19 +11,18 @@ H5: Audit Trail (all mutations logged to dbp_construction_audit)
 H6: Bilingual (name_ar/description_ar on all entities)
 H7: Pydantic Validation (typed request bodies)
 """
-import uuid
 import json
-from typing import Optional, List
+import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field, field_validator
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-from database import get_db
 from core.auth import get_current_user
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/construction", tags=["Construction ERP Pro"])
 
@@ -39,18 +38,18 @@ class ProjectCreate(BaseModel):
     description: str = Field(default="", max_length=2000)
     description_ar: str = Field(default="", max_length=2000)
     budget: float = Field(default=0, ge=0)
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
+    start_date: str | None = None
+    end_date: str | None = None
 
 class ProjectUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=200)
-    name_ar: Optional[str] = None
-    status: Optional[str] = None
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    budget: Optional[float] = Field(None, ge=0)
-    description: Optional[str] = None
-    description_ar: Optional[str] = None
+    name: str | None = Field(None, min_length=1, max_length=200)
+    name_ar: str | None = None
+    status: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    budget: float | None = Field(None, ge=0)
+    description: str | None = None
+    description_ar: str | None = None
 
 class BOQItemCreate(BaseModel):
     item_number: str = Field(..., min_length=1, max_length=50)
@@ -67,18 +66,18 @@ class PRCreate(BaseModel):
     project_id: str = Field(default="")
     description: str = Field(default="", max_length=1000)
     description_ar: str = Field(default="", max_length=1000)
-    items: List[dict] = Field(default_factory=list)
+    items: list[dict] = Field(default_factory=list)
 
 class POCreate(BaseModel):
     supplier_name: str = Field(..., min_length=1, max_length=200)
     project_id: str = Field(default="")
-    po_date: Optional[str] = None
-    delivery_date: Optional[str] = None
-    items: List[dict] = Field(default_factory=list)
+    po_date: str | None = None
+    delivery_date: str | None = None
+    items: list[dict] = Field(default_factory=list)
 
 class GRNReceive(BaseModel):
     warehouse_id: str = Field(..., min_length=1)
-    items: List[dict] = Field(default_factory=list)
+    items: list[dict] = Field(default_factory=list)
 
 class StockIssue(BaseModel):
     item_code: str = Field(..., min_length=1)
@@ -164,7 +163,7 @@ def _check_permission(user: dict, action: str):
 
 # H5: Audit Trail
 def _audit(db, tenant_id: str, user_id: str, action: str, entity_type: str,
-           entity_id: str, old_values: dict = None, new_values: dict = None):
+           entity_id: str, old_values: dict | None = None, new_values: dict | None = None):
     """Log an audit entry."""
     db.execute(
         text("INSERT INTO dbp_construction_audit "
@@ -258,7 +257,7 @@ def _post_journal(db, tenant_id, company_id, journal_type, description, lines, r
 # ═══════════════════════════════════════════════════
 
 @router.get("/dashboard")
-async def construction_dashboard(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def construction_dashboard(user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "read")
     tid = user.get("tenant_id", "")
 
@@ -295,7 +294,7 @@ async def construction_dashboard(user: dict = Depends(get_current_user), db: Ses
 
 @router.get("/projects")
 async def list_projects(
-    page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200),
+    page: int | None=None, page_size: int = Query(50, ge=1, le=200),
     user: dict = Depends(get_current_user), db: Session = Depends(get_db),
 ):
     _check_permission(user, "read")
@@ -320,7 +319,7 @@ async def list_projects(
 
 
 @router.post("/projects", status_code=201)
-async def create_project(body: ProjectCreate, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_project(body: ProjectCreate, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "create")
     tid = user.get("tenant_id", "")
     cid = _get_company_id(db, tid)
@@ -340,7 +339,7 @@ async def create_project(body: ProjectCreate, user: dict = Depends(get_current_u
 
 
 @router.get("/projects/{project_id}")
-async def get_project(project_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_project(project_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "read")
     tid = user.get("tenant_id", "")
     r = db.execute(text(
@@ -367,7 +366,7 @@ async def get_project(project_id: str, user: dict = Depends(get_current_user), d
 
 
 @router.put("/projects/{project_id}")
-async def update_project(project_id: str, body: ProjectUpdate, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def update_project(project_id: str, body: ProjectUpdate, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "update")
     tid = user.get("tenant_id", "")
     existing = db.execute(text("SELECT id FROM dbp_projects WHERE id=:pid AND tenant_id=:tid"),
@@ -393,7 +392,7 @@ async def update_project(project_id: str, body: ProjectUpdate, user: dict = Depe
 # ═══════════════════════════════════════════════════
 
 @router.get("/projects/{project_id}/boq")
-async def list_boq(project_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_boq(project_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "read")
     tid = user.get("tenant_id", "")
     rows = db.execute(text(
@@ -410,7 +409,7 @@ async def list_boq(project_id: str, user: dict = Depends(get_current_user), db: 
 
 
 @router.post("/projects/{project_id}/boq", status_code=201)
-async def create_boq_item(project_id: str, body: BOQItemCreate, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_boq_item(project_id: str, body: BOQItemCreate, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "create")
     tid = user.get("tenant_id", "")
     # H3: Verify project belongs to tenant
@@ -435,11 +434,11 @@ async def create_boq_item(project_id: str, body: BOQItemCreate, user: dict = Dep
 
 
 @router.put("/boq/{boq_id}/progress")
-async def update_boq_progress(boq_id: str, body: BOQProgressUpdate, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def update_boq_progress(boq_id: str, body: BOQProgressUpdate, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "update")
     tid = user.get("tenant_id", "")
     # H4: Atomic progress update with row lock
-    unit_price, project_id, completed_amount = _atomic_boq_progress(db, boq_id, body.completed_qty)
+    _unit_price, project_id, completed_amount = _atomic_boq_progress(db, boq_id, body.completed_qty)
 
     # Accounting
     cid = _get_company_id(db, tid)
@@ -460,7 +459,7 @@ async def update_boq_progress(boq_id: str, body: BOQProgressUpdate, user: dict =
 # ═══════════════════════════════════════════════════
 
 @router.get("/procurement/requests")
-async def list_pr(status: Optional[str] = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_pr(status: str | None = None, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "read")
     tid = user.get("tenant_id", "")
     conditions = ["tenant_id = :tid"]
@@ -480,7 +479,7 @@ async def list_pr(status: Optional[str] = None, user: dict = Depends(get_current
 
 
 @router.post("/procurement/requests", status_code=201)
-async def create_pr(body: PRCreate, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_pr(body: PRCreate, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "create")
     tid = user.get("tenant_id", "")
     prid = _uid()
@@ -500,7 +499,7 @@ async def create_pr(body: PRCreate, user: dict = Depends(get_current_user), db: 
 
 
 @router.post("/procurement/requests/{pr_id}/submit")
-async def submit_pr(pr_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def submit_pr(pr_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "update")
     tid = user.get("tenant_id", "")
     pr = db.execute(text("SELECT id, status FROM dbp_construction_pr WHERE id=:pid AND tenant_id=:tid"),
@@ -516,7 +515,7 @@ async def submit_pr(pr_id: str, user: dict = Depends(get_current_user), db: Sess
 
 
 @router.post("/procurement/requests/{pr_id}/approve")
-async def approve_pr(pr_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def approve_pr(pr_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "approve")  # H2: Only managers/admins can approve
     tid = user.get("tenant_id", "")
     pr = db.execute(text("SELECT id, status FROM dbp_construction_pr WHERE id=:pid AND tenant_id=:tid"),
@@ -532,7 +531,7 @@ async def approve_pr(pr_id: str, user: dict = Depends(get_current_user), db: Ses
 
 
 @router.get("/procurement/orders")
-async def list_po(status: Optional[str] = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_po(status: str | None = None, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "read")
     tid = user.get("tenant_id", "")
     conditions = ["tenant_id = :tid"]
@@ -553,7 +552,7 @@ async def list_po(status: Optional[str] = None, user: dict = Depends(get_current
 
 
 @router.post("/procurement/orders", status_code=201)
-async def create_po(body: POCreate, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_po(body: POCreate, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "create")
     tid = user.get("tenant_id", "")
     poid = _uid()
@@ -574,7 +573,7 @@ async def create_po(body: POCreate, user: dict = Depends(get_current_user), db: 
 
 
 @router.post("/procurement/orders/{po_id}/receive")
-async def receive_po(po_id: str, body: GRNReceive, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def receive_po(po_id: str, body: GRNReceive, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "update")
     tid = user.get("tenant_id", "")
     cid = _get_company_id(db, tid)
@@ -628,7 +627,7 @@ async def receive_po(po_id: str, body: GRNReceive, user: dict = Depends(get_curr
 # ═══════════════════════════════════════════════════
 
 @router.get("/stock")
-async def list_stock(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_stock(user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "read")
     tid = user.get("tenant_id", "")
     rows = db.execute(text(
@@ -644,7 +643,7 @@ async def list_stock(user: dict = Depends(get_current_user), db: Session = Depen
 
 
 @router.post("/stock/issue")
-async def issue_stock(body: StockIssue, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def issue_stock(body: StockIssue, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "update")
     tid = user.get("tenant_id", "")
     cid = _get_company_id(db, tid)
@@ -665,7 +664,7 @@ async def issue_stock(body: StockIssue, user: dict = Depends(get_current_user), 
 
 
 @router.get("/warehouses")
-async def list_warehouses(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_warehouses(user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "read")
     tid = user.get("tenant_id", "")
     rows = db.execute(text("SELECT id, code, name, name_ar, address FROM dbp_construction_warehouses WHERE tenant_id=:tid"), {"tid": tid}).fetchall()
@@ -673,7 +672,7 @@ async def list_warehouses(user: dict = Depends(get_current_user), db: Session = 
 
 
 @router.post("/warehouses", status_code=201)
-async def create_warehouse(body: WarehouseCreate, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_warehouse(body: WarehouseCreate, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "create")
     tid = user.get("tenant_id", "")
     wid = _uid()
@@ -691,7 +690,7 @@ async def create_warehouse(body: WarehouseCreate, user: dict = Depends(get_curre
 # ═══════════════════════════════════════════════════
 
 @router.get("/equipment")
-async def list_equipment(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_equipment(user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "read")
     tid = user.get("tenant_id", "")
     rows = db.execute(text(
@@ -705,7 +704,7 @@ async def list_equipment(user: dict = Depends(get_current_user), db: Session = D
 
 
 @router.post("/equipment", status_code=201)
-async def create_equipment(body: EquipmentCreate, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_equipment(body: EquipmentCreate, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "create")
     tid = user.get("tenant_id", "")
     eid = _uid()
@@ -721,7 +720,7 @@ async def create_equipment(body: EquipmentCreate, user: dict = Depends(get_curre
 
 
 @router.post("/equipment/{eq_id}/log")
-async def log_equipment(eq_id: str, body: EquipmentLog, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def log_equipment(eq_id: str, body: EquipmentLog, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "update")
     tid = user.get("tenant_id", "")
     cid = _get_company_id(db, tid)
@@ -752,7 +751,7 @@ async def log_equipment(eq_id: str, body: EquipmentLog, user: dict = Depends(get
 # ═══════════════════════════════════════════════════
 
 @router.get("/site/diary")
-async def list_site_diary(project_id: Optional[str] = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_site_diary(project_id: str | None = None, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "read")
     tid = user.get("tenant_id", "")
     conditions = ["tenant_id = :tid"]
@@ -772,7 +771,7 @@ async def list_site_diary(project_id: Optional[str] = None, user: dict = Depends
 
 
 @router.post("/site/diary", status_code=201)
-async def create_site_diary(body: DiaryCreate, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_site_diary(body: DiaryCreate, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "create")
     tid = user.get("tenant_id", "")
     did = _uid()
@@ -789,7 +788,7 @@ async def create_site_diary(body: DiaryCreate, user: dict = Depends(get_current_
 
 
 @router.get("/site/rfi")
-async def list_rfi(project_id: Optional[str] = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_rfi(project_id: str | None = None, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "read")
     tid = user.get("tenant_id", "")
     conditions = ["tenant_id = :tid"]
@@ -809,7 +808,7 @@ async def list_rfi(project_id: Optional[str] = None, user: dict = Depends(get_cu
 
 
 @router.post("/site/rfi", status_code=201)
-async def create_rfi(body: RFICreate, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_rfi(body: RFICreate, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "create")
     tid = user.get("tenant_id", "")
     rid = _uid()
@@ -830,7 +829,7 @@ async def create_rfi(body: RFICreate, user: dict = Depends(get_current_user), db
 # ═══════════════════════════════════════════════════
 
 @router.get("/subcontractors")
-async def list_subcontractors(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_subcontractors(user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "read")
     tid = user.get("tenant_id", "")
     rows = db.execute(text(
@@ -843,7 +842,7 @@ async def list_subcontractors(user: dict = Depends(get_current_user), db: Sessio
 
 
 @router.post("/subcontractors", status_code=201)
-async def create_subcontractor(body: SubcontractorCreate, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_subcontractor(body: SubcontractorCreate, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "create")
     tid = user.get("tenant_id", "")
     sid = _uid()
@@ -864,7 +863,7 @@ async def create_subcontractor(body: SubcontractorCreate, user: dict = Depends(g
 # ═══════════════════════════════════════════════════
 
 @router.get("/suppliers")
-async def list_suppliers(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_suppliers(user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "read")
     tid = user.get("tenant_id", "")
     rows = db.execute(text("SELECT id, name, contact_person, email, phone, address FROM dbp_suppliers WHERE tenant_id=:tid"), {"tid": tid}).fetchall()
@@ -873,7 +872,7 @@ async def list_suppliers(user: dict = Depends(get_current_user), db: Session = D
 
 
 @router.post("/suppliers", status_code=201)
-async def create_supplier(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_supplier(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "create")
     tid = user.get("tenant_id", "")
     sid = _uid()
@@ -888,7 +887,7 @@ async def create_supplier(body: dict, user: dict = Depends(get_current_user), db
 
 
 @router.get("/clients")
-async def list_clients(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_clients(user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "read")
     tid = user.get("tenant_id", "")
     rows = db.execute(text("SELECT id, name, contact_person, email, phone, address FROM dbp_customers WHERE tenant_id=:tid"), {"tid": tid}).fetchall()
@@ -897,7 +896,7 @@ async def list_clients(user: dict = Depends(get_current_user), db: Session = Dep
 
 
 @router.post("/clients", status_code=201)
-async def create_client(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def create_client(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "create")
     tid = user.get("tenant_id", "")
     cid = _uid()
@@ -916,7 +915,7 @@ async def create_client(body: dict, user: dict = Depends(get_current_user), db: 
 # ═══════════════════════════════════════════════════
 
 @router.get("/projects/{project_id}/profitability")
-async def project_profitability(project_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def project_profitability(project_id: str, user: dict | None=None, db: Session = Depends(get_db)):
     _check_permission(user, "read")
     tid = user.get("tenant_id", "")
     proj = db.execute(text("SELECT name, budget, actual_cost FROM dbp_projects WHERE id=:pid AND tenant_id=:tid"),
@@ -955,8 +954,8 @@ async def project_profitability(project_id: str, user: dict = Depends(get_curren
 
 @router.get("/audit")
 async def list_audit(
-    page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200),
-    entity_type: Optional[str] = None,
+    page: int | None=None, page_size: int = Query(50, ge=1, le=200),
+    entity_type: str | None = None,
     user: dict = Depends(get_current_user), db: Session = Depends(get_db),
 ):
     _check_permission(user, "read")

@@ -10,10 +10,9 @@ Security chain:
 NEVER allows raw user input in SQL.
 """
 
-import re
-from typing import List, Tuple, Optional, Dict, Any
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 
 class Operator(str, Enum):
@@ -70,15 +69,14 @@ class SortClause:
 @dataclass
 class QueryFilter:
     """Parsed and validated query filters."""
-    filters: List[FilterClause]
-    sorts: List[SortClause]
+    filters: list[FilterClause]
+    sorts: list[SortClause]
     limit: int
     offset: int
 
 
 class QueryParseError(Exception):
     """Raised when query parameters are invalid."""
-    pass
 
 
 class QueryParser:
@@ -100,7 +98,7 @@ class QueryParser:
     # Column names that are NEVER allowed in user filters
     BLOCKED_COLUMNS = {"id"}  # id is managed by system
     
-    def __init__(self, real_columns: Dict[str, str]):
+    def __init__(self, real_columns: dict[str, str]):
         """
         Initialize parser with valid columns.
         
@@ -230,7 +228,7 @@ class QueryParser:
             param_name=param_name
         )
     
-    def parse_filters(self, filters_str: str) -> List[FilterClause]:
+    def parse_filters(self, filters_str: str) -> list[FilterClause]:
         """
         Parse multiple filters from comma-separated string.
         
@@ -249,7 +247,7 @@ class QueryParser:
         
         return filters
     
-    def parse_sort(self, sort_str: str) -> List[SortClause]:
+    def parse_sort(self, sort_str: str) -> list[SortClause]:
         """
         Parse sort string.
         
@@ -287,9 +285,9 @@ class QueryParser:
     
     def parse_pagination(
         self,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None
-    ) -> Tuple[int, int]:
+        limit: int | None = None,
+        offset: int | None = None
+    ) -> tuple[int, int]:
         """
         Parse and validate pagination parameters.
         
@@ -311,10 +309,10 @@ class QueryParser:
     
     def parse_query(
         self,
-        filters_str: Optional[str] = None,
-        sort_str: Optional[str] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None
+        filters_str: str | None = None,
+        sort_str: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None
     ) -> QueryFilter:
         """
         Parse all query parameters.
@@ -334,8 +332,8 @@ class QueryParser:
     
     @staticmethod
     def build_where_clause(
-        filters: List[FilterClause]
-    ) -> Tuple[str, Dict[str, Any]]:
+        filters: list[FilterClause]
+    ) -> tuple[str, dict[str, Any]]:
         """
         Build SQL WHERE clause from filters.
         
@@ -372,7 +370,7 @@ class QueryParser:
         return where_sql, params
     
     @staticmethod
-    def build_order_clause(sorts: List[SortClause]) -> str:
+    def build_order_clause(sorts: list[SortClause]) -> str:
         """
         Build SQL ORDER BY clause from sorts.
         

@@ -9,7 +9,8 @@ Usage in main.py:
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from core.i18n import set_locale, detect_locale, SUPPORTED_LOCALES
+
+from core.i18n import detect_locale, set_locale
 
 
 class LocaleMiddleware(BaseHTTPMiddleware):

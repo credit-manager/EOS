@@ -3,9 +3,9 @@ EOS Experience Engine — Dashboard Engine
 KPI cards, charts, alerts, targets, drill-down, activity feeds.
 """
 
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 
 class KPIType(str, Enum):
@@ -65,9 +65,9 @@ class KPICard:
     change_label_ar: str = ""
     icon: str = "ArrowUpOutlined"
     color: str = "#1890ff"
-    target: Optional[KPITarget] = None
-    sparkline: List[float] = field(default_factory=list)
-    drill_down: Optional[str] = None
+    target: KPITarget | None = None
+    sparkline: list[float] = field(default_factory=list)
+    drill_down: str | None = None
     size: WidgetSize = WidgetSize.SMALL
     format: str = ""  # e.g. "#,##0.00"
     currency: str = "SAR"
@@ -78,9 +78,9 @@ class KPICard:
 class ChartDataset:
     label: str
     label_ar: str
-    data: List[float]
+    data: list[float]
     color: str = "#1890ff"
-    type: Optional[ChartType] = None  # For combo charts
+    type: ChartType | None = None  # For combo charts
 
 
 @dataclass
@@ -89,16 +89,16 @@ class ChartWidget:
     title: str
     title_ar: str
     chart_type: ChartType
-    datasets: List[ChartDataset] = field(default_factory=list)
-    labels: List[str] = field(default_factory=list)
+    datasets: list[ChartDataset] = field(default_factory=list)
+    labels: list[str] = field(default_factory=list)
     x_axis_label: str = ""
     y_axis_label: str = ""
     x_axis_label_ar: str = ""
     y_axis_label_ar: str = ""
     size: WidgetSize = WidgetSize.MEDIUM
     module: str = ""
-    colors: List[str] = field(default_factory=list)
-    options: Dict[str, Any] = field(default_factory=dict)
+    colors: list[str] = field(default_factory=list)
+    options: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -139,7 +139,7 @@ class ActivityItem:
 @dataclass
 class DashboardLayout:
     """Defines the layout grid for a dashboard."""
-    rows: List[List[Dict[str, Any]]] = field(default_factory=list)
+    rows: list[list[dict[str, Any]]] = field(default_factory=list)
     # Each row is a list of widgets with their size
 
 
@@ -151,10 +151,10 @@ class DashboardDefinition:
     description: str = ""
     industry: str = ""
     layout: DashboardLayout = field(default_factory=DashboardLayout)
-    kpis: List[KPICard] = field(default_factory=list)
-    charts: List[ChartWidget] = field(default_factory=list)
-    alerts_config: List[Dict[str, Any]] = field(default_factory=list)
-    activity_config: Dict[str, Any] = field(default_factory=dict)
+    kpis: list[KPICard] = field(default_factory=list)
+    charts: list[ChartWidget] = field(default_factory=list)
+    alerts_config: list[dict[str, Any]] = field(default_factory=list)
+    activity_config: dict[str, Any] = field(default_factory=dict)
     refresh_interval: int = 300  # seconds
     is_default: bool = False
 
@@ -166,11 +166,11 @@ class DashboardEngine:
     """
 
     def __init__(self):
-        self._dashboards: Dict[str, DashboardDefinition] = {}
-        self._kpis: Dict[str, KPICard] = {}
-        self._charts: Dict[str, ChartWidget] = {}
-        self._alerts: Dict[str, Alert] = {}
-        self._activities: List[ActivityItem] = []
+        self._dashboards: dict[str, DashboardDefinition] = {}
+        self._kpis: dict[str, KPICard] = {}
+        self._charts: dict[str, ChartWidget] = {}
+        self._alerts: dict[str, Alert] = {}
+        self._activities: list[ActivityItem] = []
         self._register_builtins()
 
     def _register_builtins(self):
@@ -366,11 +366,11 @@ class DashboardEngine:
         """Register a dashboard definition."""
         self._dashboards[dashboard.code] = dashboard
 
-    def get_dashboard(self, code: str) -> Optional[DashboardDefinition]:
+    def get_dashboard(self, code: str) -> DashboardDefinition | None:
         """Get dashboard by code."""
         return self._dashboards.get(code)
 
-    def get_industry_dashboard(self, industry: str) -> Optional[DashboardDefinition]:
+    def get_industry_dashboard(self, industry: str) -> DashboardDefinition | None:
         """Get the default dashboard for an industry."""
         for d in self._dashboards.values():
             if d.industry == industry and d.is_default:
@@ -378,10 +378,10 @@ class DashboardEngine:
         # Fallback to industry_main pattern
         return self._dashboards.get(f"{industry}_main")
 
-    def get_all_dashboards(self) -> Dict[str, DashboardDefinition]:
+    def get_all_dashboards(self) -> dict[str, DashboardDefinition]:
         return dict(self._dashboards)
 
-    def generate_dashboard_data(self, industry: str, db=None) -> Dict[str, Any]:
+    def generate_dashboard_data(self, industry: str, db=None) -> dict[str, Any]:
         """
         Generate complete dashboard data for rendering.
         Returns KPIs, charts, alerts, and activities.
@@ -417,14 +417,14 @@ class DashboardEngine:
         if len(self._activities) > 100:
             self._activities = self._activities[-100:]
 
-    def get_alerts(self, industry: str = "", module: str = "") -> List[Alert]:
+    def get_alerts(self, industry: str = "", module: str = "") -> list[Alert]:
         """Get alerts filtered by industry/module."""
         alerts = list(self._alerts.values())
         if module:
             alerts = [a for a in alerts if a.module == module]
         return alerts
 
-    def _serialize_kpi(self, kpi: KPICard) -> Dict[str, Any]:
+    def _serialize_kpi(self, kpi: KPICard) -> dict[str, Any]:
         return {
             "code": kpi.code, "title": kpi.title, "title_ar": kpi.title_ar,
             "type": kpi.kpi_type.value, "value": kpi.value,
@@ -438,7 +438,7 @@ class DashboardEngine:
             "currency": kpi.currency, "module": kpi.module,
         }
 
-    def _serialize_chart(self, chart: ChartWidget) -> Dict[str, Any]:
+    def _serialize_chart(self, chart: ChartWidget) -> dict[str, Any]:
         return {
             "code": chart.code, "title": chart.title, "title_ar": chart.title_ar,
             "chart_type": chart.chart_type.value,
@@ -449,7 +449,7 @@ class DashboardEngine:
             "colors": chart.colors, "options": chart.options,
         }
 
-    def _serialize_alert(self, alert: Alert) -> Dict[str, Any]:
+    def _serialize_alert(self, alert: Alert) -> dict[str, Any]:
         return {
             "code": alert.code, "title": alert.title, "title_ar": alert.title_ar,
             "message": alert.message, "message_ar": alert.message_ar,
@@ -460,7 +460,7 @@ class DashboardEngine:
             "created_at": alert.created_at, "is_read": alert.is_read,
         }
 
-    def _serialize_activity(self, activity: ActivityItem) -> Dict[str, Any]:
+    def _serialize_activity(self, activity: ActivityItem) -> dict[str, Any]:
         return {
             "id": activity.id, "action": activity.action, "action_ar": activity.action_ar,
             "entity": activity.entity, "entity_id": activity.entity_id,
@@ -469,7 +469,7 @@ class DashboardEngine:
             "icon": activity.icon, "color": activity.color,
         }
 
-    def export_dashboard(self, industry: str) -> Dict[str, Any]:
+    def export_dashboard(self, industry: str) -> dict[str, Any]:
         """Export dashboard definition for templates."""
         dashboard = self.get_industry_dashboard(industry)
         if not dashboard:

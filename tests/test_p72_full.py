@@ -4,7 +4,12 @@ P72.3-17 COMPREHENSIVE PLATFORM CERTIFICATION
 Covers: Security, Tenant Isolation, RBAC, Workflow, Documents, Analytics,
 Customization, Database Integrity, API Consistency, Performance, Backup/Recovery, Regression.
 """
-import sys, io, json, uuid, time
+import io
+import json
+import sys
+import time
+import uuid
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import urllib.request
 
@@ -56,7 +61,10 @@ test("P72.3 All 5 industry dashboards accessible", passed >= 5)
 # ═══ P72.4 ACCOUNTING END-TO-END ═══
 print("\n--- P72.4 Accounting E2E ---")
 
-import base64, psycopg2
+import base64
+
+import psycopg2
+
 payload = token.split('.')[1]
 if len(payload) % 4: payload += '=' * (4 - len(payload) % 4)
 decoded = json.loads(base64.urlsafe_b64decode(payload))
@@ -117,7 +125,7 @@ test("P72.5 Custom fields requires auth", r9.get("_err", 200) in [401, 403])
 # Tenant isolation: items from different tenants shouldn't leak
 items = api("GET", "/trading/items", token=token)
 if items.get("data"):
-    all_tenant_ids = set(i.get("tenant_id") for i in items["data"])
+    all_tenant_ids = {i.get("tenant_id") for i in items["data"]}
     test("P72.5 Trading items tenant-isolated", len(all_tenant_ids) == 1)
 else:
     test("P72.5 Trading items tenant-isolated", True)
@@ -190,7 +198,7 @@ test("P72.8 Document file created", "_err" not in doc and "id" in doc.get("data"
 folders = api("GET", "/docs/folders", token=token)
 test("P72.8 Folders listed", "_err" not in folders)
 
-search = api("GET", f"/docs/search?q=cert", token=token)
+search = api("GET", "/docs/search?q=cert", token=token)
 test("P72.8 Document search works", "_err" not in search)
 
 # ═══ P72.9 CUSTOMIZATION ═══

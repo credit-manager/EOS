@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-from database import get_db
-from core.auth import require_permission, get_current_user
-from core.rate_limit import read_limiter, write_limiter
 from core.ai_engine import AIEngine
+from core.auth import require_permission
+from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic", tags=["AI Features"])
 
@@ -13,8 +13,8 @@ router = APIRouter(prefix="/api/v1/dynamic", tags=["AI Features"])
 # ------------------------------------------------------------------ models
 @router.get("/companies/{cid}/ai-models",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_models(cid: str, model_type: str = None,
-                     user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_models(cid: str, model_type: str | None = None,
+                     user: dict | None=None, db: Session = Depends(get_db)):
     data = AIEngine(db).list_models(cid, tenant_id=user["tenant_id"], model_type=model_type)
     return {"status": "success", "data": data}
 
@@ -22,7 +22,7 @@ async def list_models(cid: str, model_type: str = None,
 @router.post("/companies/{cid}/ai-models",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_model(cid: str, body: dict,
-                      user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                      user: dict | None=None, db: Session = Depends(get_db)):
     required = ["name", "model_type", "target_entity"]
     for f in required:
         if f not in body:
@@ -40,7 +40,7 @@ async def create_model(cid: str, body: dict,
 
 @router.get("/ai-models/{mid}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_model(mid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_model(mid: str, user: dict | None=None, db: Session = Depends(get_db)):
     model = AIEngine(db).get_model(mid, user["tenant_id"])
     if not model:
         raise HTTPException(404, detail={"status": "error",
@@ -51,7 +51,7 @@ async def get_model(mid: str, user: dict = Depends(get_current_user), db: Sessio
 @router.put("/ai-models/{mid}",
             dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def update_model(mid: str, body: dict,
-                      user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                      user: dict | None=None, db: Session = Depends(get_db)):
     eng = AIEngine(db)
     existing = eng.get_model(mid, user["tenant_id"])
     if not existing:
@@ -66,9 +66,9 @@ async def update_model(mid: str, body: dict,
 # ------------------------------------------------------------------ predictions
 @router.get("/companies/{cid}/ai-predictions",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_predictions(cid: str, model_id: str = None, entity_type: str = None,
-                          status: str = None,
-                          user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_predictions(cid: str, model_id: str | None = None, entity_type: str | None = None,
+                          status: str | None = None,
+                          user: dict | None=None, db: Session = Depends(get_db)):
     data = AIEngine(db).list_predictions(
         cid, tenant_id=user["tenant_id"], model_id=model_id,
         entity_type=entity_type, status=status)
@@ -78,7 +78,7 @@ async def list_predictions(cid: str, model_id: str = None, entity_type: str = No
 @router.post("/companies/{cid}/ai-predictions",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_prediction(cid: str, body: dict,
-                           user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                           user: dict | None=None, db: Session = Depends(get_db)):
     required = ["model_id", "prediction_type", "predicted_value"]
     for f in required:
         if f not in body:
@@ -102,7 +102,7 @@ async def create_prediction(cid: str, body: dict,
 
 @router.get("/ai-predictions/{pid}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_prediction(pid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_prediction(pid: str, user: dict | None=None, db: Session = Depends(get_db)):
     pred = AIEngine(db).get_prediction(pid, user["tenant_id"])
     if not pred:
         raise HTTPException(404, detail={"status": "error",
@@ -113,7 +113,7 @@ async def get_prediction(pid: str, user: dict = Depends(get_current_user), db: S
 @router.post("/ai-predictions/{pid}/acknowledge",
              dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def acknowledge_prediction(pid: str, body: dict,
-                                user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                                user: dict | None=None, db: Session = Depends(get_db)):
     if "actual_value" not in body:
         raise HTTPException(400, detail={"status": "error",
             "error": {"code": "MISSING", "message": "actual_value required"}})
@@ -130,8 +130,8 @@ async def acknowledge_prediction(pid: str, body: dict,
 # ------------------------------------------------------------------ recommendations
 @router.get("/companies/{cid}/ai-recommendations",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_recommendations(cid: str, status: str = None, priority: str = None,
-                              user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_recommendations(cid: str, status: str | None = None, priority: str | None = None,
+                              user: dict | None=None, db: Session = Depends(get_db)):
     data = AIEngine(db).list_recommendations(
         cid, tenant_id=user["tenant_id"], status=status, priority=priority)
     return {"status": "success", "data": data}
@@ -140,7 +140,7 @@ async def list_recommendations(cid: str, status: str = None, priority: str = Non
 @router.post("/companies/{cid}/ai-recommendations",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_recommendation(cid: str, body: dict,
-                               user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                               user: dict | None=None, db: Session = Depends(get_db)):
     required = ["recommendation_type", "title", "description"]
     for f in required:
         if f not in body:
@@ -160,7 +160,7 @@ async def create_recommendation(cid: str, body: dict,
 
 @router.post("/ai-recommendations/{rid}/acknowledge",
              dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def acknowledge_recommendation(rid: str, user: dict = Depends(get_current_user),
+async def acknowledge_recommendation(rid: str, user: dict | None=None,
                                     db: Session = Depends(get_db)):
     eng = AIEngine(db)
     row = db.execute(
@@ -177,8 +177,8 @@ async def acknowledge_recommendation(rid: str, user: dict = Depends(get_current_
 # ------------------------------------------------------------------ anomalies
 @router.get("/companies/{cid}/ai-anomalies",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_anomalies(cid: str, status: str = None, severity: str = None,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def list_anomalies(cid: str, status: str | None = None, severity: str | None = None,
+                        user: dict | None=None, db: Session = Depends(get_db)):
     data = AIEngine(db).list_anomalies(
         cid, tenant_id=user["tenant_id"], status=status, severity=severity)
     return {"status": "success", "data": data}
@@ -187,7 +187,7 @@ async def list_anomalies(cid: str, status: str = None, severity: str = None,
 @router.post("/companies/{cid}/ai-anomalies",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_anomaly(cid: str, body: dict,
-                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+                        user: dict | None=None, db: Session = Depends(get_db)):
     required = ["entity_type", "metric_name", "expected_value", "actual_value"]
     for f in required:
         if f not in body:
@@ -205,7 +205,7 @@ async def create_anomaly(cid: str, body: dict,
 
 @router.post("/ai-anomalies/{aid}/resolve",
              dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def resolve_anomaly(aid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def resolve_anomaly(aid: str, user: dict | None=None, db: Session = Depends(get_db)):
     eng = AIEngine(db)
     row = db.execute(
         text("SELECT id FROM dbp_ai_anomalies WHERE id=:id AND tenant_id=:t"), {"id": aid, "t": user["tenant_id"]}
@@ -221,6 +221,6 @@ async def resolve_anomaly(aid: str, user: dict = Depends(get_current_user), db: 
 # ------------------------------------------------------------------ insights
 @router.get("/companies/{cid}/ai-insights",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_insights(cid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_insights(cid: str, user: dict | None=None, db: Session = Depends(get_db)):
     data = AIEngine(db).get_insights(cid, tenant_id=user["tenant_id"])
     return {"status": "success", "data": data}

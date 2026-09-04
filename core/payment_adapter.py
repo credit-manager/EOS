@@ -3,25 +3,27 @@ P56 Payment Provider Adapter — provider-agnostic payment interface.
 Core never calls Stripe/PayPal/etc directly. All payment operations
 go through this adapter. Providers can be swapped without touching core.
 """
-import secrets, time, os
-from typing import Optional, Dict, Any
-from sqlalchemy.orm import Session
+import os
+import secrets
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class PaymentProvider:
     """Base class for payment providers. Override for Stripe, PayPal, etc."""
 
     def create_charge(self, amount: float, currency: str,
-                      description: str, metadata: Dict) -> Dict[str, Any]:
+                      description: str, metadata: dict) -> dict[str, Any]:
         """Charge a card. Returns {success, transaction_id, receipt_url}."""
         raise NotImplementedError
 
-    def refund(self, transaction_id: str, amount: Optional[float] = None) -> Dict[str, Any]:
+    def refund(self, transaction_id: str, amount: float | None = None) -> dict[str, Any]:
         """Refund a transaction. Returns {success, refund_id}."""
         raise NotImplementedError
 
-    def get_transaction(self, transaction_id: str) -> Optional[Dict]:
+    def get_transaction(self, transaction_id: str) -> dict | None:
         """Look up a transaction. Returns {id, status, amount, receipt_url}."""
         return None
 
@@ -30,17 +32,17 @@ class SimulatedPaymentProvider(PaymentProvider):
     """Test provider — always succeeds. Used in test mode."""
 
     def create_charge(self, amount: float, currency: str,
-                      description: str, metadata: Dict) -> Dict[str, Any]:
+                      description: str, metadata: dict) -> dict[str, Any]:
         txn_id = f"SIM-{secrets.token_hex(8).upper()}"
         return {"success": True, "transaction_id": txn_id,
                 "receipt_url": f"https://sim.receipt/{txn_id}",
                 "amount": amount, "currency": currency}
 
-    def refund(self, transaction_id: str, amount: Optional[float] = None) -> Dict[str, Any]:
+    def refund(self, transaction_id: str, amount: float | None = None) -> dict[str, Any]:
         return {"success": True, "refund_id": f"SIMREF-{secrets.token_hex(6).upper()}",
                 "amount": amount}
 
-    def get_transaction(self, transaction_id: str) -> Optional[Dict]:
+    def get_transaction(self, transaction_id: str) -> dict | None:
         return {"id": transaction_id, "status": "captured", "amount": 0}
 
 
@@ -57,7 +59,7 @@ class StripeTestPaymentProvider(PaymentProvider):
         return {"Authorization": f"Bearer {self.secret_key}", "Content-Type": "application/x-www-form-urlencoded"}
 
     def create_charge(self, amount: float, currency: str,
-                      description: str, metadata: Dict) -> Dict[str, Any]:
+                      description: str, metadata: dict) -> dict[str, Any]:
         if not self.secret_key:
             return {"success": False, "error": "Stripe secret key not configured"}
         try:
@@ -82,7 +84,7 @@ class StripeTestPaymentProvider(PaymentProvider):
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def refund(self, transaction_id: str, amount: Optional[float] = None) -> Dict[str, Any]:
+    def refund(self, transaction_id: str, amount: float | None = None) -> dict[str, Any]:
         if not self.secret_key:
             return {"success": False, "error": "Stripe secret key not configured"}
         try:
@@ -100,7 +102,7 @@ class StripeTestPaymentProvider(PaymentProvider):
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def get_transaction(self, transaction_id: str) -> Optional[Dict]:
+    def get_transaction(self, transaction_id: str) -> dict | None:
         if not self.secret_key:
             return None
         try:
@@ -119,13 +121,13 @@ class StripeTestPaymentProvider(PaymentProvider):
 class PaymentAdapter:
     """Wraps a PaymentProvider and records all transactions in dbp_payments."""
 
-    def __init__(self, db: Session, provider: Optional[PaymentProvider] = None):
+    def __init__(self, db: Session, provider: PaymentProvider | None = None):
         self.db = db
         self.provider = provider or SimulatedPaymentProvider()
 
     def charge(self, tenant_id: str, amount: float, currency: str,
                invoice_id: str, description: str = "",
-               payment_method: str = "card") -> Dict[str, Any]:
+               payment_method: str = "card") -> dict[str, Any]:
         result = self.provider.create_charge(
             amount, currency, description or f"Invoice {invoice_id}",
             {"tenant_id": tenant_id, "invoice_id": invoice_id})
@@ -144,13 +146,13 @@ class PaymentAdapter:
                 "amount": amount, "currency": currency}
 
     def refund_payment(self, transaction_id: str,
-                       amount: Optional[float] = None) -> Dict[str, Any]:
+                       amount: float | None = None) -> dict[str, Any]:
         result = self.provider.refund(transaction_id, amount)
         if not result.get("success"):
             return {"success": False, "error": result.get("error", "Refund failed")}
         return {"success": True, "refund_id": result["refund_id"], "amount": amount}
 
-    def get_status(self, tenant_id: str, invoice_id: str) -> Optional[Dict]:
+    def get_status(self, tenant_id: str, invoice_id: str) -> dict | None:
         row = self.db.execute(text(
             "SELECT id, amount, currency, status, transaction_id "
             "FROM dbp_payments WHERE tenant_id = :t AND invoice_id = :iid "
@@ -163,9 +165,9 @@ class PaymentAdapter:
 
     def _record(self, tenant_id: str, invoice_id: str, amount: float,
                 currency: str, payment_method: str, status: str,
-                transaction_id: Optional[str], receipt_url: Optional[str] = None,
-                error: Optional[str] = None):
-        rid = secrets.token_hex(8)
+                transaction_id: str | None, receipt_url: str | None = None,
+                error: str | None = None):
+        secrets.token_hex(8)
         self.db.execute(text(
             "INSERT INTO dbp_payments "
             "(tenant_id, invoice_id, amount, currency, payment_method, status, "

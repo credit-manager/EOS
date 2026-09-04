@@ -3,9 +3,9 @@ EOS Experience Engine — Report Engine
 Financial, operational, and custom reports with PDF/Excel export.
 """
 
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 
 class ReportCategory(str, Enum):
@@ -55,7 +55,7 @@ class ReportFilter:
     label_ar: str
     field_type: str
     default_value: Any = None
-    options: List[Dict[str, str]] = field(default_factory=list)
+    options: list[dict[str, str]] = field(default_factory=list)
     is_required: bool = False
 
 
@@ -68,13 +68,13 @@ class ReportDefinition:
     description: str = ""
     description_ar: str = ""
     module: str = ""
-    columns: List[ReportColumn] = field(default_factory=list)
-    filters: List[ReportFilter] = field(default_factory=list)
+    columns: list[ReportColumn] = field(default_factory=list)
+    filters: list[ReportFilter] = field(default_factory=list)
     group_by: str = ""
     sub_total: bool = True
     grand_total: bool = True
-    charts: List[Dict[str, Any]] = field(default_factory=list)
-    formats: List[ReportFormat] = field(default_factory=lambda: [ReportFormat.PDF, ReportFormat.EXCEL])
+    charts: list[dict[str, Any]] = field(default_factory=list)
+    formats: list[ReportFormat] = field(default_factory=lambda: [ReportFormat.PDF, ReportFormat.EXCEL])
     frequency: ReportFrequency = ReportFrequency.ON_DEMAND
     is_system: bool = False  # System reports can't be deleted
     sql_query: str = ""  # For custom reports
@@ -82,7 +82,7 @@ class ReportDefinition:
     sort_by: str = ""
     sort_direction: str = "asc"
     page_size: int = 50
-    header_fields: List[str] = field(default_factory=list)  # Fields to show in report header
+    header_fields: list[str] = field(default_factory=list)  # Fields to show in report header
 
 
 class ReportEngine:
@@ -92,7 +92,7 @@ class ReportEngine:
     """
 
     def __init__(self):
-        self._reports: Dict[str, ReportDefinition] = {}
+        self._reports: dict[str, ReportDefinition] = {}
         self._register_builtins()
 
     def _register_builtins(self):
@@ -286,22 +286,22 @@ class ReportEngine:
         """Register a report definition."""
         self._reports[report.code] = report
 
-    def get(self, code: str) -> Optional[ReportDefinition]:
+    def get(self, code: str) -> ReportDefinition | None:
         """Get report by code."""
         return self._reports.get(code)
 
-    def get_by_category(self, category: ReportCategory) -> List[ReportDefinition]:
+    def get_by_category(self, category: ReportCategory) -> list[ReportDefinition]:
         """Get reports by category."""
         return [r for r in self._reports.values() if r.category == category]
 
-    def get_by_module(self, module: str) -> List[ReportDefinition]:
+    def get_by_module(self, module: str) -> list[ReportDefinition]:
         """Get reports by module."""
         return [r for r in self._reports.values() if r.module == module]
 
-    def get_all(self) -> Dict[str, ReportDefinition]:
+    def get_all(self) -> dict[str, ReportDefinition]:
         return dict(self._reports)
 
-    def generate_report_config(self, code: str) -> Dict[str, Any]:
+    def generate_report_config(self, code: str) -> dict[str, Any]:
         """Generate report configuration for frontend rendering."""
         report = self._reports.get(code)
         if not report:
@@ -333,7 +333,7 @@ class ReportEngine:
             "sort_direction": report.sort_direction,
         }
 
-    def get_report_list(self, industry: str = "", module: str = "") -> List[Dict[str, Any]]:
+    def get_report_list(self, industry: str = "", module: str = "") -> list[dict[str, Any]]:
         """Get list of available reports, optionally filtered."""
         reports = self._reports.values()
         if module:
@@ -346,6 +346,6 @@ class ReportEngine:
             "formats": [f.value for f in r.formats],
         } for r in reports]
 
-    def export_reports(self, module: str = "") -> List[Dict[str, Any]]:
+    def export_reports(self, module: str = "") -> list[dict[str, Any]]:
         """Export report definitions for templates."""
         return self.get_report_list(module=module)

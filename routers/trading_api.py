@@ -4,47 +4,80 @@ P70.4 Trading ERP Professional — API
 Uses core/industry_security.py for all hardening (H1-H7).
 Commerce operations delegated to core/commerce_engine.py.
 """
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
-from typing import Optional, List
 from datetime import date, timedelta
 
-from database import SessionLocal, get_db
-from core.auth import get_current_user
-from core.industry_security import (
-    now, uid, get_company_id, check_permission, tenant_filter,
-    verify_tenant_access, audit_log, post_journal,
-    atomic_stock_receive, atomic_stock_issue,
-    success_response, list_response, error_response,
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+
+from core.commerce_engine import (
+    create_customer as _ce_create_customer,
+)
+from core.commerce_engine import (
+    create_item as _ce_create_item,
+)
+from core.commerce_engine import (
+    create_price_list as _ce_create_price_list,
+)
+from core.commerce_engine import (
+    create_supplier as _ce_create_supplier,
+)
+from core.commerce_engine import (
+    create_warehouse as _ce_create_warehouse,
+)
+from core.commerce_engine import (
+    get_customer as _ce_get_customer,
 )
 from core.commerce_engine import (
     get_item as _ce_get_item,
-    get_item_by_barcode as _ce_get_item_by_barcode,
-    list_items as _ce_list_items,
-    create_item as _ce_create_item,
-    update_item as _ce_update_item,
-    get_stock as _ce_get_stock,
-    list_stock as _ce_list_stock,
-    atomic_stock_receive as _ce_atomic_stock_receive,
-    atomic_stock_issue as _ce_atomic_stock_issue,
-    get_warehouse as _ce_get_warehouse,
-    list_warehouses as _ce_list_warehouses,
-    create_warehouse as _ce_create_warehouse,
-    get_customer as _ce_get_customer,
-    list_customers as _ce_list_customers,
-    create_customer as _ce_create_customer,
-    update_customer as _ce_update_customer,
-    get_supplier as _ce_get_supplier,
-    list_suppliers as _ce_list_suppliers,
-    create_supplier as _ce_create_supplier,
-    update_supplier as _ce_update_supplier,
-    list_price_lists as _ce_list_price_lists,
-    create_price_list as _ce_create_price_list,
-    commerce_dashboard as _ce_commerce_dashboard,
 )
+from core.commerce_engine import (
+    get_supplier as _ce_get_supplier,
+)
+from core.commerce_engine import (
+    list_customers as _ce_list_customers,
+)
+from core.commerce_engine import (
+    list_items as _ce_list_items,
+)
+from core.commerce_engine import (
+    list_price_lists as _ce_list_price_lists,
+)
+from core.commerce_engine import (
+    list_stock as _ce_list_stock,
+)
+from core.commerce_engine import (
+    list_suppliers as _ce_list_suppliers,
+)
+from core.commerce_engine import (
+    list_warehouses as _ce_list_warehouses,
+)
+from core.commerce_engine import (
+    update_customer as _ce_update_customer,
+)
+from core.commerce_engine import (
+    update_item as _ce_update_item,
+)
+from core.commerce_engine import (
+    update_supplier as _ce_update_supplier,
+)
+from core.industry_security import (
+    atomic_stock_issue,
+    atomic_stock_receive,
+    audit_log,
+    check_permission,
+    get_company_id,
+    list_response,
+    now,
+    post_journal,
+    success_response,
+    uid,
+)
+from database import get_db
 
 router = APIRouter(prefix="/trading", tags=["Trading"])
 
@@ -89,16 +122,15 @@ def _check_credit_limit(db, tenant_id, customer_id, order_amount):
 
 from sqlalchemy import text
 
-
 # ═══════════════════════════════════════════════════
 # DASHBOARD
 # ═══════════════════════════════════════════════════
 
 @router.get("/dashboard")
-def dashboard(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def dashboard(user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "read")
     t = user["tenant_id"]
-    today = date.today()
+    date.today()
 
     # Sales this month
     sales = db.execute(text(
@@ -164,8 +196,8 @@ def dashboard(user: dict = Depends(get_current_user), db=Depends(get_db)):
 
 class ItemCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    name_ar: Optional[str] = None
-    category: Optional[str] = None
+    name_ar: str | None = None
+    category: str | None = None
     unit: str = "piece"
     cost_price: float = Field(ge=0, default=0)
     selling_price: float = Field(ge=0, default=0)
@@ -174,32 +206,32 @@ class ItemCreate(BaseModel):
     has_batch: bool = False
     has_serial: bool = False
     has_expiry: bool = False
-    barcode: Optional[str] = None
-    description: Optional[str] = None
-    description_ar: Optional[str] = None
+    barcode: str | None = None
+    description: str | None = None
+    description_ar: str | None = None
 
 
 class ItemUpdate(BaseModel):
-    name: Optional[str] = None
-    name_ar: Optional[str] = None
-    category: Optional[str] = None
-    unit: Optional[str] = None
-    cost_price: Optional[float] = None
-    selling_price: Optional[float] = None
-    min_stock: Optional[float] = None
-    reorder_point: Optional[float] = None
-    has_batch: Optional[bool] = None
-    has_serial: Optional[bool] = None
-    has_expiry: Optional[bool] = None
-    barcode: Optional[str] = None
-    description: Optional[str] = None
-    status: Optional[str] = None
+    name: str | None = None
+    name_ar: str | None = None
+    category: str | None = None
+    unit: str | None = None
+    cost_price: float | None = None
+    selling_price: float | None = None
+    min_stock: float | None = None
+    reorder_point: float | None = None
+    has_batch: bool | None = None
+    has_serial: bool | None = None
+    has_expiry: bool | None = None
+    barcode: str | None = None
+    description: str | None = None
+    status: str | None = None
 
 
 @router.get("/items")
-def list_items(user: dict = Depends(get_current_user), db=Depends(get_db),
+def list_items(user: dict | None=None, db=Depends(get_db),
                page: int = 1, page_size: int = 50,
-               search: Optional[str] = None, category: Optional[str] = None):
+               search: str | None = None, category: str | None = None):
     check_permission(user, "read")
     t = user["tenant_id"]
     result = _ce_list_items(db, t, page, page_size, search or "", category or "")
@@ -214,7 +246,7 @@ def list_items(user: dict = Depends(get_current_user), db=Depends(get_db),
 
 
 @router.post("/items")
-def create_item(body: ItemCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_item(body: ItemCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     code = f"ITM-{uid()[:8].upper()}"
@@ -225,7 +257,7 @@ def create_item(body: ItemCreate, user: dict = Depends(get_current_user), db=Dep
 
 
 @router.put("/items/{item_id}")
-def update_item(item_id: str, body: ItemUpdate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def update_item(item_id: str, body: ItemUpdate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
@@ -241,13 +273,13 @@ def update_item(item_id: str, body: ItemUpdate, user: dict = Depends(get_current
 
 class WarehouseCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    name_ar: Optional[str] = None
-    address: Optional[str] = None
-    manager: Optional[str] = None
+    name_ar: str | None = None
+    address: str | None = None
+    manager: str | None = None
 
 
 @router.get("/warehouses")
-def list_warehouses(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_warehouses(user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "read")
     t = user["tenant_id"]
     whs = _ce_list_warehouses(db, t)
@@ -255,7 +287,7 @@ def list_warehouses(user: dict = Depends(get_current_user), db=Depends(get_db)):
 
 
 @router.post("/warehouses")
-def create_warehouse(body: WarehouseCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_warehouse(body: WarehouseCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     code = f"WH-{uid()[:6].upper()}"
@@ -271,34 +303,34 @@ def create_warehouse(body: WarehouseCreate, user: dict = Depends(get_current_use
 
 class CustomerCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    name_ar: Optional[str] = None
-    contact_person: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    address: Optional[str] = None
+    name_ar: str | None = None
+    contact_person: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    address: str | None = None
     credit_limit: float = 0
-    territory: Optional[str] = None
-    salesman: Optional[str] = None
+    territory: str | None = None
+    salesman: str | None = None
     payment_terms: str = "net30"
 
 
 class CustomerUpdate(BaseModel):
-    name: Optional[str] = None
-    name_ar: Optional[str] = None
-    contact_person: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    address: Optional[str] = None
-    credit_limit: Optional[float] = None
-    territory: Optional[str] = None
-    salesman: Optional[str] = None
-    payment_terms: Optional[str] = None
-    status: Optional[str] = None
+    name: str | None = None
+    name_ar: str | None = None
+    contact_person: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    credit_limit: float | None = None
+    territory: str | None = None
+    salesman: str | None = None
+    payment_terms: str | None = None
+    status: str | None = None
 
 
 @router.get("/customers")
-def list_customers(user: dict = Depends(get_current_user), db=Depends(get_db),
-                   page: int = 1, page_size: int = 50, search: Optional[str] = None):
+def list_customers(user: dict | None=None, db=Depends(get_db),
+                   page: int = 1, page_size: int = 50, search: str | None = None):
     check_permission(user, "read")
     t = user["tenant_id"]
     result = _ce_list_customers(db, t, page, page_size, search or "")
@@ -306,7 +338,7 @@ def list_customers(user: dict = Depends(get_current_user), db=Depends(get_db),
 
 
 @router.post("/customers")
-def create_customer(body: CustomerCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_customer(body: CustomerCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     code = f"CUST-{uid()[:8].upper()}"
@@ -317,7 +349,7 @@ def create_customer(body: CustomerCreate, user: dict = Depends(get_current_user)
 
 
 @router.put("/customers/{customer_id}")
-def update_customer(customer_id: str, body: CustomerUpdate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def update_customer(customer_id: str, body: CustomerUpdate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
@@ -333,30 +365,30 @@ def update_customer(customer_id: str, body: CustomerUpdate, user: dict = Depends
 
 class SupplierCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    name_ar: Optional[str] = None
-    contact_person: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    address: Optional[str] = None
+    name_ar: str | None = None
+    contact_person: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    address: str | None = None
     payment_terms: str = "net30"
     lead_time_days: int = 7
 
 
 class SupplierUpdate(BaseModel):
-    name: Optional[str] = None
-    name_ar: Optional[str] = None
-    contact_person: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    address: Optional[str] = None
-    payment_terms: Optional[str] = None
-    lead_time_days: Optional[int] = None
-    status: Optional[str] = None
+    name: str | None = None
+    name_ar: str | None = None
+    contact_person: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    payment_terms: str | None = None
+    lead_time_days: int | None = None
+    status: str | None = None
 
 
 @router.get("/suppliers")
-def list_suppliers(user: dict = Depends(get_current_user), db=Depends(get_db),
-                   page: int = 1, page_size: int = 50, search: Optional[str] = None):
+def list_suppliers(user: dict | None=None, db=Depends(get_db),
+                   page: int = 1, page_size: int = 50, search: str | None = None):
     check_permission(user, "read")
     t = user["tenant_id"]
     result = _ce_list_suppliers(db, t, page, page_size, search or "")
@@ -364,7 +396,7 @@ def list_suppliers(user: dict = Depends(get_current_user), db=Depends(get_db),
 
 
 @router.post("/suppliers")
-def create_supplier(body: SupplierCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_supplier(body: SupplierCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     code = f"SUP-{uid()[:8].upper()}"
@@ -375,7 +407,7 @@ def create_supplier(body: SupplierCreate, user: dict = Depends(get_current_user)
 
 
 @router.put("/suppliers/{supplier_id}")
-def update_supplier(supplier_id: str, body: SupplierUpdate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def update_supplier(supplier_id: str, body: SupplierUpdate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "update")
     t = user["tenant_id"]
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
@@ -391,7 +423,7 @@ def update_supplier(supplier_id: str, body: SupplierUpdate, user: dict = Depends
 
 class QuotationLine(BaseModel):
     item_id: str
-    description: Optional[str] = None
+    description: str | None = None
     qty: float = Field(gt=0)
     unit_price: float = Field(ge=0)
     discount_pct: float = 0
@@ -402,12 +434,12 @@ class QuotationCreate(BaseModel):
     valid_days: int = 30
     tax_rate: float = 0
     discount_rate: float = 0
-    notes: Optional[str] = None
-    lines: List[QuotationLine]
+    notes: str | None = None
+    lines: list[QuotationLine]
 
 
 @router.post("/quotations")
-def create_quotation(body: QuotationCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_quotation(body: QuotationCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     qid = uid()
@@ -444,16 +476,16 @@ def create_quotation(body: QuotationCreate, user: dict = Depends(get_current_use
 
 class SOCreate(BaseModel):
     customer_id: str
-    quotation_id: Optional[str] = None
-    delivery_date: Optional[str] = None
+    quotation_id: str | None = None
+    delivery_date: str | None = None
     tax_rate: float = 0
     discount_rate: float = 0
-    notes: Optional[str] = None
-    lines: List[QuotationLine]
+    notes: str | None = None
+    lines: list[QuotationLine]
 
 
 @router.post("/sales-orders")
-def create_sales_order(body: SOCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_sales_order(body: SOCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     so_id = uid()
@@ -504,19 +536,19 @@ def create_sales_order(body: SOCreate, user: dict = Depends(get_current_user), d
 class DeliveryLine(BaseModel):
     item_id: str
     qty: float = Field(gt=0)
-    warehouse_id: Optional[str] = "default"
+    warehouse_id: str | None = "default"
 
 
 class DeliveryCreate(BaseModel):
     so_id: str
-    driver_name: Optional[str] = None
-    vehicle_number: Optional[str] = None
-    notes: Optional[str] = None
-    lines: List[DeliveryLine]
+    driver_name: str | None = None
+    vehicle_number: str | None = None
+    notes: str | None = None
+    lines: list[DeliveryLine]
 
 
 @router.post("/deliveries")
-def create_delivery(body: DeliveryCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_delivery(body: DeliveryCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
 
@@ -544,12 +576,12 @@ def create_delivery(body: DeliveryCreate, user: dict = Depends(get_current_user)
 
         # H4: Atomic stock issue
         wh_id = l.warehouse_id or "default"
-        stock_id, unit_cost = atomic_stock_issue(db, t, l.item_id, l.qty, wh_id,
+        _stock_id, unit_cost = atomic_stock_issue(db, t, l.item_id, l.qty, wh_id,
                                                    stock_table="dbp_commerce_stock", item_column="item_id")
 
         # H7: Journal: Dr COGS / Cr Inventory
         company_id = get_company_id(db, t)
-        journal_id = post_journal(db, t, company_id, "delivery",
+        post_journal(db, t, company_id, "delivery",
                                   f"DN {dn_num} — COGS",
                                   [{"account_code": "5100", "description": "COGS",
                                     "debit": l.qty * unit_cost},
@@ -570,15 +602,15 @@ def create_delivery(body: DeliveryCreate, user: dict = Depends(get_current_user)
 
 
 class SalesInvoiceCreate(BaseModel):
-    so_id: Optional[str] = None
-    dn_id: Optional[str] = None
+    so_id: str | None = None
+    dn_id: str | None = None
     customer_id: str
     tax_rate: float = 0
     due_days: int = 30
 
 
 @router.post("/sales-invoices")
-def create_sales_invoice(body: SalesInvoiceCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_sales_invoice(body: SalesInvoiceCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
 
@@ -633,14 +665,14 @@ def create_sales_invoice(body: SalesInvoiceCreate, user: dict = Depends(get_curr
 
 class PaymentCreate(BaseModel):
     customer_id: str
-    invoice_id: Optional[str] = None
+    invoice_id: str | None = None
     amount: float = Field(gt=0)
     payment_method: str = "cash"
-    reference: Optional[str] = None
+    reference: str | None = None
 
 
 @router.post("/customer-payments")
-def create_customer_payment(body: PaymentCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_customer_payment(body: PaymentCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     pay_id = uid()
@@ -698,16 +730,16 @@ class PRLine(BaseModel):
     item_id: str
     qty: float = Field(gt=0)
     estimated_price: float = 0
-    notes: Optional[str] = None
+    notes: str | None = None
 
 
 class PRCreate(BaseModel):
-    notes: Optional[str] = None
-    lines: List[PRLine]
+    notes: str | None = None
+    lines: list[PRLine]
 
 
 @router.post("/purchase-requests")
-def create_purchase_request(body: PRCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_purchase_request(body: PRCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     pr_id = uid()
@@ -730,7 +762,7 @@ def create_purchase_request(body: PRCreate, user: dict = Depends(get_current_use
 
 
 @router.put("/purchase-requests/{pr_id}/approve")
-def approve_purchase_request(pr_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def approve_purchase_request(pr_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "approve")
     t = user["tenant_id"]
     pr = db.execute(text("SELECT id, status FROM dbp_trading_purchase_requests "
@@ -751,16 +783,16 @@ def approve_purchase_request(pr_id: str, user: dict = Depends(get_current_user),
 
 class POCreate(BaseModel):
     supplier_id: str
-    sq_id: Optional[str] = None
-    pr_id: Optional[str] = None
-    expected_date: Optional[str] = None
+    sq_id: str | None = None
+    pr_id: str | None = None
+    expected_date: str | None = None
     tax_rate: float = 0
-    notes: Optional[str] = None
-    lines: List[PRLine]
+    notes: str | None = None
+    lines: list[PRLine]
 
 
 @router.post("/purchase-orders")
-def create_purchase_order(body: POCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_purchase_order(body: POCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     po_id = uid()
@@ -798,17 +830,17 @@ class GRNLine(BaseModel):
     qty_received: float = Field(ge=0)
     qty_accepted: float = Field(ge=0)
     unit_cost: float = Field(ge=0)
-    warehouse_id: Optional[str] = "default"
-    batch_number: Optional[str] = None
+    warehouse_id: str | None = "default"
+    batch_number: str | None = None
 
 
 class GRNCreate(BaseModel):
     po_id: str
-    lines: List[GRNLine]
+    lines: list[GRNLine]
 
 
 @router.post("/grn")
-def create_grn(body: GRNCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_grn(body: GRNCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
 
@@ -874,15 +906,15 @@ def create_grn(body: GRNCreate, user: dict = Depends(get_current_user), db=Depen
 
 
 class PurchaseInvoiceCreate(BaseModel):
-    po_id: Optional[str] = None
-    grn_id: Optional[str] = None
+    po_id: str | None = None
+    grn_id: str | None = None
     supplier_id: str
     tax_amount: float = 0
     due_days: int = 30
 
 
 @router.post("/purchase-invoices")
-def create_purchase_invoice(body: PurchaseInvoiceCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_purchase_invoice(body: PurchaseInvoiceCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
 
@@ -933,14 +965,14 @@ def create_purchase_invoice(body: PurchaseInvoiceCreate, user: dict = Depends(ge
 
 class SupplierPaymentCreate(BaseModel):
     supplier_id: str
-    invoice_id: Optional[str] = None
+    invoice_id: str | None = None
     amount: float = Field(gt=0)
     payment_method: str = "bank_transfer"
-    reference: Optional[str] = None
+    reference: str | None = None
 
 
 @router.post("/supplier-payments")
-def create_supplier_payment(body: SupplierPaymentCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_supplier_payment(body: SupplierPaymentCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     pay_id = uid()
@@ -990,8 +1022,8 @@ def create_supplier_payment(body: SupplierPaymentCreate, user: dict = Depends(ge
 # ═══════════════════════════════════════════════════
 
 @router.get("/stock")
-def list_stock(user: dict = Depends(get_current_user), db=Depends(get_db),
-               warehouse_id: Optional[str] = None, search: Optional[str] = None):
+def list_stock(user: dict | None=None, db=Depends(get_db),
+               warehouse_id: str | None = None, search: str | None = None):
     check_permission(user, "read")
     t = user["tenant_id"]
     result = _ce_list_stock(db, t, page=1, page_size=1000,
@@ -1011,12 +1043,12 @@ class TransferLine(BaseModel):
 class TransferCreate(BaseModel):
     from_warehouse_id: str
     to_warehouse_id: str
-    notes: Optional[str] = None
-    lines: List[TransferLine]
+    notes: str | None = None
+    lines: list[TransferLine]
 
 
 @router.post("/stock-transfers")
-def create_stock_transfer(body: TransferCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_stock_transfer(body: TransferCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
 
@@ -1066,12 +1098,12 @@ def create_stock_transfer(body: TransferCreate, user: dict = Depends(get_current
 
 class PriceListCreate(BaseModel):
     list_name: str = Field(min_length=1, max_length=100)
-    description: Optional[str] = None
+    description: str | None = None
     is_default: bool = False
 
 
 @router.get("/price-lists")
-def list_price_lists(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_price_lists(user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "read")
     t = user["tenant_id"]
     pls = _ce_list_price_lists(db, t)
@@ -1079,7 +1111,7 @@ def list_price_lists(user: dict = Depends(get_current_user), db=Depends(get_db))
 
 
 @router.post("/price-lists")
-def create_price_list(body: PriceListCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_price_list(body: PriceListCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     data = {"name": body.list_name, "description": body.description, "is_default": body.is_default}
@@ -1088,9 +1120,9 @@ def create_price_list(body: PriceListCreate, user: dict = Depends(get_current_us
 
 
 @router.get("/audit")
-def list_audit(user: dict = Depends(get_current_user), db=Depends(get_db),
+def list_audit(user: dict | None=None, db=Depends(get_db),
                page: int = 1, page_size: int = 50,
-               entity_type: Optional[str] = None):
+               entity_type: str | None = None):
     check_permission(user, "read")
     t = user["tenant_id"]
     where = "WHERE tenant_id=:t"
@@ -1117,7 +1149,7 @@ def list_audit(user: dict = Depends(get_current_user), db=Depends(get_db),
 # ═══════════════════════════════════════════════════
 
 @router.get("/items/{item_id}")
-def get_item(item_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_item(item_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "read")
     t = user["tenant_id"]
     item = _ce_get_item(db, t, item_id)
@@ -1130,7 +1162,7 @@ def get_item(item_id: str, user: dict = Depends(get_current_user), db=Depends(ge
 
 
 @router.get("/customers/{customer_id}")
-def get_customer(customer_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_customer(customer_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "read")
     t = user["tenant_id"]
     cust = _ce_get_customer(db, t, customer_id)
@@ -1138,7 +1170,7 @@ def get_customer(customer_id: str, user: dict = Depends(get_current_user), db=De
 
 
 @router.get("/suppliers/{supplier_id}")
-def get_supplier(supplier_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_supplier(supplier_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "read")
     t = user["tenant_id"]
     supp = _ce_get_supplier(db, t, supplier_id)
@@ -1157,11 +1189,11 @@ class StockAdjustmentLine(BaseModel):
 class StockAdjustmentCreate(BaseModel):
     warehouse_id: str
     reason: str = Field(min_length=1)
-    lines: List[StockAdjustmentLine]
+    lines: list[StockAdjustmentLine]
 
 
 @router.post("/stock-adjustments")
-def create_stock_adjustment(body: StockAdjustmentCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_stock_adjustment(body: StockAdjustmentCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     adj_id = uid()
@@ -1226,7 +1258,7 @@ def create_stock_adjustment(body: StockAdjustmentCreate, user: dict = Depends(ge
 
 
 @router.get("/stock-adjustments")
-def list_stock_adjustments(user: dict = Depends(get_current_user), db=Depends(get_db),
+def list_stock_adjustments(user: dict | None=None, db=Depends(get_db),
                            page: int = 1, page_size: int = 50):
     check_permission(user, "read")
     t = user["tenant_id"]

@@ -3,16 +3,18 @@ P71.4 Cross-Industry Analytics — CEO Dashboard API
 ====================================================
 Consolidated view across all 6 industries.
 """
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import APIRouter, Depends
-from typing import Optional
 
-from database import get_db
-from sqlalchemy import text
 from core.auth import get_current_user
-from core.industry_security import success_response, list_response
+from fastapi import APIRouter, Depends
+from sqlalchemy import text
+
+from core.industry_security import list_response, success_response
+from database import get_db
 
 router = APIRouter(prefix="/analytics", tags=["Cross-Industry Analytics"])
 

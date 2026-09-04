@@ -1,9 +1,8 @@
 import json
-from datetime import datetime, timezone
 from uuid import uuid4
-from typing import Optional, List, Dict
-from sqlalchemy.orm import Session
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class AIEngine:
@@ -46,8 +45,8 @@ class AIEngine:
         return mid
 
     def list_models(
-        self, company_id: str, tenant_id: str = None, model_type: str = None
-    ) -> List[Dict]:
+        self, company_id: str, tenant_id: str | None = None, model_type: str | None = None
+    ) -> list[dict]:
         sql = "SELECT * FROM dbp_ai_models WHERE company_id=:cid"
         params: dict = {"cid": company_id}
         if tenant_id:
@@ -59,13 +58,13 @@ class AIEngine:
         rows = self.db.execute(text(sql), params).mappings().all()
         return [self._serialize(r) for r in rows]
 
-    def get_model(self, model_id: str, tenant_id: str) -> Optional[Dict]:
+    def get_model(self, model_id: str, tenant_id: str) -> dict | None:
         row = self.db.execute(
             text("SELECT * FROM dbp_ai_models WHERE id=:id AND tenant_id=:tenant_id"), {"id": model_id, "tenant_id": tenant_id}
         ).mappings().first()
         return self._serialize(row) if row else None
 
-    def update_model(self, model_id: str, tenant_id: str, **kw) -> Dict:
+    def update_model(self, model_id: str, tenant_id: str, **kw) -> dict:
         sets, params = [], {"id": model_id, "tenant_id": tenant_id}
         for field in ("name", "model_type", "target_entity", "status", "accuracy_score", "trained_at"):
             if field in kw:
@@ -117,7 +116,7 @@ class AIEngine:
         self.db.commit()
         return pid
 
-    def get_prediction(self, prediction_id: str, tenant_id: str) -> Optional[Dict]:
+    def get_prediction(self, prediction_id: str, tenant_id: str) -> dict | None:
         row = self.db.execute(
             text("SELECT * FROM dbp_ai_predictions WHERE id=:id AND tenant_id=:tenant_id"), {"id": prediction_id, "tenant_id": tenant_id}
         ).mappings().first()
@@ -126,11 +125,11 @@ class AIEngine:
     def list_predictions(
         self,
         company_id: str,
-        tenant_id: str = None,
-        model_id: str = None,
-        entity_type: str = None,
-        status: str = None,
-    ) -> List[Dict]:
+        tenant_id: str | None = None,
+        model_id: str | None = None,
+        entity_type: str | None = None,
+        status: str | None = None,
+    ) -> list[dict]:
         sql = "SELECT * FROM dbp_ai_predictions WHERE company_id=:cid"
         params: dict = {"cid": company_id}
         if tenant_id:
@@ -148,7 +147,7 @@ class AIEngine:
         rows = self.db.execute(text(sql), params).mappings().all()
         return [self._serialize(r) for r in rows]
 
-    def acknowledge_prediction(self, prediction_id: str, actual_value, tenant_id: str) -> Dict:
+    def acknowledge_prediction(self, prediction_id: str, actual_value, tenant_id: str) -> dict:
         self.db.execute(
             text(
                 "UPDATE dbp_ai_predictions SET actual_value=:av, status='verified' WHERE id=:id AND tenant_id=:tenant_id"
@@ -199,8 +198,8 @@ class AIEngine:
         return rid
 
     def list_recommendations(
-        self, company_id: str, tenant_id: str = None, status: str = None, priority: str = None
-    ) -> List[Dict]:
+        self, company_id: str, tenant_id: str | None = None, status: str | None = None, priority: str | None = None
+    ) -> list[dict]:
         sql = "SELECT * FROM dbp_ai_recommendations WHERE company_id=:cid"
         params: dict = {"cid": company_id}
         if tenant_id:
@@ -215,7 +214,7 @@ class AIEngine:
         rows = self.db.execute(text(sql), params).mappings().all()
         return [self._serialize(r) for r in rows]
 
-    def acknowledge_recommendation(self, rec_id: str, acknowledged_by: str, tenant_id: str) -> Dict:
+    def acknowledge_recommendation(self, rec_id: str, acknowledged_by: str, tenant_id: str) -> dict:
         self.db.execute(
             text(
                 "UPDATE dbp_ai_recommendations SET status='acknowledged', "
@@ -226,7 +225,7 @@ class AIEngine:
         self.db.commit()
         return self._get_recommendation(rec_id, tenant_id)
 
-    def _get_recommendation(self, rec_id: str, tenant_id: str) -> Optional[Dict]:
+    def _get_recommendation(self, rec_id: str, tenant_id: str) -> dict | None:
         row = self.db.execute(
             text("SELECT * FROM dbp_ai_recommendations WHERE id=:id AND tenant_id=:tenant_id"), {"id": rec_id, "tenant_id": tenant_id}
         ).mappings().first()
@@ -275,8 +274,8 @@ class AIEngine:
         return aid
 
     def list_anomalies(
-        self, company_id: str, tenant_id: str = None, status: str = None, severity: str = None
-    ) -> List[Dict]:
+        self, company_id: str, tenant_id: str | None = None, status: str | None = None, severity: str | None = None
+    ) -> list[dict]:
         sql = "SELECT * FROM dbp_ai_anomalies WHERE company_id=:cid"
         params: dict = {"cid": company_id}
         if tenant_id:
@@ -291,7 +290,7 @@ class AIEngine:
         rows = self.db.execute(text(sql), params).mappings().all()
         return [self._serialize(r) for r in rows]
 
-    def resolve_anomaly(self, anomaly_id: str, resolved_by: str, tenant_id: str) -> Dict:
+    def resolve_anomaly(self, anomaly_id: str, resolved_by: str, tenant_id: str) -> dict:
         self.db.execute(
             text(
                 "UPDATE dbp_ai_anomalies SET status='resolved', "
@@ -302,14 +301,14 @@ class AIEngine:
         self.db.commit()
         return self._get_anomaly(anomaly_id, tenant_id)
 
-    def _get_anomaly(self, anomaly_id: str, tenant_id: str) -> Optional[Dict]:
+    def _get_anomaly(self, anomaly_id: str, tenant_id: str) -> dict | None:
         row = self.db.execute(
             text("SELECT * FROM dbp_ai_anomalies WHERE id=:id AND tenant_id=:tenant_id"), {"id": anomaly_id, "tenant_id": tenant_id}
         ).mappings().first()
         return self._serialize(row) if row else None
 
     # ------------------------------------------------------------------ insights
-    def get_insights(self, company_id: str, tenant_id: str = None) -> Dict:
+    def get_insights(self, company_id: str, tenant_id: str | None = None) -> dict:
         base = " WHERE company_id=:cid"
         params: dict = {"cid": company_id}
         tid_filter = ""
@@ -341,7 +340,7 @@ class AIEngine:
         }
 
     # ------------------------------------------------------------------ helpers
-    def _serialize(self, row) -> Dict:
+    def _serialize(self, row) -> dict:
         d = dict(row)
         for k, v in d.items():
             if isinstance(v, str) and k in (

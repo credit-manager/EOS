@@ -3,9 +3,9 @@ EOS Experience Engine — UX Foundation
 RTL/LTR, Arabic/English, Dark/Light, Responsive, White-label, Notifications.
 """
 
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 
 class ThemeMode(str, Enum):
@@ -84,9 +84,9 @@ class UXFoundation:
     """
 
     def __init__(self):
-        self._themes: Dict[str, ThemeConfig] = {}
-        self._white_labels: Dict[str, WhiteLabelConfig] = {}
-        self._notifications: Dict[str, NotificationConfig] = {}
+        self._themes: dict[str, ThemeConfig] = {}
+        self._white_labels: dict[str, WhiteLabelConfig] = {}
+        self._notifications: dict[str, NotificationConfig] = {}
         self._responsive = ResponsiveConfig()
         self._register_builtins()
 
@@ -149,7 +149,7 @@ class UXFoundation:
         theme = self.get_theme()
         return theme.font_family_ar if language == "ar" else theme.font_family
 
-    def generate_css_variables(self, industry: str = "default", language: str = "ar") -> Dict[str, str]:
+    def generate_css_variables(self, industry: str = "default", language: str = "ar") -> dict[str, str]:
         """Generate CSS variables for theming."""
         theme = self.get_theme(industry)
         direction = self.get_direction(language)
@@ -207,9 +207,9 @@ class UXFoundation:
 # ═══════════════════════════════════════════════════
 
 from .dashboard_engine import DashboardEngine
-from .navigation_engine import NavigationEngine
 from .form_engine import FormEngine
 from .list_engine import ListEngine
+from .navigation_engine import NavigationEngine
 from .report_engine import ReportEngine
 
 
@@ -228,7 +228,7 @@ class ExperienceEngine:
         self.ux = UXFoundation()
 
     def get_industry_experience(self, industry: str, user_role: str = "",
-                                features: List[str] = None) -> Dict[str, Any]:
+                                features: list[str] | None = None) -> dict[str, Any]:
         """
         Get complete UX experience for an industry.
         Returns dashboard, navigation, theme, and responsive config.
@@ -253,18 +253,18 @@ class ExperienceEngine:
             "reports": self.reports.get_report_list(industry=industry),
         }
 
-    def get_industry_form(self, entity: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
+    def get_industry_form(self, entity: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
         """Get form for an entity."""
         form = self.forms.get_for_entity(entity)
         if form:
             return self.forms.generate_form(form.code, data)
         return self.forms.generate_from_entity(entity, data)
 
-    def get_industry_list(self, entity: str, user_id: str = "") -> Dict[str, Any]:
+    def get_industry_list(self, entity: str, user_id: str = "") -> dict[str, Any]:
         """Get list config for an entity."""
         return self.lists.generate_list_config(entity, user_id)
 
-    def get_industry_report(self, code: str) -> Dict[str, Any]:
+    def get_industry_report(self, code: str) -> dict[str, Any]:
         """Get report config."""
         return self.reports.generate_report_config(code)
 

@@ -1,0 +1,13 @@
+from unittest.mock import MagicMock
+from core.analytics_engine import AnalyticsEngine
+
+def test_execute_dashboard_accepts_tenant_scope():
+    db=MagicMock()
+    row=MagicMock()
+    row.__getitem__.side_effect=lambda k: {'id':'d1','dashboard_name':'D','dashboard_type':'kpi'}[k]
+    db.execute.return_value.mappings.return_value.first.return_value=row
+    db.execute.return_value.fetchall.return_value=[]
+    result=AnalyticsEngine(db).execute_dashboard('d1', tenant_id='tenant-a')
+    assert result['id']=='d1'
+    params=db.execute.call_args_list[0].args[1]
+    assert params['tid']=='tenant-a'

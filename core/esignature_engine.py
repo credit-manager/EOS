@@ -2,10 +2,10 @@
 P33 E-Signature & Enhanced Approval Workflows Engine
 """
 import uuid
-from datetime import datetime, date, timezone
-from typing import Optional, Dict, List
-from sqlalchemy.orm import Session
+from datetime import date, datetime, timezone
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class ESignatureEngine:
@@ -44,7 +44,7 @@ class ESignatureEngine:
         self.db.flush()
         return rid
 
-    def get_signature_request(self, request_id) -> Optional[Dict]:
+    def get_signature_request(self, request_id) -> dict | None:
         row = self.db.execute(text(
             "SELECT id, tenant_id, company_id, reference_type, reference_id, "
             "title, description, status, requested_by, created_at, completed_at "
@@ -63,7 +63,7 @@ class ESignatureEngine:
             "signers": signers,
         }
 
-    def _get_signers(self, request_id) -> List[Dict]:
+    def _get_signers(self, request_id) -> list[dict]:
         rows = self.db.execute(text(
             "SELECT id, tenant_id, request_id, signer_id, signer_email, "
             "signer_name, order_number, status, signature_data, signed_at, "
@@ -78,7 +78,7 @@ class ESignatureEngine:
                 "signed_at": r[9].isoformat() if r[9] else None,
                 "rejection_reason": r[10]} for r in rows]
 
-    def sign(self, request_id, signer_id, signature_data) -> Dict:
+    def sign(self, request_id, signer_id, signature_data) -> dict:
         row = self.db.execute(text(
             "SELECT id, status FROM dbp_signature_signers "
             "WHERE request_id = :rid AND signer_id = :sid"
@@ -105,7 +105,7 @@ class ESignatureEngine:
         self.db.flush()
         return {"success": True, "all_signed": pending == 0}
 
-    def reject(self, request_id, signer_id, reason) -> Dict:
+    def reject(self, request_id, signer_id, reason) -> dict:
         row = self.db.execute(text(
             "SELECT id, status FROM dbp_signature_signers "
             "WHERE request_id = :rid AND signer_id = :sid"
@@ -124,7 +124,7 @@ class ESignatureEngine:
         self.db.flush()
         return {"success": True}
 
-    def list_signature_requests(self, company_id, tenant_id=None, status=None) -> List[Dict]:
+    def list_signature_requests(self, company_id, tenant_id=None, status=None) -> list[dict]:
         conditions = ["company_id = :cid"]
         params: dict = {"cid": company_id}
         if tenant_id:
@@ -177,7 +177,7 @@ class ESignatureEngine:
         self.db.flush()
         return tid
 
-    def list_approval_templates(self, company_id, tenant_id=None) -> List[Dict]:
+    def list_approval_templates(self, company_id, tenant_id=None) -> list[dict]:
         conditions = ["company_id = :cid"]
         params: dict = {"cid": company_id}
         if tenant_id:
@@ -195,7 +195,7 @@ class ESignatureEngine:
                 "created_at": r[7].isoformat() if r[7] else None}
                 for r in rows]
 
-    def get_approval_template(self, template_id) -> Optional[Dict]:
+    def get_approval_template(self, template_id) -> dict | None:
         row = self.db.execute(text(
             "SELECT id, tenant_id, company_id, name, entity_type, description, "
             "is_active, created_at "
@@ -239,7 +239,7 @@ class ESignatureEngine:
         self.db.flush()
         return did
 
-    def list_delegations(self, company_id, tenant_id=None) -> List[Dict]:
+    def list_delegations(self, company_id, tenant_id=None) -> list[dict]:
         conditions = ["company_id = :cid"]
         params: dict = {"cid": company_id}
         if tenant_id:
@@ -261,7 +261,7 @@ class ESignatureEngine:
                 for r in rows]
 
     def get_active_delegation(self, company_id, delegator_id,
-                              entity_type=None) -> Optional[Dict]:
+                              entity_type=None) -> dict | None:
         today = date.today()
         conditions = [
             "company_id = :cid", "delegator_id = :di",

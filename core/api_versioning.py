@@ -6,10 +6,11 @@ Supports:
   - Header: Accept-Version: v1
   - Default: v1
 """
-from fastapi import Request, Response
+import re
+
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
-import re
 
 SUPPORTED_VERSIONS = {"v1": "1.0.0", "v2": "2.0.0"}
 DEFAULT_VERSION = "v1"

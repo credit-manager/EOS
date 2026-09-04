@@ -3,9 +3,16 @@ FINAL COMPLETE SYSTEM ANALYSIS & CERTIFICATION
 ===============================================
 Comprehensive review of every system component before first real customer.
 """
-import sys, io, json, uuid, time, os
+import io
+import json
+import os
+import sys
+import time
+import uuid
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import urllib.request
+
 import psycopg2
 
 BASE = "http://127.0.0.1:8000"
@@ -43,7 +50,7 @@ def test(name, cond, severity="critical"):
 _rid = uuid.uuid4().hex[:6].upper()
 print(f"{'='*70}")
 print(f"  FINAL COMPLETE SYSTEM ANALYSIS & CERTIFICATION ({_rid})")
-print(f"  Date: 2026-08-28")
+print("  Date: 2026-08-28")
 print(f"{'='*70}\n")
 
 r = api("POST", "/api/v1/auth/login", {"email": "admin@demo.com", "password": "admin123"})
@@ -135,6 +142,7 @@ r2fa = api("GET", "/api/v1/auth/2fa/status", token=token)
 test("3.2 2FA system operational", "_err" not in r2fa)
 
 import base64
+
 payload = json.loads(base64.urlsafe_b64decode(token.split('.')[1] + '=='))
 test("3.3 JWT has expiry", "exp" in payload)
 test("3.4 JWT has tenant_id", "tenant_id" in payload)
@@ -293,7 +301,7 @@ for name, path in [("Login", "/api/v1/auth/login"), ("Items", "/trading/items"),
     benchmarks.append((name, elapsed))
     test(f"13.{benchmarks.index((name,elapsed))+1} {name} < 1s", elapsed < 1.0, "important")
 
-findings["strengths"].append(f"Performance: All queries under 1s")
+findings["strengths"].append("Performance: All queries under 1s")
 
 # ══════════════════════════════════════════════════════════════════
 # 14. DEPLOYMENT

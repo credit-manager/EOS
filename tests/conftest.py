@@ -6,7 +6,7 @@ tenant isolation, and test data.
 """
 import asyncio
 import os
-from typing import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator
 
 import pytest
 from sqlalchemy import create_engine
@@ -91,6 +91,7 @@ async def async_db_session(test_engine) -> AsyncGenerator[Session, None]:
 def test_client():
     """Create a FastAPI test client."""
     from fastapi.testclient import TestClient
+
     from main import app
 
     with TestClient(app, base_url="http://testserver") as client:
@@ -225,8 +226,9 @@ def sample_company_data():
 
 def create_test_user(db_session, email=None, password="TestPassword123!"):
     """Helper to create a test user."""
-    from models import User
     import uuid
+
+    from models import User
 
     if email is None:
         email = f"user_{uuid.uuid4().hex[:8]}@test.com"

@@ -9,14 +9,13 @@ Isolation model:
   (never flags like domain_verified or dns_txt_record).
 """
 
-import os
-import uuid
 import logging
 import secrets
-from datetime import datetime
-from typing import Dict, Any, Optional
+import uuid
+from typing import Any
 
 from sqlalchemy import text
+
 from database import SessionLocal
 
 logger = logging.getLogger("eos.whitelabel")
@@ -25,7 +24,7 @@ logger = logging.getLogger("eos.whitelabel")
 # Defaults (applied when a tenant has no branding row)
 # ═══════════════════════════════════════════════
 
-DEFAULT_BRANDING: Dict[str, Any] = {
+DEFAULT_BRANDING: dict[str, Any] = {
     "system_name_en": "EOS Dynamic Business Platform",
     "system_name_ar": "EOS — منصة الأعمال المتكاملة",
     "logo_url": None,
@@ -69,14 +68,14 @@ EDITABLE_FIELDS = [
 ]
 
 
-def _safe_str(val) -> Optional[str]:
+def _safe_str(val) -> str | None:
     if val is None:
         return None
     s = str(val).strip()
     return s if s else None
 
 
-def _row_to_dict(row) -> Dict[str, Any]:
+def _row_to_dict(row) -> dict[str, Any]:
     return {k: v for k, v in dict(row._mapping).items()}
 
 
@@ -84,7 +83,7 @@ def _row_to_dict(row) -> Dict[str, Any]:
 # Read
 # ═══════════════════════════════════════════════
 
-def get_branding(tenant_id: str) -> Dict[str, Any]:
+def get_branding(tenant_id: str) -> dict[str, Any]:
     """Full branding record for a tenant (defaults filled in)."""
     db = SessionLocal()
     try:
@@ -110,7 +109,7 @@ def get_branding(tenant_id: str) -> Dict[str, Any]:
         db.close()
 
 
-def get_public_branding_by_domain(domain_or_slug: str) -> Optional[Dict[str, Any]]:
+def get_public_branding_by_domain(domain_or_slug: str) -> dict[str, Any] | None:
     """
     Public branding lookup for login pages by custom domain OR tenant slug.
     Returns ONLY PUBLIC_FIELDS — never verification state or DNS tokens.
@@ -150,13 +149,13 @@ def get_public_branding_by_domain(domain_or_slug: str) -> Optional[Dict[str, Any
 # Write (isolated per tenant by construction)
 # ═══════════════════════════════════════════════
 
-def upsert_branding(tenant_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+def upsert_branding(tenant_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     """
     Create/update the caller's OWN branding row.
     Only EDITABLE_FIELDS are honored; unknown/forbidden keys are ignored.
     domain_verified can never be set through this path (verify_domain only).
     """
-    values: Dict[str, Any] = {"tenant_id": tenant_id}
+    values: dict[str, Any] = {"tenant_id": tenant_id}
     for field in EDITABLE_FIELDS:
         if field in payload:
             raw = payload[field]
@@ -177,7 +176,7 @@ def upsert_branding(tenant_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     try:
         db.execute(text(f"""
             INSERT INTO dbp_tenant_branding ({', '.join(values.keys())})
-            VALUES ({', '.join(':' + c for c in values.keys())})
+            VALUES ({', '.join(':' + c for c in values)})
             ON CONFLICT (tenant_id) DO UPDATE SET {set_sql}
         """), values)
         db.commit()
@@ -187,7 +186,7 @@ def upsert_branding(tenant_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     return get_branding(tenant_id)
 
 
-def reset_feature_flags_gate(tenant_id: str, flag: str, enabled: bool) -> Dict[str, Any]:
+def reset_feature_flags_gate(tenant_id: str, flag: str, enabled: bool) -> dict[str, Any]:
     """Update one feature gate flag (validated whitelist)."""
     allowed = {
         "show_powered_by", "enable_custom_domain",
@@ -198,7 +197,7 @@ def reset_feature_flags_gate(tenant_id: str, flag: str, enabled: bool) -> Dict[s
     return upsert_branding(tenant_id, {flag: bool(enabled)})
 
 
-def issue_domain_verification(tenant_id: str, custom_domain: str) -> Dict[str, Any]:
+def issue_domain_verification(tenant_id: str, custom_domain: str) -> dict[str, Any]:
     """Register a custom domain claim and generate its DNS TXT challenge."""
     domain = _safe_str(custom_domain)
     if not domain or "." not in domain or any(c in domain for c in " /\\?&="):
@@ -228,7 +227,7 @@ def issue_domain_verification(tenant_id: str, custom_domain: str) -> Dict[str, A
     return result
 
 
-def verify_domain(tenant_id: str) -> Dict[str, Any]:
+def verify_domain(tenant_id: str) -> dict[str, Any]:
     """
     Mark the tenant's claimed domain verified.
     Production note: real implementation resolves the TXT record. Here the
@@ -251,7 +250,7 @@ def verify_domain(tenant_id: str) -> Dict[str, Any]:
     return get_branding(tenant_id)
 
 
-def delete_custom_domain(tenant_id: str) -> Dict[str, Any]:
+def delete_custom_domain(tenant_id: str) -> dict[str, Any]:
     """Remove a claimed domain entirely."""
     db = SessionLocal()
     try:
@@ -272,7 +271,7 @@ def delete_custom_domain(tenant_id: str) -> Dict[str, Any]:
 # Helpers for other engines (email templates / PDF reports)
 # ═══════════════════════════════════════════════
 
-def email_branding_context(tenant_id: str) -> Dict[str, Any]:
+def email_branding_context(tenant_id: str) -> dict[str, Any]:
     """Context block for e-mail templates: branded name/logo/footer/colors."""
     b = get_branding(tenant_id)
     return {
@@ -285,7 +284,7 @@ def email_branding_context(tenant_id: str) -> Dict[str, Any]:
     }
 
 
-def report_branding_context(tenant_id: str) -> Dict[str, Any]:
+def report_branding_context(tenant_id: str) -> dict[str, Any]:
     """Context block for PDF/report headers & footers."""
     b = get_branding(tenant_id)
     return {

@@ -4,30 +4,40 @@ P70.5 Retail ERP Professional — API
 POS, Cash Management, Loyalty, Promotions, Analytics.
 Commerce operations delegated to core/commerce_engine.py.
 """
-import sys, os, json
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
-from typing import Optional, List
-from datetime import date, datetime
 
-from database import SessionLocal, get_db
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import text
+
 from core.auth import get_current_user
-from core.industry_security import (
-    now, uid, get_company_id, check_permission, tenant_filter,
-    verify_tenant_access, audit_log, post_journal,
-    atomic_stock_receive, atomic_stock_issue,
-    success_response, list_response, error_response,
-    get_tenant_config,
-)
 from core.commerce_engine import (
     get_item as _ce_get_item,
-    get_item_by_barcode as _ce_get_item_by_barcode,
-    get_stock as _ce_get_stock,
-    list_warehouses as _ce_list_warehouses,
 )
+from core.commerce_engine import (
+    get_item_by_barcode as _ce_get_item_by_barcode,
+)
+from core.commerce_engine import (
+    get_stock as _ce_get_stock,
+)
+from core.industry_security import (
+    atomic_stock_issue,
+    atomic_stock_receive,
+    audit_log,
+    check_permission,
+    get_company_id,
+    get_tenant_config,
+    list_response,
+    now,
+    post_journal,
+    success_response,
+    uid,
+)
+from database import get_db
 
 router = APIRouter(prefix="/retail", tags=["Retail POS"])
 
@@ -65,7 +75,7 @@ class RegisterCreate(BaseModel):
     warehouse_id: str
 
 @router.post("/registers")
-def create_register(body: RegisterCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_register(body: RegisterCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     existing = db.execute(text("SELECT id FROM dbp_retail_registers WHERE tenant_id=:t AND register_code=:rc"),
@@ -81,17 +91,17 @@ def create_register(body: RegisterCreate, user: dict = Depends(get_current_user)
         db.commit()
     except Exception as e:
         db.rollback()
-        raise HTTPException(500, detail=f"Register creation failed: {str(e)}")
+        raise HTTPException(500, detail=f"Register creation failed: {e!s}")
     return success_response("Register created", {"id": rid})
 
 
 class CashierCreate(BaseModel):
     name: str
-    pin: Optional[str] = None
-    register_id: Optional[str] = None
+    pin: str | None = None
+    register_id: str | None = None
 
 @router.post("/cashiers")
-def create_cashier(body: CashierCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_cashier(body: CashierCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     cid = uid()
@@ -105,19 +115,19 @@ def create_cashier(body: CashierCreate, user: dict = Depends(get_current_user), 
 
 
 @router.get("/registers")
-def list_registers(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_registers(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     try:
         rows = db.execute(text("SELECT id,register_code,name,warehouse_id,status FROM dbp_retail_registers "
                                "WHERE tenant_id=:t ORDER BY created_at"), {"t": t}).fetchall()
         data = [{"id": r[0], "code": r[1], "name": r[2], "warehouse_id": r[3], "status": r[4]} for r in rows]
     except Exception as e:
-        raise HTTPException(500, detail=f"List registers failed: {str(e)}")
+        raise HTTPException(500, detail=f"List registers failed: {e!s}")
     return list_response(data, len(data))
 
 
 @router.get("/cashiers")
-def list_cashiers(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_cashiers(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,name,register_id,status FROM dbp_retail_cashiers "
                            "WHERE tenant_id=:t ORDER BY created_at"), {"t": t}).fetchall()
@@ -126,7 +136,7 @@ def list_cashiers(user: dict = Depends(get_current_user), db=Depends(get_db)):
 
 
 @router.get("/registers/{reg_id}")
-def get_register(reg_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_register(reg_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     row = db.execute(text("SELECT id,register_code,name,warehouse_id,status "
                           "FROM dbp_retail_registers WHERE id=:id AND tenant_id=:t"),
@@ -138,7 +148,7 @@ def get_register(reg_id: str, user: dict = Depends(get_current_user), db=Depends
 
 
 @router.get("/cashiers/{cashier_id}")
-def get_cashier(cashier_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_cashier(cashier_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     row = db.execute(text("SELECT id,name,register_id,status "
                           "FROM dbp_retail_cashiers WHERE id=:id AND tenant_id=:t"),
@@ -154,7 +164,7 @@ def get_cashier(cashier_id: str, user: dict = Depends(get_current_user), db=Depe
 # ═══════════════════════════════════════════════════
 
 @router.get("/items/barcode/{barcode}")
-def get_item_by_barcode(barcode: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_item_by_barcode(barcode: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     item = _ce_get_item_by_barcode(db, t, barcode)
     return success_response("Item found", {
@@ -178,16 +188,16 @@ class POSSaleLine(BaseModel):
 class POSSaleCreate(BaseModel):
     register_id: str
     cashier_id: str
-    customer_id: Optional[str] = None
+    customer_id: str | None = None
     payment_method: str = "cash"
     paid_amount: float = Field(ge=0)
-    lines: List[POSSaleLine]
+    lines: list[POSSaleLine]
     loyalty_points_redeemed: int = Field(default=0, ge=0)
-    notes: Optional[str] = None
+    notes: str | None = None
 
 
 @router.post("/pos/sales")
-def create_pos_sale(body: POSSaleCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_pos_sale(body: POSSaleCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
 
@@ -204,7 +214,7 @@ def create_pos_sale(body: POSSaleCreate, user: dict = Depends(get_current_user),
         if l.unit_price < 0:
             raise HTTPException(400, detail=f"Invalid price: {l.unit_price}")
 
-    session = _get_active_session(db, t, body.register_id)
+    _get_active_session(db, t, body.register_id)
 
     reg = db.execute(text("SELECT warehouse_id FROM dbp_retail_registers WHERE id=:r AND tenant_id=:t"),
                      {"r": body.register_id, "t": t}).fetchone()
@@ -334,12 +344,12 @@ class POSReturnCreate(BaseModel):
     original_sale_id: str
     register_id: str
     cashier_id: str
-    lines: List[POSReturnLine]
-    reason: Optional[str] = None
+    lines: list[POSReturnLine]
+    reason: str | None = None
 
 
 @router.post("/pos/returns")
-def create_pos_return(body: POSReturnCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_pos_return(body: POSReturnCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     _get_active_session(db, t, body.register_id)
@@ -401,7 +411,7 @@ def create_pos_return(body: POSReturnCreate, user: dict = Depends(get_current_us
 # ═══════════════════════════════════════════════════
 
 @router.post("/pos/sales/{sale_id}/void")
-def void_pos_sale(sale_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def void_pos_sale(sale_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "delete")
     t = user["tenant_id"]
     sale = db.execute(text("SELECT id,total,status,payment_method,register_id FROM dbp_retail_pos_sales "
@@ -453,15 +463,15 @@ def void_pos_sale(sale_id: str, user: dict = Depends(get_current_user), db=Depen
 class SuspendCreate(BaseModel):
     register_id: str
     cashier_id: str
-    customer_id: Optional[str] = None
+    customer_id: str | None = None
     items_json: str
     subtotal: float = 0
     tax_amount: float = 0
     total: float = 0
-    notes: Optional[str] = None
+    notes: str | None = None
 
 @router.post("/pos/suspended")
-def suspend_sale(body: SuspendCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def suspend_sale(body: SuspendCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     sid = uid()
@@ -479,7 +489,7 @@ def suspend_sale(body: SuspendCreate, user: dict = Depends(get_current_user), db
 
 
 @router.get("/pos/suspended")
-def list_suspended(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_suspended(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,register_id,cashier_id,subtotal,total,suspended_at,notes "
                            "FROM dbp_retail_suspended_sales WHERE tenant_id=:t AND status='suspended' "
@@ -491,7 +501,7 @@ def list_suspended(user: dict = Depends(get_current_user), db=Depends(get_db)):
 
 
 @router.post("/pos/suspended/{sus_id}/recall")
-def recall_suspended(sus_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def recall_suspended(sus_id: str, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     row = db.execute(text("SELECT id,items_json,subtotal,tax_amount,total,register_id,cashier_id,customer_id "
@@ -520,7 +530,7 @@ class CashSessionOpen(BaseModel):
     opening_amount: float = Field(ge=0)
 
 @router.post("/cash/sessions/open")
-def open_cash_session(body: CashSessionOpen, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def open_cash_session(body: CashSessionOpen, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     existing = db.execute(text("SELECT id FROM dbp_retail_cash_sessions "
@@ -550,11 +560,11 @@ class CashMovement(BaseModel):
     session_id: str
     movement_type: str
     amount: float
-    reference: Optional[str] = None
-    notes: Optional[str] = None
+    reference: str | None = None
+    notes: str | None = None
 
 @router.post("/cash/movements")
-def create_cash_movement(body: CashMovement, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_cash_movement(body: CashMovement, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     valid_types = ["sale", "return", "withdrawal", "deposit"]
@@ -583,7 +593,7 @@ def create_cash_movement(body: CashMovement, user: dict = Depends(get_current_us
 
 
 @router.post("/cash/sessions/{sess_id}/close")
-def close_cash_session(sess_id: str, closing_amount: float = Query(ge=0),
+def close_cash_session(sess_id: str, closing_amount: float | None=None,
                        user: dict = Depends(get_current_user), db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
@@ -620,7 +630,7 @@ def close_cash_session(sess_id: str, closing_amount: float = Query(ge=0),
 
 
 @router.get("/cash/sessions")
-def list_cash_sessions(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_cash_sessions(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,session_number,register_id,cashier_id,"
                            "opening_amount,closing_amount,expected_amount,variance,"
@@ -641,7 +651,7 @@ def list_cash_sessions(user: dict = Depends(get_current_user), db=Depends(get_db
 # ═══════════════════════════════════════════════════
 
 @router.get("/loyalty/tiers")
-def list_loyalty_tiers(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_loyalty_tiers(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,name,min_points,discount_pct,points_multiplier "
                            "FROM dbp_retail_loyalty_tiers WHERE tenant_id=:t ORDER BY min_points"),
@@ -655,7 +665,7 @@ class LoyaltyAccountCreate(BaseModel):
     customer_id: str
 
 @router.post("/loyalty/accounts")
-def create_loyalty_account(body: LoyaltyAccountCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_loyalty_account(body: LoyaltyAccountCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     existing = db.execute(text("SELECT id FROM dbp_retail_loyalty_accounts "
@@ -676,7 +686,7 @@ def create_loyalty_account(body: LoyaltyAccountCreate, user: dict = Depends(get_
 
 
 @router.get("/loyalty/accounts")
-def list_loyalty_accounts(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_loyalty_accounts(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT la.id,la.customer_id,c.name,lt.name,la.total_points,"
                            "la.redeemed_points,la.available_points,la.lifetime_spend "
@@ -691,7 +701,7 @@ def list_loyalty_accounts(user: dict = Depends(get_current_user), db=Depends(get
 
 
 @router.get("/loyalty/accounts/{acct_id}")
-def get_loyalty_account(acct_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_loyalty_account(acct_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     row = db.execute(text("SELECT la.id,la.customer_id,c.name,lt.name,la.total_points,"
                           "la.redeemed_points,la.available_points,la.lifetime_spend "
@@ -709,7 +719,7 @@ def get_loyalty_account(acct_id: str, user: dict = Depends(get_current_user), db
 
 
 @router.get("/loyalty/transactions/{account_id}")
-def list_loyalty_transactions(account_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_loyalty_transactions(account_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,transaction_type,points,description,created_at "
                            "FROM dbp_retail_loyalty_transactions "
@@ -726,17 +736,17 @@ def list_loyalty_transactions(account_id: str, user: dict = Depends(get_current_
 
 class PromoCreate(BaseModel):
     name: str
-    name_ar: Optional[str] = None
+    name_ar: str | None = None
     promo_type: str
     discount_value: float = 0
-    buy_qty: Optional[int] = None
-    get_qty: Optional[int] = None
+    buy_qty: int | None = None
+    get_qty: int | None = None
     min_purchase: float = 0
     start_date: str
     end_date: str
 
 @router.post("/promotions")
-def create_promotion(body: PromoCreate, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def create_promotion(body: PromoCreate, user: dict | None=None, db=Depends(get_db)):
     check_permission(user, "create")
     t = user["tenant_id"]
     pid = uid()
@@ -754,7 +764,7 @@ def create_promotion(body: PromoCreate, user: dict = Depends(get_current_user), 
 
 
 @router.get("/promotions")
-def list_promotions(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def list_promotions(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT id,name,name_ar,promo_type,discount_value,start_date,end_date,status "
                            "FROM dbp_retail_promotions WHERE tenant_id=:t ORDER BY created_at"), {"t": t}).fetchall()
@@ -765,7 +775,7 @@ def list_promotions(user: dict = Depends(get_current_user), db=Depends(get_db)):
 
 
 @router.get("/promotions/{promo_id}")
-def get_promotion(promo_id: str, user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_promotion(promo_id: str, user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
     row = db.execute(text("SELECT id,name,name_ar,promo_type,discount_value,buy_qty,get_qty,"
                           "min_purchase,start_date,end_date,status "
@@ -785,7 +795,7 @@ def get_promotion(promo_id: str, user: dict = Depends(get_current_user), db=Depe
 # ═══════════════════════════════════════════════════
 
 @router.get("/dashboard")
-def retail_dashboard(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def retail_dashboard(user: dict | None=None, db=Depends(get_db)):
     t = user["tenant_id"]
 
     today = db.execute(text("SELECT COUNT(*),COALESCE(SUM(total),0),COALESCE(SUM(tax_amount),0) "
@@ -835,7 +845,7 @@ def retail_dashboard(user: dict = Depends(get_current_user), db=Depends(get_db))
 
 
 @router.get("/analytics/top-products")
-def top_products(days: int = Query(default=30, ge=1, le=365),
+def top_products(days: int | None=None,
                  user: dict = Depends(get_current_user), db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT pl.description,SUM(pl.qty) as total_qty,"
@@ -852,7 +862,7 @@ def top_products(days: int = Query(default=30, ge=1, le=365),
 
 
 @router.get("/analytics/cashier-performance")
-def cashier_performance(days: int = Query(default=30, ge=1, le=365),
+def cashier_performance(days: int | None=None,
                         user: dict = Depends(get_current_user), db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT c.name,COUNT(ps.id),SUM(ps.total),AVG(ps.total) "
@@ -868,7 +878,7 @@ def cashier_performance(days: int = Query(default=30, ge=1, le=365),
 
 
 @router.get("/analytics/basket-size")
-def basket_size_analysis(days: int = Query(default=30, ge=1, le=365),
+def basket_size_analysis(days: int | None=None,
                          user: dict = Depends(get_current_user), db=Depends(get_db)):
     t = user["tenant_id"]
     rows = db.execute(text("SELECT DATE(ps.sale_date),COUNT(DISTINCT ps.id),"

@@ -2,12 +2,13 @@
 P52 Onboarding Engine — Productization & SaaS Launch
 Handles end-to-end tenant onboarding: industry selection → plan → company → template → modules → admin → activation
 """
-import uuid, json
+import json
+import uuid
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
-from sqlalchemy.orm import Session
-from sqlalchemy import text
+from typing import Any
 
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 ONBOARDING_STEPS = [
     "industry_selection",
@@ -26,9 +27,9 @@ class OnboardingEngine:
 
     # ── INDUSTRY TEMPLATES ──
 
-    def list_industry_templates(self, is_active: bool = True) -> List[Dict]:
+    def list_industry_templates(self, is_active: bool = True) -> list[dict]:
         conditions = []
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if is_active is not None:
             conditions.append("is_active = :active")
             params["active"] = is_active
@@ -45,7 +46,7 @@ class OnboardingEngine:
                  "default_accounts": self._parse_json(r[7]),
                  "is_active": r[8], "sort_order": r[9]} for r in rows]
 
-    def get_industry_template(self, template_id: str) -> Optional[Dict]:
+    def get_industry_template(self, template_id: str) -> dict | None:
         row = self.db.execute(text(
             "SELECT id, industry_code, industry_name, industry_name_ar, description, "
             "default_modules, default_settings, default_accounts "
@@ -61,10 +62,10 @@ class OnboardingEngine:
 
     # ── MODULE DEFINITIONS ──
 
-    def list_module_definitions(self, category: Optional[str] = None,
-                                is_active: bool = True) -> List[Dict]:
+    def list_module_definitions(self, category: str | None = None,
+                                is_active: bool = True) -> list[dict]:
         conditions = ["is_active = :active"]
-        params: Dict[str, Any] = {"active": is_active}
+        params: dict[str, Any] = {"active": is_active}
         if category:
             conditions.append("category = :cat")
             params["cat"] = category
@@ -80,7 +81,7 @@ class OnboardingEngine:
                  "optional_dependencies": self._parse_json(r[7]),
                  "default_enabled": r[8], "sort_order": r[9]} for r in rows]
 
-    def get_module_definition(self, module_id: str) -> Optional[Dict]:
+    def get_module_definition(self, module_id: str) -> dict | None:
         row = self.db.execute(text(
             "SELECT id, module_code, module_name, module_name_ar, description, category, "
             "required_modules, optional_dependencies, default_enabled "
@@ -96,8 +97,8 @@ class OnboardingEngine:
 
     # ── ONBOARDING FLOW ──
 
-    def create_onboarding(self, tenant_id: str, admin_user_id: str = None,
-                          admin_email: str = None) -> str:
+    def create_onboarding(self, tenant_id: str, admin_user_id: str | None = None,
+                          admin_email: str | None = None) -> str:
         oid = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_tenant_onboarding "
@@ -114,7 +115,7 @@ class OnboardingEngine:
         self.db.flush()
         return oid
 
-    def get_onboarding(self, tenant_id: str) -> Optional[Dict]:
+    def get_onboarding(self, tenant_id: str) -> dict | None:
         row = self.db.execute(text(
             "SELECT id, tenant_id, company_id, industry_code, plan_id, current_step, "
             "status, company_name, company_name_ar, admin_user_id, admin_email, "
@@ -127,9 +128,9 @@ class OnboardingEngine:
             return None
         return self._row_to_dict(row)
 
-    def list_onboardings(self, status: Optional[str] = None, limit: int = 50) -> List[Dict]:
+    def list_onboardings(self, status: str | None = None, limit: int = 50) -> list[dict]:
         conditions = []
-        params: Dict[str, Any] = {"lim": limit}
+        params: dict[str, Any] = {"lim": limit}
         if status:
             conditions.append("status = :st")
             params["st"] = status
@@ -145,7 +146,7 @@ class OnboardingEngine:
                  "activated_at": str(r[8]) if r[8] else None,
                  "created_at": str(r[9]) if r[9] else None} for r in rows]
 
-    def update_onboarding_step(self, tenant_id: str, step: str, data: Dict = None) -> bool:
+    def update_onboarding_step(self, tenant_id: str, step: str, data: dict | None = None) -> bool:
         ob = self.get_onboarding(tenant_id)
         if not ob:
             return False
@@ -178,7 +179,7 @@ class OnboardingEngine:
             updates["activated_at"] = datetime.now(timezone.utc).isoformat()
 
         set_clauses = []
-        params: Dict[str, Any] = {"tid": tenant_id}
+        params: dict[str, Any] = {"tid": tenant_id}
         for k, v in updates.items():
             if k in ("selected_modules", "configuration"):
                 set_clauses.append(f"{k} = :{k}")
@@ -200,7 +201,7 @@ class OnboardingEngine:
         self.db.flush()
         return True
 
-    def complete_step(self, tenant_id: str, step: str, data: Dict = None) -> Dict[str, Any]:
+    def complete_step(self, tenant_id: str, step: str, data: dict | None = None) -> dict[str, Any]:
         if step not in ONBOARDING_STEPS:
             return {"success": False, "error": f"Invalid step: {step}"}
 
@@ -216,7 +217,7 @@ class OnboardingEngine:
         return {"success": True, "current_step": updated["current_step"],
                 "status": updated["status"], "steps_completed": updated["steps_completed"]}
 
-    def get_onboarding_status(self, tenant_id: str) -> Dict[str, Any]:
+    def get_onboarding_status(self, tenant_id: str) -> dict[str, Any]:
         ob = self.get_onboarding(tenant_id)
         if not ob:
             return {"onboarded": False, "status": "not_started"}
@@ -238,19 +239,19 @@ class OnboardingEngine:
             "activated_at": ob.get("activated_at"),
         }
 
-    def get_industry_accounts(self, industry_code: str) -> List[Dict]:
+    def get_industry_accounts(self, industry_code: str) -> list[dict]:
         row = self.db.execute(text(
             "SELECT default_accounts FROM dbp_industry_templates WHERE industry_code = :code"
         ), {"code": industry_code}).fetchone()
         return self._parse_json(row[0]) if row else []
 
-    def get_industry_modules(self, industry_code: str) -> List[str]:
+    def get_industry_modules(self, industry_code: str) -> list[str]:
         row = self.db.execute(text(
             "SELECT default_modules FROM dbp_industry_templates WHERE industry_code = :code"
         ), {"code": industry_code}).fetchone()
         return self._parse_json(row[0]) if row else []
 
-    def get_industry_settings(self, industry_code: str) -> Dict:
+    def get_industry_settings(self, industry_code: str) -> dict:
         row = self.db.execute(text(
             "SELECT default_settings FROM dbp_industry_templates WHERE industry_code = :code"
         ), {"code": industry_code}).fetchone()
@@ -268,7 +269,7 @@ class OnboardingEngine:
         except Exception:
             return val
 
-    def _row_to_dict(self, row) -> Dict:
+    def _row_to_dict(self, row) -> dict:
         return {
             "id": row[0], "tenant_id": row[1], "company_id": row[2],
             "industry_code": row[3], "plan_id": row[4],

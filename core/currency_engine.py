@@ -2,8 +2,9 @@
 EOS Multi-Currency Engine
 Supports: Currency definitions, exchange rates, conversions, gain/loss tracking
 """
-import uuid, json
-from datetime import datetime, date
+import uuid
+from datetime import date
+
 from sqlalchemy import text
 
 

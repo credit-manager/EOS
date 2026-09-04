@@ -1,14 +1,13 @@
 """
 P28 Project Management Router
 """
-from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
 from core.auth import require_permission, get_current_user
-from core.rate_limit import read_limiter, write_limiter
 from core.project_engine import ProjectEngine
+from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic", tags=["Project Management"])
 
@@ -23,7 +22,7 @@ def _ensure_project(db: Session, pid: str, user: dict) -> dict:
 # ── PROJECTS ──
 
 @router.get("/companies/{cid}/projects", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_projects(cid: str, status: Optional[str] = None,
+async def list_projects(cid: str, status: str | None = None,
                         user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     return {"status": "success", "data": ProjectEngine(db).list_projects(cid, tenant_id=user.get("tenant_id"), status=status)}
 
@@ -68,7 +67,7 @@ async def update_project(pid: str, body: dict, user: dict = Depends(get_current_
 # ── TASKS ──
 
 @router.get("/projects/{pid}/tasks", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_tasks(pid: str, status: Optional[str] = None, assigned_to: Optional[str] = None,
+async def list_tasks(pid: str, status: str | None = None, assigned_to: str | None = None,
                      user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     _ensure_project(db, pid, user)
     return {"status": "success", "data": ProjectEngine(db).list_tasks(pid, status=status, assigned_to=assigned_to)}
@@ -155,7 +154,7 @@ async def complete_milestone(mid: str, user: dict = Depends(get_current_user), d
 # ── TIME ENTRIES ──
 
 @router.get("/projects/{pid}/time-entries", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_time_entries(pid: str, task_id: Optional[str] = None, employee_id: Optional[str] = None,
+async def list_time_entries(pid: str, task_id: str | None = None, employee_id: str | None = None,
                             user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     _ensure_project(db, pid, user)
     return {"status": "success", "data": ProjectEngine(db).get_time_entries(pid, task_id=task_id, employee_id=employee_id)}

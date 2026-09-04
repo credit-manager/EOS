@@ -3,7 +3,11 @@ P73 PRODUCTION INFRASTRUCTURE VERIFICATION
 ============================================
 Verifies all production infrastructure components are present and configured.
 """
-import sys, io, json, os, subprocess
+import io
+import json
+import os
+import sys
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import urllib.request
 
@@ -199,7 +203,6 @@ test("P73.11 Prometheus scrapes Node", "node-exporter" in prom)
 # ═══ P73.12-16 SECURITY PENETRATION ═══
 print("\n--- P73.12-16 Security & Penetration ---")
 
-import urllib.request
 # Test unauthenticated access
 for path in ["/trading/items", "/retail/registers", "/analytics/overview",
              "/notifications/inbox", "/approvals/chains", "/docs/folders",
