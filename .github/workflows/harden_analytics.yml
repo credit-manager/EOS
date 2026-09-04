@@ -1,0 +1,110 @@
+name: Harden Analytics Tenant SQL
+
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch analytics engine
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('core/analytics_engine.py')
+          s = p.read_text(encoding='utf-8')
+          old = '''def _execute_query(sql: str, params: dict | None = None, tenant_id: str | None = None) -> list[dict]:
+              """Execute SQL and return list of dicts."""
+              db = SessionLocal()
+              try:
+                  if tenant_id:
+                      sql = sql.replace("WHERE 1=1", "WHERE tenant_id = :_tid")
+                      if params is None:
+                          params = {}
+                      params["_tid"] = tenant_id
+                  result = db.execute(text(sql), params or {})
+                  rows = [dict(row._mapping) for row in result]
+                  return rows
+              except Exception as e:
+                  logger.error(f"Query error: {e}")
+                  return []
+              finally:
+                  db.close()
+          '''
+          new = '''def _execute_query(sql: str, params: dict | None = None, tenant_id: str | None = None) -> list[dict]:
+              """Execute analytics SQL with a bound tenant parameter.
+
+              Legacy analytics queries are assembled from trusted SQL fragments, but
+              tenant IDs must never be interpolated into SQL.  Normalize the legacy
+              literal form at this single execution boundary before sending it to DB.
+              """
+              db = SessionLocal()
+              try:
+                  bound_params = dict(params or {})
+                  if tenant_id:
+                      legacy_marker = f"tenant_id = '{tenant_id}'"
+                      sql = sql.replace(legacy_marker, "tenant_id = :_tid")
+                      sql = sql.replace(f"c.tenant_id = '{tenant_id}'", "c.tenant_id = :_tid")
+                      sql = sql.replace(f"s.tenant_id = '{tenant_id}'", "s.tenant_id = :_tid")
+                      bound_params["_tid"] = tenant_id
+                  result = db.execute(text(sql), bound_params)
+                  rows = [dict(row._mapping) for row in result]
+                  return rows
+              except Exception as e:
+                  logger.error("Analytics query failed: %s", e)
+                  return []
+              finally:
+                  db.close()
+          '''
+          if old not in s:
+              raise SystemExit('analytics helper pattern not found')
+          s = s.replace(old, new, 1)
+          def patch_drill(match):
+              return '''def drill_down(tenant_id: str, entity_type: str, entity_id: str) -> dict[str, Any]:
+              """Drill-down from KPI to source documents using bound parameters."""
+              db = SessionLocal()
+              queries = {
+                  "invoice": "SELECT * FROM dbp_sales_invoices WHERE id = :entity_id AND tenant_id = :tenant_id",
+                  "purchase_order": "SELECT * FROM dbp_purchase_orders WHERE id = :entity_id AND tenant_id = :tenant_id",
+                  "project": "SELECT * FROM dbp_projects WHERE id = :entity_id AND tenant_id = :tenant_id",
+                  "payment": "SELECT * FROM dbp_payments WHERE id = :entity_id AND tenant_id = :tenant_id",
+              }
+              try:
+                  sql = queries.get(entity_type)
+                  if not sql:
+                      return {}
+                  row = db.execute(text(sql), {"entity_id": entity_id, "tenant_id": tenant_id}).mappings().first()
+                  return dict(row) if row else {}
+              finally:
+                  db.close()
+
+
+# '''
+          pattern = r"def drill_down\(tenant_id: str, entity_type: str, entity_id: str\) -> dict\[str, Any\]:.*?\n\n# ═══════════════════════════════════════════════════════════════\n"
+          s2, n = re.subn(pattern, patch_drill, s, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit('drill_down function pattern not found')
+          s = s2
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Verify patch
+        run: python -m py_compile core/analytics_engine.py
+      - name: Commit patch and remove workflow
+        shell: bash
+        run: |
+          git config user.name 'credit-manager'
+          git config user.email 'fc.creditmanager@gmail.com'
+          git add core/analytics_engine.py
+          git commit -m 'security: bind analytics tenant parameters' || true
+          git rm .github/workflows/harden_analytics.yml
+          git commit -m 'chore: remove one-shot analytics hardening workflow'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
