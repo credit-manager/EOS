@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Form, Input, Button, Card, message } from 'antd'
 import { UserOutlined, LockOutlined } from '@ant-design/icons'
 import { motion } from 'framer-motion'
@@ -94,12 +94,6 @@ function LoginPage() {
               rules={[{ required: true, message: `${t('password')} ${t('required')}` }]}
             >
               <Input.Password prefix={<LockOutlined />} placeholder={t('password')} disabled={loading} />
-            </Form.Item>
-
-            <Form.Item>
-              <Link to="/forgot-password" style={{ float: 'right' }}>
-                {t('forgot_password')}
-              </Link>
             </Form.Item>
 
             <Form.Item>
