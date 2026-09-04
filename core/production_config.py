@@ -13,6 +13,7 @@ class ProductionConfigError(Exception):
 
 
 _DOMAIN_RE = re.compile(r"^(?=.{1,253}$)(?!.*\.\.)[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$")
+_DATABASE_URL_RE = r"^postgresql(?:\+psycopg2)?://.{10,}$"
 
 
 def _check_database_role() -> tuple[str, str, bool]:
@@ -37,7 +38,6 @@ def _check_database_role() -> tuple[str, str, bool]:
             return ("DATABASE_ROLE_RLS_SAFE", "INVALID: superuser/bypassrls/owner", True)
         return ("DATABASE_ROLE_RLS_SAFE", "OK", True)
     except Exception:
-        # Do not permit a production deployment to silently skip this control.
         return ("DATABASE_ROLE_RLS_SAFE", "UNVERIFIED", True)
 
 
@@ -57,8 +57,9 @@ def validate_production_config() -> list[tuple[str, str, bool]]:
     check("EOS_AUTH_MODE", os.getenv("EOS_AUTH_MODE", ""), r"^production$", True)
     check("EOS_ENVIRONMENT", os.getenv("EOS_ENVIRONMENT", ""), r"^production$", True)
     check("EOS_SECRET_KEY", os.getenv("EOS_SECRET_KEY", ""), r"^.{32,}$", True)
-    check("DATABASE_URL", os.getenv("DATABASE_URL", ""), r"^postgresql://.{10,}$", True)
-    if os.getenv("DATABASE_URL", "").startswith("postgresql://"):
+    database_url = os.getenv("DATABASE_URL", "")
+    check("DATABASE_URL", database_url, _DATABASE_URL_RE, True)
+    if re.match(_DATABASE_URL_RE, database_url):
         checks.append(_check_database_role())
     check("EOS_2FA_ENCRYPTION_KEY", os.getenv("EOS_2FA_ENCRYPTION_KEY", ""), r"^.{44}$", True)
 
