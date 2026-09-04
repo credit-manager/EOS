@@ -1,228 +1,161 @@
-# P0 Security & Architecture Fixes - Progress Tracker
+# EOS P0 / Enterprise Readiness Tracker
 
-## Executive Summary
-**Status:** In Progress  
-**Started:** 2024  
-**Target:** Production-Ready Enterprise Platform  
+**Last reviewed:** 2026-09-04  
+**Branch:** `custom-erp-system-for-companies-24152`  
+**Policy:** a control is GREEN only when the implementation and its verification evidence both pass. Missing production evidence is FAIL/CLOSED-GATE, never assumed green.
 
----
+## 1. P0 Security — GREEN in source/CI
 
-## ✅ COMPLETED FIXES (3/8 P0 Security)
+- [x] AI Composer tenant/IDOR isolation
+- [x] 2FA durable encryption key enforcement
+- [x] Rate limiter trusted-proxy and fail-closed behavior
+- [x] Dynamic CRUD tenant isolation and SQL identifier validation
+- [x] M2M tenant isolation for target and junction tables
+- [x] Cross-tenant UPDATE/DELETE protections
+- [x] Dashboard/analytics tenant isolation
+- [x] Sales tenant isolation and mandatory authentication
+- [x] Documents tenant isolation
+- [x] Webhook tenant isolation and application-level SSRF protection
+- [x] Data Jobs tenant isolation and dynamic SQL identifier validation
+- [x] Payment API authentication/RBAC/tenant binding
+- [x] Accounting company/tenant ownership and balanced posting checks
+- [x] FastAPI dependency injection security fixes
+- [x] Debug/secret-bearing logging regression checks
+- [x] Unsafe `eval()` removed from form engine
 
-### 1. AI Composer IDOR Fix ✅
-**File:** `core/ai_composer.py`, `routers/ai_composer.py`  
-**Risk Level:** CRITICAL → RESOLVED  
-**Changes:**
-- Added mandatory `tenant_id` filter to all session queries
-- Session isolation enforced at database level
-- Cross-tenant access now impossible
+## 2. CI/CD — GREEN
 
-**Test Status:** ✅ Passed
+- [x] Blocking tests fail the workflow on failure
+- [x] Blocking Bandit and pip-audit checks fail on failure
+- [x] CI summary requires all blocking jobs to succeed
+- [x] GitHub Actions are referenced by immutable commit SHA in blocking workflows
+- [x] Frontend lint/unit/build gate enabled
+- [x] Migration graph/upgrade/alembic-check gate enabled
 
----
+## 3. Database migrations — GREEN in CI
 
-### 2. 2FA Encryption Key Management ✅
-**File:** `core/two_factor.py`  
-**Risk Level:** CRITICAL → RESOLVED  
-**Changes:**
-- Startup failure if `EOS_2FA_ENCRYPTION_KEY` not set
-- No more runtime key generation
-- Fernet encryption for all 2FA secrets
+- [x] Single migration head enforced in CI
+- [x] Clean upgrade executed in CI
+- [x] `alembic check` executed in CI
+- [x] Current model-alignment migration added
+- [x] SQLite database artifacts removed from repository
+- [ ] Production migration rehearsal on the real deployment topology
+- [ ] Production rollback/restore drill
 
-**Test Status:** ✅ Passed
+## 4. Frontend/API contract — IMPLEMENTATION GREEN, full contract certification pending
 
----
+- [x] Canonical frontend selected
+- [x] Legacy frontend source retired
+- [x] Auth response contract corrected
+- [x] `/auth/me` session validation integrated
+- [x] Reset-password payload corrected
+- [x] Dashboard wired to real analytics API
+- [x] Frontend CI lint/test/build gate
+- [ ] Generate and commit a reproducible API client from the authoritative OpenAPI schema
+- [ ] Full endpoint-by-endpoint OpenAPI ↔ frontend contract certification
+- [ ] Commit `frontend/package-lock.json` and use `npm ci` for deterministic builds
 
-### 3. Rate Limiter Enterprise Upgrade ✅
-**File:** `core/rate_limit.py`  
-**Risk Level:** HIGH → RESOLVED  
-**Changes:**
-- ✅ Trusted proxy validation (`EOS_TRUSTED_PROXIES`)
-- ✅ Multi-layer limits (IP + Tenant + User + Endpoint)
-- ✅ Tenant extraction from auth context (not headers)
-- ✅ Accurate retry-after calculation
-- ⏳ Alembic migration needed (dev fallback only)
+## 5. Authorization — GREEN for current tested RBAC boundaries; enterprise policy work remains
 
-**Test Status:** ✅ Module loads successfully  
-**Pending:** Create Alembic migration file
+- [x] Authentication required by critical routes
+- [x] Permission dependency uses the authenticated principal
+- [x] Tenant context is authoritative from authentication
+- [x] Platform-owner boundary exists
+- [x] Authorization regression suite exists
+- [ ] Full endpoint/module RBAC matrix certification
+- [ ] ABAC/ReBAC/business-rule authorization layer
 
----
+## 6. Reliability architecture — PARTIAL / code foundation present
 
-## 🔴 IN PROGRESS (1/8 P0 Security)
+- [x] Persistent tenant-scoped event records
+- [x] Webhook deliveries are persisted before asynchronous delivery
+- [x] Job execution uses tenant-scoped row locking
+- [x] Payment/journal critical paths have transaction-aware checks
+- [ ] Full transactional outbox for every externally visible side effect
+- [ ] Idempotency keys for payments, invoices, orders, journals, webhooks, AI and ERP generation
+- [ ] Concurrency/idempotency certification for inventory, sequences, payments and workflows
+- [ ] Queue worker authorization/tenant-context/noisy-neighbor controls
 
-### 4. Multi-Tenancy Isolation Suite 🔄
-**Files:** Multiple  
-**Risk Level:** CRITICAL  
-**Status:** Analysis Complete, Tests Pending
+## 7. Production infrastructure — HARD GATES; requires deployment evidence
 
-**Findings:**
-- 18 entities updated with `tenant_id NOT NULL`
-- Dynamic CRUD enforces tenant isolation
-- Many-to-many relationships need review
+- [x] Production readiness verifier fails closed when evidence is missing
+- [x] Production runbook documents required evidence
+- [x] Application container runs as non-root
+- [x] Docker runtime aligned with the tested Python 3.12 matrix
+- [ ] PostgreSQL app role proven non-superuser/non-owner/non-BYPASSRLS
+- [ ] Webhook network egress proxy/firewall policy deployed and negatively tested
+- [ ] Tenant-isolated production object storage negatively tested
+- [ ] Multi-instance application HA/load balancer
+- [ ] PostgreSQL HA/failover
+- [ ] Redis HA/failover where Redis is used
+- [ ] PITR/off-host backups
+- [ ] Successful restore drill
+- [ ] Measured RTO/RPO
+- [ ] Cross-region DR where required by SLA
 
-**Next Steps:**
-- [ ] Create Tenant A / Tenant B test fixtures
-- [ ] Test SELECT isolation
-- [ ] Test UPDATE/DELETE isolation
-- [ ] Test relationship access
-- [ ] Test Builder isolation
-- [ ] Test AI Composer isolation
-- [ ] Test Reports isolation
+## 8. Observability — PARTIAL
 
----
+- [x] Protected Prometheus metrics endpoint
+- [x] Structured/request-correlated logging foundations
+- [ ] OpenTelemetry distributed tracing deployed
+- [ ] SLI/SLO/error-budget definitions and alerts
+- [ ] On-call/incident escalation evidence
 
-## 📋 PENDING P0 FIXES (4/8)
+## 9. Supply chain — PARTIAL
 
-### 5. CI/CD False Positives
-**File:** `.github/workflows/ci.yml`  
-**Risk Level:** HIGH  
-**Problem:** Security tests can fail but CI passes
+- [x] Dependency vulnerability scan in CI
+- [x] Blocking security scan behavior
+- [x] Immutable GitHub Action references in blocking workflows
+- [ ] Python/frontend/container SBOM artifacts retained per release
+- [ ] Container vulnerability scan artifact
+- [ ] Image signing and provenance verification
+- [ ] Reproducible frontend install using committed lockfile
 
-**Required Changes:**
-```yaml
-# BEFORE (WRONG):
-- run: pytest ... || echo "failed"
-- run: bandit ... || echo "warning"
+## 10. Financial correctness — NOT YET CERTIFIED
 
-# AFTER (CORRECT):
-- run: pytest ...  # Fail on test failure
-- run: bandit ...  # Fail on security issues
-```
+Required acceptance suite:
 
-**Priority:** P0 - Blocks production releases
+- [x] Double-entry balance validation
+- [x] Tenant/company ownership validation
+- [ ] Trial balance certification
+- [ ] P&L certification
+- [ ] Balance sheet certification
+- [ ] Cash-flow certification
+- [ ] Fiscal period controls
+- [ ] Period close/reopen
+- [ ] Opening balances
+- [ ] Dimensions/cost centers
+- [ ] Tax accounting
+- [ ] Multi-currency revaluation/accounting
+- [ ] Retained earnings/year-end close
+- [ ] Audit-safe correcting entries
 
----
+Security CI success is not financial certification.
 
-### 6. API Contract Unification
-**Files:** Frontend `api.js` vs Backend routers  
-**Risk Level:** HIGH  
-**Problem:** Mismatched endpoints between frontend and backend
+## 11. ERP Compiler / Dynamic ERP safety — NOT YET CERTIFIED
 
-**Required:**
-- [ ] Audit all `/api/v1/*` endpoints
-- [ ] Update frontend API client
-- [ ] Add OpenAPI descriptions
-- [ ] Generate TypeScript client from OpenAPI
+Required before generated ERP definitions can be deployed:
 
----
+- [ ] Strict intermediate representation/schema validation
+- [ ] Dependency graph validation
+- [ ] Authorization-policy validation
+- [ ] Migration preview
+- [ ] Destructive-change/data-loss detection
+- [ ] Generated test validation
+- [ ] API/UI contract validation
+- [ ] Approval/versioning workflow
+- [ ] Deployment rollback
 
-### 7. Migration Chain Cleanup
-**Files:** `alembic/versions/*`  
-**Risk Level:** MEDIUM-HIGH  
-**Problem:** Multiple migration roots detected
+## 12. Compliance / privacy — NOT YET CERTIFIED
 
-**Required:**
-- [ ] Audit all migration files
-- [ ] Ensure single root (`down_revision = None` only once)
-- [ ] Test upgrade/downgrade cycles
-- [ ] Document migration strategy per tenant
+- [ ] SOC 2 readiness evidence
+- [ ] ISO 27001 control evidence
+- [ ] GDPR/privacy controls and DSAR evidence
+- [ ] PCI scope assessment where payment functionality requires it
+- [ ] Country-specific tax/e-invoicing/localization packs
+- [ ] Data residency policy and technical enforcement
+- [ ] Retention/deletion/legal-hold policy evidence
 
----
+## Release rule
 
-### 8. SQLite Artifacts Removal
-**Files:** `alembic/*.db`  
-**Risk Level:** LOW-MEDIUM  
-**Problem:** Database files in repository
-
-**Required:**
-- [ ] Remove all `*.db` files
-- [ ] Update `.gitignore`
-- [ ] Clean git history if needed
-
----
-
-## P1 FIXES (Next Phase)
-
-### 9. Authorization Review
-- RBAC matrix audit
-- IDOR prevention across all endpoints
-- Permission inheritance testing
-
-### 10. Observability Stack
-- OpenTelemetry integration
-- Structured JSON logging
-- Distributed tracing
-- Metrics dashboard
-
-### 11. Background Jobs
-- Celery/Temporal integration
-- Move long operations out of HTTP requests
-- Job queue monitoring
-
-### 12. Enterprise Identity
-- OAuth 2.1 / OIDC support
-- SSO/SAML integration
-- SCIM provisioning
-- WebAuthn/Passkeys
-
----
-
-## METRICS DASHBOARD
-
-| Category | Total | Completed | In Progress | Pending | % Done |
-|----------|-------|-----------|-------------|---------|--------|
-| **P0 Security** | 8 | 3 | 1 | 4 | 37.5% |
-| **P0 Architecture** | 4 | 0 | 0 | 4 | 0% |
-| **P1 Quality** | 12 | 0 | 0 | 12 | 0% |
-| **TOTAL** | 24 | 3 | 1 | 20 | 12.5% |
-
----
-
-## TIMELINE
-
-### Week 1 (Current)
-- ✅ AI Composer IDOR
-- ✅ 2FA Encryption
-- ✅ Rate Limiter
-- 🔄 Tenant Isolation Tests
-
-### Week 2
-- [ ] CI/CD fixes
-- [ ] API contract unification
-- [ ] Migration cleanup
-- [ ] SQLite removal
-
-### Week 3
-- [ ] Authorization review
-- [ ] Observability setup
-- [ ] Background jobs
-
-### Week 4
-- [ ] Enterprise identity
-- [ ] Load testing
-- [ ] Security pen-test
-- [ ] Beta release preparation
-
----
-
-## BLOCKERS
-
-1. **None currently** - All P0 fixes can proceed in parallel
-
----
-
-## NEXT ACTIONS (Immediate)
-
-1. ✅ **DONE**: Rate limiter enterprise upgrade
-2. 🔄 **IN PROGRESS**: Create tenant isolation test suite
-3. ⏳ **TODO**: Create Alembic migration for rate limits
-4. ⏳ **TODO**: Fix CI/CD false positives
-5. ⏳ **TODO**: API contract audit
-
----
-
-## SIGN-OFF REQUIRED BEFORE BETA
-
-- [ ] All P0 Security fixes complete
-- [ ] All P0 Architecture fixes complete
-- [ ] Penetration test passed
-- [ ] Load test passed (100+ concurrent tenants)
-- [ ] SOC 2 Type I readiness assessment
-- [ ] GDPR compliance check
-- [ ] Documentation complete
-
----
-
-**Last Updated:** Now  
-**Next Review:** After tenant isolation tests  
-**Contact:** Security Team
+The PR may be described as **CI/security GREEN** when all blocking GitHub checks pass. It may be described as **Enterprise Production GREEN** only after every unchecked production/compliance/financial/compiler gate above has real evidence attached to the release.
