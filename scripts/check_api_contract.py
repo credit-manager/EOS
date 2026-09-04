@@ -24,9 +24,7 @@ def _collect_backend_paths() -> set[str]:
         tree = ast.parse(file.read_text(encoding="utf-8"), filename=str(file))
         router_prefixes: dict[str, str] = {}
         for node in ast.walk(tree):
-            if not isinstance(node, ast.Assign):
-                continue
-            if not isinstance(node.value, ast.Call):
+            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
                 continue
             func = node.value.func
             if not (isinstance(func, ast.Name) and func.id == "APIRouter"):
@@ -57,8 +55,6 @@ def _collect_backend_paths() -> set[str]:
                 prefix = router_prefixes.get(decorator.func.value.id, "")
                 combined = f"{prefix}/{route.lstrip('/')}" if prefix else route
                 paths.add(re.sub(r"//+", "/", combined))
-
-    # main.py may define application-level routes directly.
     return paths
 
 
@@ -70,15 +66,25 @@ def _route_matches(client_path: str, route_path: str) -> bool:
     return all(a == b or b.startswith("{") for a, b in zip(client_parts, route_parts))
 
 
+def _collect_frontend_paths(text: str) -> set[str]:
+    """Extract every explicit first argument passed to an axios API method.
+
+    This deliberately covers quoted and template-literal paths so newly added
+    frontend modules cannot silently bypass the contract checker.
+    """
+    pattern = re.compile(
+        r"\bapi\.(?:get|post|put|patch|delete|head|options)\s*\(\s*(['\"`])([^'\"`]*?)\1",
+        re.MULTILINE,
+    )
+    return {match.group(2) for match in pattern.finditer(text) if match.group(2).startswith("/")}
+
+
 frontend_api = Path("frontend/src/services/api.js")
 if not frontend_api.exists():
     raise SystemExit("Canonical frontend API service is missing: frontend/src/services/api.js")
 
 text = frontend_api.read_text(encoding="utf-8")
-raw_paths = set(
-    re.findall(r"['\"](/(?:api/v1|auth|users|dashboard|entities|reports|industries|builder)[^'\"]*)['\"]", text)
-)
-paths = {p for p in raw_paths if p != "/api/v1"}
+paths = _collect_frontend_paths(text)
 backend_paths = _collect_backend_paths()
 
 missing = []
