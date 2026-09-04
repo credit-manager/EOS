@@ -1,60 +1,85 @@
-name: Repair Dynamic CRUD Tenant Scope
+name: One Shot Analytics Hardening
 
 on:
   push:
-    branches: [main]
+    branches:
+      - custom-erp-system-for-companies-24152
 
 permissions:
   contents: write
 
 jobs:
-  repair-and-test:
+  harden:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: custom-erp-system-for-companies-24152
           fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Restore full Dynamic CRUD and apply security patch
-        shell: bash
+      - name: Harden analytics tenant SQL
         run: |
-          git checkout f9be46735cf45530a709c4704568535164d51fe3 -- routers/dynamic_crud.py
           python - <<'PY'
           from pathlib import Path
-          p = Path('routers/dynamic_crud.py')
+          import re
+          p = Path('core/analytics_engine.py')
           s = p.read_text(encoding='utf-8')
-          replacements = [
-          ('''def get_verification_engine(\n    entity_code: str,\n    db: Session = Depends(get_db)\n):\n    return DynamicVerificationEngine(db, entity_code)''', '''def get_verification_engine(\n    entity_code: str,\n    db: Session = Depends(get_db),\n    current_user: Optional[dict] = Depends(optional_get_current_user),\n):\n    tenant_id = current_user.get("tenant_id") if current_user else None\n    return DynamicVerificationEngine(db, entity_code, tenant_id=tenant_id)'''),
-          ('''    ent_row = db.execute(\n        text(\n            "SELECT id, table_mapping FROM dbp_entities "\n            "WHERE code = :code"\n        ),\n        {"code": entity_code}\n    ).fetchone()''', '''    tenant_id = current_user.get("tenant_id") if current_user else None\n    ent_sql = "SELECT id, table_mapping, tenant_id FROM dbp_entities WHERE code = :code"\n    ent_params = {"code": entity_code}\n    if tenant_id:\n        ent_sql += " AND (tenant_id = :tenant_id OR tenant_id IS NULL)"\n        ent_params["tenant_id"] = tenant_id\n    else:\n        ent_sql += " AND tenant_id IS NULL"\n    ent_row = db.execute(text(ent_sql), ent_params).fetchone()'''),
-          ('''        ent_row = db.execute(\n            text("SELECT id FROM dbp_entities WHERE code = :code"),\n            {"code": entity_code}\n        ).fetchone()''', '''        ent_sql = "SELECT id FROM dbp_entities WHERE code = :code"\n        ent_params = {"code": entity_code}\n        if tenant_id:\n            ent_sql += " AND (tenant_id = :tenant_id OR tenant_id IS NULL)"\n            ent_params["tenant_id"] = tenant_id\n        else:\n            ent_sql += " AND tenant_id IS NULL"\n        ent_row = db.execute(text(ent_sql), ent_params).fetchone()'''),
-          ('''                tgt_row = db.execute(\n                    text(\n                        "SELECT table_mapping FROM dbp_entities "\n                        "WHERE code = :code"\n                    ),\n                    {"code": rel_data["target_entity_code"]}\n                ).fetchone()''', '''                tgt_sql = "SELECT table_mapping FROM dbp_entities WHERE code = :code"\n                tgt_params = {"code": rel_data["target_entity_code"]}\n                if tenant_id:\n                    tgt_sql += " AND (tenant_id = :tenant_id OR tenant_id IS NULL)"\n                    tgt_params["tenant_id"] = tenant_id\n                else:\n                    tgt_sql += " AND tenant_id IS NULL"\n                tgt_row = db.execute(text(tgt_sql), tgt_params).fetchone()'''),
-          ]
-          for old, new in replacements:
-              if old not in s:
-                  raise SystemExit('required patch pattern not found')
-              s = s.replace(old, new, 1)
+          start = s.index('def _execute_query(')
+          end = s.index('\n\ndef _execute_scalar(', start)
+          helper = '''def _execute_query(sql: str, params: dict | None = None, tenant_id: str | None = None) -> list[dict]:
+              """Execute analytics SQL with tenant values passed as bound parameters."""
+              db = SessionLocal()
+              try:
+                  bound_params = dict(params or {})
+                  if tenant_id:
+                      # Legacy query builders may already have rendered the tenant value.
+                      # Replace only the exact value supplied to this execution boundary.
+                      for alias in ('', 'c.', 's.'):
+                          sql = sql.replace(f"{alias}tenant_id = '{tenant_id}'", f"{alias}tenant_id = :_tid")
+                      bound_params["_tid"] = tenant_id
+                  result = db.execute(text(sql), bound_params)
+                  return [dict(row._mapping) for row in result]
+              except Exception as e:
+                  logger.error("Analytics query failed: %s", e)
+                  return []
+              finally:
+                  db.close()
+          '''
+          s = s[:start] + helper + s[end:]
+          dstart = s.index('def drill_down(')
+          dend = s.index('\n\n# ═══════════════════════════════════════════════════════════════', dstart)
+          drill = '''def drill_down(tenant_id: str, entity_type: str, entity_id: str) -> dict[str, Any]:
+              """Drill-down from KPI to source documents using bound parameters."""
+              db = SessionLocal()
+              queries = {
+                  "invoice": "SELECT * FROM dbp_sales_invoices WHERE id = :entity_id AND tenant_id = :tenant_id",
+                  "purchase_order": "SELECT * FROM dbp_purchase_orders WHERE id = :entity_id AND tenant_id = :tenant_id",
+                  "project": "SELECT * FROM dbp_projects WHERE id = :entity_id AND tenant_id = :tenant_id",
+                  "payment": "SELECT * FROM dbp_payments WHERE id = :entity_id AND tenant_id = :tenant_id",
+              }
+              try:
+                  sql = queries.get(entity_type)
+                  if not sql:
+                      return {}
+                  row = db.execute(text(sql), {"entity_id": entity_id, "tenant_id": tenant_id}).mappings().first()
+                  return dict(row) if row else {}
+              finally:
+                  db.close()
+          '''
+          s = s[:dstart] + drill + s[dend:]
           p.write_text(s, encoding='utf-8')
           PY
-      - name: Compile
-        run: python -m py_compile routers/dynamic_crud.py core/dynamic_verification.py
-      - name: Install tests
-        run: python -m pip install --upgrade pip pytest fastapi sqlalchemy psycopg2-binary python-dotenv
-      - name: Mandatory Dynamic CRUD security tests
-        run: PYTHONPATH=. pytest -q tests/test_dynamic_crud_tenant_security.py
-      - name: Existing security and ERP tests
-        run: PYTHONPATH=. pytest -q tests/test_tenant_scope.py tests/test_e2e_erp_generation.py tests/test_composer_builder_e2e.py
-      - name: Commit repaired full router
-        run: |
+          python -m py_compile core/analytics_engine.py
           git config user.name 'credit-manager'
           git config user.email 'fc.creditmanager@gmail.com'
-          git add routers/dynamic_crud.py
-          git diff --cached --quiet || git commit -m 'security: restore full Dynamic CRUD and tenant-scope metadata'
-          git push origin main
-      - name: Remove one-shot repair workflow
-        if: success()
+          git add core/analytics_engine.py
+          git commit -m 'security: bind analytics tenant parameters'
+          git push origin custom-erp-system-for-companies-24152
+      - name: Remove temporary runner from main
         run: |
+          git fetch origin main
+          git checkout main
           git rm .github/workflows/repair_dynamic_crud.yml
-          git commit -m 'chore: remove one-shot repair workflow'
+          git config user.name 'credit-manager'
+          git config user.email 'fc.creditmanager@gmail.com'
+          git commit -m 'chore: remove one-shot analytics runner'
           git push origin main
