@@ -47,11 +47,11 @@ function AppContent() {
         fontFamily: i18n.language === 'ar' ? "'Cairo', sans-serif" : "'Inter', sans-serif",
       },
     }}>
-      <BrowserRouter>
+      <BrowserRouter basename="/ui">
         <Routes>
           {/* Public Routes */}
           <Route path="/login" element={<LoginPage />} />
-          
+
           {/* Protected Routes */}
           <Route path="/" element={
             <ProtectedRoute>
