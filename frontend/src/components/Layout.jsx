@@ -41,6 +41,7 @@ function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
   const { t, i18n } = useTranslation()
+  const selectedPath = location.pathname.replace(/^\/ui(?=\/|$)/, '') || '/'
 
   const handleMenuClick = ({ key }) => {
     navigate(key)
@@ -82,7 +83,7 @@ function Layout() {
         <Menu
           theme="dark"
           mode="inline"
-          selectedKeys={[location.pathname]}
+          selectedKeys={[selectedPath]}
           items={menuItems.map(item => ({
             ...item,
             label: t(item.label),
