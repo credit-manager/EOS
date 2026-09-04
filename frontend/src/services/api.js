@@ -22,8 +22,8 @@ api.interceptors.response.use(
       localStorage.removeItem('eos_token')
       localStorage.removeItem('eos_tenant_id')
       localStorage.removeItem('eos_user')
-      if (window.location.pathname !== '/login') {
-        window.location.replace('/login')
+      if (window.location.pathname !== '/ui/login') {
+        window.location.replace('/ui/login')
       }
     }
     return Promise.reject(error)
