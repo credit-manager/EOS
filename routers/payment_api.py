@@ -123,24 +123,38 @@ async def get_transaction(transaction_id: str, user: dict = Depends(get_current_
 
 
 @router.post("/transactions/{transaction_id}/complete", dependencies=[Depends(require_permission("payments", "update")), Depends(write_limiter.check)])
-async def complete_transaction(transaction_id: str, user: dict = Depends(get_current_user)):
+async def complete_transaction(transaction_id: str, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=255), user: dict = Depends(get_current_user)):
+    if not idempotency_key:
+        raise HTTPException(428, detail={"status": "error", "error": {"code": "IDEMPOTENCY_KEY_REQUIRED", "message": "Idempotency-Key is required for completion"}})
     db = _session()
     try:
-        result = PaymentGatewayEngine(db).complete_transaction(transaction_id, _tenant(user))
-        if result.get("error"):
-            raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": result["error"]}})
+        try:
+            result = PaymentGatewayEngine(db).complete_transaction(transaction_id, _tenant(user), idempotency_key=idempotency_key)
+        except (IdempotencyConflict, IdempotencyInProgress) as exc:
+            raise _idempotency_error(exc) from exc
+        except LookupError as exc:
+            raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": str(exc)}}) from exc
+        except ValueError as exc:
+            raise HTTPException(409, detail={"status": "error", "error": {"code": "INVALID_STATE", "message": str(exc)}}) from exc
         return {"status": "success", "data": result}
     finally:
         db.close()
 
 
 @router.post("/transactions/{transaction_id}/fail", dependencies=[Depends(require_permission("payments", "update")), Depends(write_limiter.check)])
-async def fail_transaction(transaction_id: str, reason: str = Query("", max_length=500), user: dict = Depends(get_current_user)):
+async def fail_transaction(transaction_id: str, reason: str = Query("", max_length=500), idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=255), user: dict = Depends(get_current_user)):
+    if not idempotency_key:
+        raise HTTPException(428, detail={"status": "error", "error": {"code": "IDEMPOTENCY_KEY_REQUIRED", "message": "Idempotency-Key is required for failure transition"}})
     db = _session()
     try:
-        result = PaymentGatewayEngine(db).fail_transaction(transaction_id, _tenant(user), reason)
-        if result.get("error"):
-            raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": result["error"]}})
+        try:
+            result = PaymentGatewayEngine(db).fail_transaction(transaction_id, _tenant(user), reason, idempotency_key)
+        except (IdempotencyConflict, IdempotencyInProgress) as exc:
+            raise _idempotency_error(exc) from exc
+        except LookupError as exc:
+            raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": str(exc)}}) from exc
+        except ValueError as exc:
+            raise HTTPException(409, detail={"status": "error", "error": {"code": "INVALID_STATE", "message": str(exc)}}) from exc
         return {"status": "success", "data": result}
     finally:
         db.close()
@@ -200,11 +214,15 @@ async def cash_payment(amount: float = Query(..., gt=0), idempotency_key: str | 
 
 
 @router.post("/links", dependencies=[Depends(require_permission("payments", "create")), Depends(write_limiter.check)])
-async def create_payment_link(body: PaymentLinkCreate, user: dict = Depends(get_current_user)):
+async def create_payment_link(body: PaymentLinkCreate, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=255), user: dict = Depends(get_current_user)):
+    if not idempotency_key:
+        raise HTTPException(428, detail={"status": "error", "error": {"code": "IDEMPOTENCY_KEY_REQUIRED", "message": "Idempotency-Key is required for payment links"}})
     db = _session()
     try:
         try:
-            result = PaymentGatewayEngine(db).create_payment_link(_tenant(user), body.amount, body.description, body.customer_email, body.expires_hours)
+            result = PaymentGatewayEngine(db).create_payment_link(_tenant(user), body.amount, body.description, body.customer_email, body.expires_hours, idempotency_key)
+        except (IdempotencyConflict, IdempotencyInProgress) as exc:
+            raise _idempotency_error(exc) from exc
         except ValueError as exc:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "INVALID", "message": str(exc)}}) from exc
         return {"status": "success", "data": result}
