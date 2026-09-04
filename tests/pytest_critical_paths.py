@@ -5,7 +5,7 @@ import pytest
 from fastapi import HTTPException
 
 from core.accounting_engine import AccountingEngine
-from core.auth import require_permission, require_platform_owner
+from core.auth import _authorize_user, require_platform_owner
 from core.security import FieldSecurity, InputValidator, mask_sensitive_data, redact_audit_values
 
 
@@ -148,50 +148,34 @@ def test_journal_post_rejects_non_draft_without_gl_update():
     assert not any('UPDATE dbp_accounts' in sql for sql, _ in db.statements)
 
 
-# require_permission() is a FastAPI dependency factory. Its generated callable
-# receives current_user through dependency injection, so unit tests invoke the
-# underlying dependency explicitly instead of bypassing FastAPI injection.
-def _permission_dependency(module, action):
-    dependency = require_permission(module, action)
-    return dependency.__defaults__[0].dependency
-
-
 @pytest.mark.asyncio
-async def test_authorization_requires_authentication():
-    dependency = _permission_dependency('accounting', 'read')
+async def test_authorization_rejects_missing_user():
     with pytest.raises(HTTPException) as exc:
-        await dependency(None)
+        _authorize_user(None, 'accounting', 'read')
     assert exc.value.status_code == 401
 
 
-@pytest.mark.asyncio
-async def test_authorization_denies_missing_permission():
-    dependency = _permission_dependency('accounting', 'delete')
+def test_authorization_denies_missing_permission():
     with pytest.raises(HTTPException) as exc:
-        await dependency({'permissions': [], 'roles': ['user']})
+        _authorize_user({'permissions': [], 'roles': ['user']}, 'accounting', 'delete')
     assert exc.value.status_code == 403
 
 
-@pytest.mark.asyncio
-async def test_authorization_allows_exact_permission():
-    dependency = _permission_dependency('accounting', 'read')
+def test_authorization_allows_exact_permission():
     user = {'permissions': ['accounting:read'], 'roles': ['user']}
-    assert await dependency(user) == user
+    assert _authorize_user(user, 'accounting', 'read') == user
 
 
-@pytest.mark.asyncio
-async def test_authorization_wildcard_allows_access():
-    dependency = _permission_dependency('accounting', 'delete')
+def test_authorization_wildcard_allows_access():
     user = {'permissions': ['*:*'], 'roles': []}
-    assert await dependency(user) == user
+    assert _authorize_user(user, 'accounting', 'delete') == user
 
 
-@pytest.mark.asyncio
-async def test_authorization_allows_supported_dynamic_operator_actions_only():
+def test_authorization_allows_supported_dynamic_operator_actions_only():
     user = {'permissions': [], 'roles': ['dynamic_operator']}
-    assert await _permission_dependency('dynamic', 'read')(user) == user
+    assert _authorize_user(user, 'dynamic', 'read') == user
     with pytest.raises(HTTPException) as exc:
-        await _permission_dependency('dynamic', 'delete')(user)
+        _authorize_user(user, 'dynamic', 'delete')
     assert exc.value.status_code == 403
 
 
