@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/v1/dynamic/billing-flow", tags=["Billing Flow"])
 
 
 @router.get("/plans", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def plans(db: Session=None):
+async def plans(db: Session = Depends(get_db)):
     return {"status": "success", "data": BillingFlowEngine(db).get_plan_catalog()}
 
 
