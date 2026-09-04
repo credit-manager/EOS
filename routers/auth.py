@@ -5,8 +5,8 @@ Register, login, verify email, password reset, user management.
 import os
 from datetime import datetime, timedelta, timezone
 
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request
-from jose import jwt as jose_jwt
 from sqlalchemy.orm import Session
 
 from core.auth import TEST_ALGORITHM, TEST_SECRET_KEY, require_permission
@@ -105,7 +105,7 @@ async def login(body: dict, db: Session = Depends(get_db)):
     payload = {"sub": result["user_id"], "exp": now + timedelta(minutes=60), "iat": now,
                "type": "access", "tenant_id": result["tenant_id"], "email": result["email"],
                "roles": [result["role"]]}
-    token = jose_jwt.encode(payload, secret_key, algorithm=algorithm)
+    token = jwt.encode(payload, secret_key, algorithm=algorithm)
     return {"status": "success", "data": {"access_token": token, "token_type": "bearer",
         "user": {"id": result["user_id"], "email": result["email"], "first_name": result.get("first_name"),
                   "last_name": result.get("last_name"), "tenant_id": result["tenant_id"], "role": result["role"]}}}
