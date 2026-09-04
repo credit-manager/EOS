@@ -1,6 +1,7 @@
 """Production configuration validator.
 
-Security-critical production settings fail closed at startup.
+Security-critical production settings fail closed at startup, including the
+PostgreSQL role properties required for RLS to be effective.
 """
 import os
 import re
@@ -11,12 +12,33 @@ class ProductionConfigError(Exception):
     pass
 
 
+def _check_database_role() -> tuple[str, str, bool]:
+    """Ensure the application role cannot bypass PostgreSQL RLS."""
+    try:
+        import psycopg2
+        conn = psycopg2.connect(os.environ["DATABASE_URL"], connect_timeout=5)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT r.rolsuper, r.rolbypassrls,
+                           (current_database() = pg_get_userbyid(d.datdba)) AS is_owner
+                    FROM pg_roles r CROSS JOIN pg_database d
+                    WHERE r.rolname = current_user AND d.datname = current_database()
+                """)
+                row = cur.fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return ("DATABASE_ROLE_RLS_SAFE", "INVALID", True)
+        if any(bool(value) for value in row):
+            return ("DATABASE_ROLE_RLS_SAFE", "INVALID: superuser/bypassrls/owner", True)
+        return ("DATABASE_ROLE_RLS_SAFE", "OK", True)
+    except Exception:
+        # Do not permit a production deployment to silently skip this control.
+        return ("DATABASE_ROLE_RLS_SAFE", "UNVERIFIED", True)
+
+
 def validate_production_config() -> list[tuple[str, str, bool]]:
-    """
-    Validate all production configuration.
-    Returns list of (setting, status, is_critical).
-    Raises ProductionConfigError if critical settings are missing.
-    """
     checks = []
 
     def check(name: str, value: str, pattern: str | None = None, critical: bool = True):
@@ -33,17 +55,15 @@ def validate_production_config() -> list[tuple[str, str, bool]]:
     check("EOS_ENVIRONMENT", os.getenv("EOS_ENVIRONMENT", ""), r"^production$", True)
     check("EOS_SECRET_KEY", os.getenv("EOS_SECRET_KEY", ""), r"^.{32,}$", True)
     check("DATABASE_URL", os.getenv("DATABASE_URL", ""), r"^postgresql://.{10,}$", True)
-    # 2FA can be enabled per-user/tenant in the database, so the durable
-    # encryption key must always exist in production.
+    if os.getenv("DATABASE_URL", "").startswith("postgresql://"):
+        checks.append(_check_database_role())
     check("EOS_2FA_ENCRYPTION_KEY", os.getenv("EOS_2FA_ENCRYPTION_KEY", ""), r"^.{44}$", True)
 
     email_provider = os.getenv("EOS_EMAIL_PROVIDER", "")
     check("EOS_EMAIL_PROVIDER", email_provider, r"^smtp$", True)
     if email_provider == "smtp":
-        check("EOS_SMTP_HOST", os.getenv("EOS_SMTP_HOST", ""), critical=True)
-        check("EOS_SMTP_USERNAME", os.getenv("EOS_SMTP_USERNAME", ""), critical=True)
-        check("EOS_SMTP_PASSWORD", os.getenv("EOS_SMTP_PASSWORD", ""), critical=True)
-        check("EOS_FROM_EMAIL", os.getenv("EOS_FROM_EMAIL", ""), critical=True)
+        for name in ("EOS_SMTP_HOST", "EOS_SMTP_USERNAME", "EOS_SMTP_PASSWORD", "EOS_FROM_EMAIL"):
+            check(name, os.getenv(name, ""), critical=True)
 
     payment_mode = os.getenv("EOS_PAYMENT_MODE", "")
     check("EOS_PAYMENT_MODE", payment_mode, r"^(disabled|stripe)$", True)
@@ -53,6 +73,8 @@ def validate_production_config() -> list[tuple[str, str, bool]]:
     check("EOS_FRONTEND_URL", os.getenv("EOS_FRONTEND_URL", ""), r"^https://", True)
     check("EOS_CORS_ORIGINS", os.getenv("EOS_CORS_ORIGINS", ""), critical=True)
     check("EOS_ALLOWED_HOSTS", os.getenv("EOS_ALLOWED_HOSTS", ""), critical=True)
+    if "*" in os.getenv("EOS_ALLOWED_HOSTS", ""):
+        checks.append(("EOS_ALLOWED_HOSTS_WILDCARD", "INVALID", True))
     check("EOS_TRUSTED_HOSTS_ENABLED", os.getenv("EOS_TRUSTED_HOSTS_ENABLED", ""), r"^true$", True)
     check("EOS_DISABLE_DOCS", os.getenv("EOS_DISABLE_DOCS", ""), r"^true$", True)
     check("EOS_RATE_LIMIT_FAIL_CLOSED", os.getenv("EOS_RATE_LIMIT_FAIL_CLOSED", ""), r"^true$", True)
@@ -61,6 +83,11 @@ def validate_production_config() -> list[tuple[str, str, bool]]:
     check("POSTGRES_PASSWORD", os.getenv("POSTGRES_PASSWORD", ""), critical=True)
     check("POSTGRES_DB", os.getenv("POSTGRES_DB", ""), critical=True)
     check("DOMAIN", os.getenv("DOMAIN", ""), r"^https://", True)
+    check("EOS_METRICS_TOKEN", os.getenv("EOS_METRICS_TOKEN", ""), r"^.{32,}$", True)
+    check("EOS_HEALTH_TOKEN", os.getenv("EOS_HEALTH_TOKEN", ""), r"^.{32,}$", True)
+    check("EOS_RUNTIME_SCHEMA", os.getenv("EOS_RUNTIME_SCHEMA", "false"), r"^false$", True)
+    if os.getenv("EOS_OTEL_ENABLED", "false").lower() == "true":
+        check("OTEL_EXPORTER_OTLP_ENDPOINT", os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", ""), r"^https://", True)
     return checks
 
 
@@ -73,7 +100,6 @@ def run_validation():
     except Exception as exc:
         print(f"\n  FATAL: {exc}")
         sys.exit(1)
-
     critical_failures = 0
     for name, status, is_critical in checks:
         if status == "OK":
@@ -83,7 +109,6 @@ def run_validation():
             print(f"  {tag}  {name}: {status}")
             if is_critical:
                 critical_failures += 1
-
     print("\n" + "=" * 60)
     if critical_failures:
         print(f"  FAILED: {critical_failures} critical settings missing/invalid")
