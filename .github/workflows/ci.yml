@@ -83,7 +83,7 @@ jobs:
       postgres:
         image: postgres:15
         env: {POSTGRES_USER: test_user, POSTGRES_PASSWORD: test_pass, POSTGRES_DB: eos_migration}
-        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+        options: --health-cmd "pg_isready -U test_user -d eos_migration" --health-interval 10s --health-timeout 5s --health-retries 5
         ports: ['5432:5432']
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -104,7 +104,8 @@ jobs:
           PGPASSWORD: test_pass
         run: |
           set -euo pipefail
-          trap 'psql -h localhost -U test_user -d eos_migration -v ON_ERROR_STOP=1 -c "DROP ROLE IF EXISTS eos_rls_ci"' EXIT
+          trap 'psql -h localhost -U test_user -d eos_migration -v ON_ERROR_STOP=1 -c "DROP OWNED BY eos_rls_ci" >/dev/null 2>&1 || true; psql -h localhost -U test_user -d eos_migration -v ON_ERROR_STOP=1 -c "DROP ROLE IF EXISTS eos_rls_ci" >/dev/null 2>&1 || true' EXIT
+          psql -h localhost -U test_user -d eos_migration -v ON_ERROR_STOP=1 -c "DROP ROLE IF EXISTS eos_rls_ci"
           psql -h localhost -U test_user -d eos_migration -v ON_ERROR_STOP=1 -c "CREATE ROLE eos_rls_ci LOGIN PASSWORD 'rls_ci_pass' NOSUPERUSER NOBYPASSRLS"
           psql -h localhost -U test_user -d eos_migration -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA public TO eos_rls_ci; GRANT SELECT, INSERT, UPDATE, DELETE ON public.dbp_fiscal_periods TO eos_rls_ci"
           PGPASSWORD=rls_ci_pass psql -h localhost -U eos_rls_ci -d eos_migration -v ON_ERROR_STOP=1 -c "SET app.tenant_id='tenant-a'; INSERT INTO public.dbp_fiscal_periods(id,tenant_id,company_id,period_code,start_date,end_date) VALUES ('rls-a','tenant-a','company-a','2026-01','2026-01-01','2026-01-31')"
