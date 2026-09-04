@@ -25,3 +25,5 @@ def test_analytics_query_binds_tenant_instead_of_interpolating():
     assert "tenant_id = :_tid" in statement
     assert "tenant-a" not in statement
     assert params["_tid"] == "tenant-a"
+
+# Analytics tenant-binding regression coverage is intentionally kept in this focused file.
