@@ -19,7 +19,8 @@ class FinancialReportingEngine:
     def _company_exists(self, tenant_id: str, company_id: str) -> bool:
         return bool(self.db.execute(text("SELECT 1 FROM dbp_companies WHERE id=:cid AND tenant_id=:tid"), {"cid": company_id, "tid": tenant_id}).fetchone())
 
-    def _validate_dates(self, start_date: str, end_date: str) -> None:
+    @staticmethod
+    def _validate_dates(start_date: str, end_date: str) -> None:
         start, end = date.fromisoformat(start_date), date.fromisoformat(end_date)
         if start > end:
             raise ValueError("start_date must not be after end_date")
@@ -29,15 +30,10 @@ class FinancialReportingEngine:
         if not self._company_exists(tenant_id, company_id):
             raise LookupError("Company not found")
         rows = self.db.execute(text("""
-            SELECT a.account_type, a.id, a.code, a.name_en,
-                   COALESCE(SUM(l.debit),0) AS debit, COALESCE(SUM(l.credit),0) AS credit
-            FROM dbp_accounts a
-            JOIN dbp_journal_lines l ON l.account_id=a.id
-            JOIN dbp_journal_entries j ON j.id=l.journal_entry_id
-            WHERE a.tenant_id=:tid AND a.company_id=:cid AND j.tenant_id=:tid
-              AND j.company_id=:cid AND j.status='posted'
-              AND j.entry_date BETWEEN :start_date AND :end_date
-              AND a.account_type IN ('revenue','expense')
+            SELECT a.account_type,a.id,a.code,a.name_en,COALESCE(SUM(l.debit),0) AS debit,COALESCE(SUM(l.credit),0) AS credit
+            FROM dbp_accounts a JOIN dbp_journal_lines l ON l.account_id=a.id JOIN dbp_journal_entries j ON j.id=l.journal_entry_id
+            WHERE a.tenant_id=:tid AND a.company_id=:cid AND j.tenant_id=:tid AND j.company_id=:cid AND j.status='posted'
+              AND j.entry_date BETWEEN :start_date AND :end_date AND a.account_type IN ('revenue','expense')
             GROUP BY a.account_type,a.id,a.code,a.name_en ORDER BY a.code
         """), {"tid": tenant_id, "cid": company_id, "start_date": start_date, "end_date": end_date}).fetchall()
         revenue, expenses = [], []
@@ -55,26 +51,25 @@ class FinancialReportingEngine:
         if not self._company_exists(tenant_id, company_id):
             raise LookupError("Company not found")
         rows = self.db.execute(text("""
-            SELECT a.id,a.code,a.name_en,a.account_type,
-                   COALESCE(SUM(l.debit),0) AS debit, COALESCE(SUM(l.credit),0) AS credit
+            SELECT a.id,a.code,a.name_en,a.account_type,a.opening_balance,
+                   COALESCE(SUM(l.debit),0) AS debit,COALESCE(SUM(l.credit),0) AS credit
             FROM dbp_accounts a
             LEFT JOIN dbp_journal_lines l ON l.account_id=a.id
             LEFT JOIN dbp_journal_entries j ON j.id=l.journal_entry_id
               AND j.tenant_id=:tid AND j.company_id=:cid AND j.status='posted' AND j.entry_date<=:as_of
-            WHERE a.tenant_id=:tid AND a.company_id=:cid AND a.is_active=true
-              AND a.account_type IN ('asset','liability','equity')
-            GROUP BY a.id,a.code,a.name_en,a.account_type ORDER BY a.code
+            WHERE a.tenant_id=:tid AND a.company_id=:cid AND a.is_active=true AND a.account_type IN ('asset','liability','equity')
+            GROUP BY a.id,a.code,a.name_en,a.account_type,a.opening_balance ORDER BY a.code
         """), {"tid": tenant_id, "cid": company_id, "as_of": as_of}).fetchall()
         sections = {"asset": [], "liability": [], "equity": []}
         for r in rows:
-            debit, credit = self._money(r.debit), self._money(r.credit)
-            amount = debit - credit if r.account_type == "asset" else credit - debit
+            debit, credit, opening = self._money(r.debit), self._money(r.credit), self._money(r.opening_balance)
+            amount = opening + (debit - credit if r.account_type == "asset" else credit - debit)
             sections[r.account_type].append({"account_id": r.id, "code": r.code, "name": r.name_en, "amount": amount})
         totals = {k: sum(x["amount"] for x in v) for k, v in sections.items()}
         return {"as_of": as_of, "assets": sections["asset"], "liabilities": sections["liability"], "equity": sections["equity"], "total_assets": totals["asset"], "total_liabilities": totals["liability"], "total_equity": totals["equity"], "is_balanced": abs(totals["asset"] - totals["liability"] - totals["equity"]) < 0.001}
 
     def close_period(self, tenant_id: str, company_id: str, period_id: str, user_id: str | None = None) -> dict:
-        row = self.db.execute(text("SELECT id,status,start_date,end_date FROM dbp_fiscal_periods WHERE id=:pid AND tenant_id=:tid AND company_id=:cid FOR UPDATE"), {"pid": period_id, "tid": tenant_id, "cid": company_id}).fetchone()
+        row = self.db.execute(text("SELECT id,status FROM dbp_fiscal_periods WHERE id=:pid AND tenant_id=:tid AND company_id=:cid FOR UPDATE"), {"pid": period_id, "tid": tenant_id, "cid": company_id}).fetchone()
         if not row:
             raise LookupError("Fiscal period not found")
         if row.status != "open":
