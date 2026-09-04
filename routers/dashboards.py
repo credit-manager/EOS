@@ -1,16 +1,17 @@
 """
 P16 Dashboard / Analytics Router — CRUD + execute + KPI
 """
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+from typing import Optional, List
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import text
-from sqlalchemy.orm import Session
-
-from core.analytics_engine import AnalyticsEngine
-from core.auth import require_permission
-from core.rate_limit import read_limiter, write_limiter
 from database import get_db
+from core.auth import get_current_user, require_permission
+from core.rate_limit import read_limiter, write_limiter
+from core.analytics_engine import AnalyticsEngine
+
 
 router = APIRouter(
     prefix="/api/v1/dynamic",
@@ -30,7 +31,7 @@ router = APIRouter(
     ],
 )
 async def list_dashboards(
-    user: dict | None=None,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """List dashboards visible to the current user."""
@@ -85,7 +86,7 @@ async def list_dashboards(
 )
 async def create_dashboard(
     body: dict,
-    user: dict | None=None,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Create a new dashboard."""
@@ -145,7 +146,7 @@ async def create_dashboard(
 )
 async def get_dashboard(
     dashboard_id: str,
-    db: Session=None,
+    db: Session = Depends(get_db),
 ):
     """Get dashboard with all widgets."""
     engine = AnalyticsEngine(db)
@@ -169,7 +170,7 @@ async def get_dashboard(
 )
 async def delete_dashboard(
     dashboard_id: str,
-    db: Session=None,
+    db: Session = Depends(get_db),
 ):
     """Delete a dashboard and its widgets."""
     result = db.execute(
@@ -201,7 +202,7 @@ async def delete_dashboard(
 async def create_widget(
     dashboard_id: str,
     body: dict,
-    db: Session=None,
+    db: Session = Depends(get_db),
 ):
     """Add a widget to a dashboard."""
     # Validate dashboard exists
@@ -282,7 +283,7 @@ async def create_widget(
 )
 async def list_widgets(
     dashboard_id: str,
-    db: Session=None,
+    db: Session = Depends(get_db),
 ):
     """List widgets for a dashboard."""
     rows = db.execute(
@@ -319,7 +320,7 @@ async def list_widgets(
 async def delete_widget(
     dashboard_id: str,
     widget_id: str,
-    db: Session=None,
+    db: Session = Depends(get_db),
 ):
     """Delete a widget from a dashboard."""
     result = db.execute(
@@ -349,7 +350,7 @@ async def delete_widget(
     ],
 )
 async def list_kpis(
-    db: Session=None,
+    db: Session = Depends(get_db),
 ):
     """List all KPI definitions."""
     rows = db.execute(
@@ -383,7 +384,7 @@ async def list_kpis(
 )
 async def create_kpi(
     body: dict,
-    db: Session=None,
+    db: Session = Depends(get_db),
 ):
     """Create a KPI definition."""
     code = body.get("code")
@@ -443,7 +444,7 @@ async def create_kpi(
 )
 async def execute_kpi(
     kpi_id: str,
-    user: dict | None=None,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Execute a KPI and return the result."""
@@ -469,7 +470,7 @@ async def execute_kpi(
 )
 async def delete_kpi(
     kpi_id: str,
-    db: Session=None,
+    db: Session = Depends(get_db),
 ):
     """Delete a KPI definition."""
     result = db.execute(
@@ -500,7 +501,7 @@ async def delete_kpi(
 )
 async def run_aggregation(
     body: dict,
-    user: dict | None=None,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Run an ad-hoc aggregation query."""
