@@ -72,21 +72,54 @@ class PaymentGatewayEngine:
             self.db.rollback()
             raise
 
-    def complete_transaction(self, transaction_id, tenant_id, gateway_response=None):
-        row = self.db.execute(text("SELECT id FROM dbp_payment_transactions WHERE id = :id AND tenant_id = :t FOR UPDATE"), {"id": transaction_id, "t": tenant_id}).fetchone()
-        if not row:
-            return {"error": "Transaction not found"}
-        self.db.execute(text("UPDATE dbp_payment_transactions SET status='completed', completed_at=NOW(), gateway_response = gateway_response || :resp WHERE id = :id AND tenant_id = :t"), {"id": transaction_id, "t": tenant_id, "resp": json.dumps(gateway_response or {})})
-        self.db.commit()
-        return {"status": "completed", "transaction_id": transaction_id}
+    def complete_transaction(self, transaction_id, tenant_id, gateway_response=None, idempotency_key=None):
+        request_payload = {"transaction_id": transaction_id, "gateway_response": gateway_response or {}, "operation": "complete"}
+        idem = IdempotencyStore(self.db)
+        if idempotency_key:
+            replay = idem.reserve(tenant_id, idempotency_key, request_payload)
+            if replay is not None:
+                return replay.get("response_body") or {}
+        try:
+            row = self.db.execute(text("SELECT id, status FROM dbp_payment_transactions WHERE id = :id AND tenant_id = :t FOR UPDATE"), {"id": transaction_id, "t": tenant_id}).fetchone()
+            if not row:
+                raise LookupError("Transaction not found")
+            if row.status == "completed":
+                response = {"status": "completed", "transaction_id": transaction_id}
+            elif row.status == "failed":
+                raise ValueError("Failed transaction cannot be completed")
+            else:
+                self.db.execute(text("UPDATE dbp_payment_transactions SET status='completed', completed_at=NOW(), gateway_response = gateway_response || :resp WHERE id = :id AND tenant_id = :t"), {"id": transaction_id, "t": tenant_id, "resp": json.dumps(gateway_response or {})})
+                response = {"status": "completed", "transaction_id": transaction_id}
+            if idempotency_key:
+                idem.complete(tenant_id, idempotency_key, 200, response)
+            self.db.commit()
+            return response
+        except Exception:
+            self.db.rollback()
+            raise
 
-    def fail_transaction(self, transaction_id, tenant_id, reason=""):
-        row = self.db.execute(text("SELECT id FROM dbp_payment_transactions WHERE id = :id AND tenant_id = :t FOR UPDATE"), {"id": transaction_id, "t": tenant_id}).fetchone()
-        if not row:
-            return {"error": "Transaction not found"}
-        self.db.execute(text("UPDATE dbp_payment_transactions SET status='failed', gateway_response = gateway_response || :resp WHERE id = :id AND tenant_id = :t"), {"id": transaction_id, "t": tenant_id, "resp": json.dumps({"failure_reason": reason})})
-        self.db.commit()
-        return {"status": "failed", "transaction_id": transaction_id}
+    def fail_transaction(self, transaction_id, tenant_id, reason="", idempotency_key=None):
+        request_payload = {"transaction_id": transaction_id, "reason": reason, "operation": "fail"}
+        idem = IdempotencyStore(self.db)
+        if idempotency_key:
+            replay = idem.reserve(tenant_id, idempotency_key, request_payload)
+            if replay is not None:
+                return replay.get("response_body") or {}
+        try:
+            row = self.db.execute(text("SELECT id, status FROM dbp_payment_transactions WHERE id = :id AND tenant_id = :t FOR UPDATE"), {"id": transaction_id, "t": tenant_id}).fetchone()
+            if not row:
+                raise LookupError("Transaction not found")
+            if row.status == "completed":
+                raise ValueError("Completed transaction cannot be failed")
+            self.db.execute(text("UPDATE dbp_payment_transactions SET status='failed', gateway_response = gateway_response || :resp WHERE id = :id AND tenant_id = :t"), {"id": transaction_id, "t": tenant_id, "resp": json.dumps({"failure_reason": reason})})
+            response = {"status": "failed", "transaction_id": transaction_id}
+            if idempotency_key:
+                idem.complete(tenant_id, idempotency_key, 200, response)
+            self.db.commit()
+            return response
+        except Exception:
+            self.db.rollback()
+            raise
 
     def refund_transaction(self, transaction_id, tenant_id, amount=None, idempotency_key=None):
         row = self.db.execute(text("SELECT * FROM dbp_payment_transactions WHERE id = :id AND tenant_id = :t FOR UPDATE"), {"id": transaction_id, "t": tenant_id}).fetchone()
@@ -138,14 +171,27 @@ class PaymentGatewayEngine:
         row = self.db.execute(text("SELECT * FROM dbp_payment_transactions WHERE id = :id AND tenant_id = :t"), {"id": transaction_id, "t": tenant_id}).fetchone()
         return dict(row._mapping) if row else None
 
-    def create_payment_link(self, tenant_id, amount, description=None, email=None, expires_hours=24):
+    def create_payment_link(self, tenant_id, amount, description=None, email=None, expires_hours=24, idempotency_key=None):
         if amount is None or float(amount) <= 0:
             raise ValueError("Payment amount must be positive")
+        idem = IdempotencyStore(self.db)
+        request_payload = {"amount": str(amount), "description": description, "customer_email": email, "expires_hours": expires_hours, "operation": "create_payment_link"}
+        if idempotency_key:
+            replay = idem.reserve(tenant_id, idempotency_key, request_payload)
+            if replay is not None:
+                return replay.get("response_body") or {}
         link_id = str(uuid.uuid4())
         token = secrets.token_urlsafe(32)
-        self.db.execute(text("INSERT INTO dbp_payment_links (id, tenant_id, link_token, amount, description, customer_email, expires_at) VALUES (:id, :t, :token, :amt, :desc, :email, NOW() + (:hrs || ' hours')::interval)"), {"id": link_id, "t": tenant_id, "token": token, "amt": float(amount), "desc": description, "email": email, "hrs": str(expires_hours)})
-        self.db.commit()
-        return {"link_id": link_id, "payment_url": f"/pay/{token}", "token": token}
+        response = {"link_id": link_id, "payment_url": f"/pay/{token}", "token": token}
+        try:
+            self.db.execute(text("INSERT INTO dbp_payment_links (id, tenant_id, link_token, amount, description, customer_email, expires_at) VALUES (:id, :t, :token, :amt, :desc, :email, NOW() + (:hrs || ' hours')::interval)"), {"id": link_id, "t": tenant_id, "token": token, "amt": float(amount), "desc": description, "email": email, "hrs": str(expires_hours)})
+            if idempotency_key:
+                idem.complete(tenant_id, idempotency_key, 200, response)
+            self.db.commit()
+            return response
+        except Exception:
+            self.db.rollback()
+            raise
 
     def process_bank_transfer(self, tenant_id, amount, bank_name, account_number, reference, idempotency_key=None):
         if not account_number:
