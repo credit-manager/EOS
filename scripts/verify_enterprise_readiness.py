@@ -1,17 +1,8 @@
-"""Fail-closed production readiness checks that require real deployment evidence.
-
-Usage in a production environment:
-    python scripts/verify_enterprise_readiness.py
-
-This intentionally does not manufacture evidence for HA, backups, storage,
-network egress, tracing, or compliance. Those checks require live infrastructure
-and are reported as FAIL until the operator provides explicit evidence variables.
-"""
+"""Fail-closed production readiness checks requiring real deployment evidence."""
 
 import os
 import sys
 from urllib.parse import urlparse
-
 
 REQUIRED_TRUE = {
     "EOS_AUTH_MODE": "production",
@@ -41,8 +32,13 @@ EVIDENCE_FLAGS = {
 }
 
 
-def _ok(name: str, value: str | None) -> bool:
+def _ok(value: str | None) -> bool:
     return value is not None and value.strip().lower() == "true"
+
+
+def _secret(name: str, minimum: int = 32) -> bool:
+    value = os.getenv(name, "")
+    return len(value) >= minimum and not value.startswith("CHANGE_ME")
 
 
 def main() -> int:
@@ -58,12 +54,12 @@ def main() -> int:
         else:
             print(f"OK    {name}")
 
-    secret = os.getenv("EOS_SECRET_KEY", "")
-    if len(secret) < 32:
-        failures.append("EOS_SECRET_KEY must contain at least 32 characters")
-        print("FAIL  EOS_SECRET_KEY")
-    else:
-        print("OK    EOS_SECRET_KEY")
+    for name in ("EOS_SECRET_KEY", "EOS_METRICS_TOKEN", "EOS_HEALTH_TOKEN"):
+        if _secret(name):
+            print(f"OK    {name}")
+        else:
+            failures.append(f"{name} must be a real secret of at least 32 characters")
+            print(f"FAIL  {name}")
 
     database_url = os.getenv("DATABASE_URL", "")
     parsed = urlparse(database_url)
@@ -81,7 +77,7 @@ def main() -> int:
         print("OK    EOS_ALLOWED_HOSTS")
 
     for name, description in EVIDENCE_FLAGS.items():
-        if _ok(name, os.getenv(name)):
+        if _ok(os.getenv(name)):
             print(f"OK    {name}")
         else:
             failures.append(f"{name}: {description}")
