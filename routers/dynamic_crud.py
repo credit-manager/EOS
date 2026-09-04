@@ -143,7 +143,13 @@ async def list_records(entity_code: str, filters: str | None = None, sort: str |
                         record[inc] = []
                         continue
                     junction, j_src, j_tgt = map(_validate_identifier, (junction, j_src, j_tgt))
-                    rows = db.execute(text(f"SELECT t.* FROM {target_table} t INNER JOIN {junction} j ON j.{j_tgt} = t.{target_col} WHERE j.{j_src} = :sv LIMIT 100"), {"sv": source_value}).fetchall()
+                    where_parts = [f"j.{j_src} = :sv"]
+                    rel_params = {"sv": source_value}
+                    if tenant_scope and tenant_id:
+                        where_parts.extend(["t.tenant_id = :tid", "j.tenant_id = :tid"])
+                        rel_params["tid"] = tenant_id
+                    rel_where = " AND ".join(where_parts)
+                    rows = db.execute(text(f"SELECT t.* FROM {target_table} t INNER JOIN {junction} j ON j.{j_tgt} = t.{target_col} WHERE {rel_where} LIMIT 100"), rel_params).fetchall()
                     record[inc] = [{k: v for k, v in row._mapping.items() if k != "tenant_id"} for row in rows]
                 else:
                     rows = db.execute(text(f"SELECT * FROM {target_table} WHERE {rel_where} LIMIT 100"), rel_params).fetchall()
@@ -247,7 +253,7 @@ async def restore_record(entity_code: str, record_id: str, request: Request, db:
     auth_tenant_id = _require_tenant(current_user) if verification.has_tenant_id_column() else current_user.get("tenant_id")
     table_name = _validate_identifier(verification.entity_meta["table_mapping"])
     where = "WHERE id = :id" + (" AND tenant_id = :tenant_id" if verification.has_tenant_id_column() else "")
-    params = {"id": record_id};
+    params = {"id": record_id}
     if verification.has_tenant_id_column(): params["tenant_id"] = auth_tenant_id
     row = db.execute(text(f"SELECT deleted_at FROM {table_name} {where}"), params).fetchone()
     if not row: raise HTTPException(status_code=404, detail="السجل غير موجود")
