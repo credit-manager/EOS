@@ -32,12 +32,11 @@ api.interceptors.response.use(
 
 export const authAPI = {
   login: (credentials) => api.post('/auth/login', credentials),
-  logout: () => api.post('/auth/logout'),
   me: () => api.get('/auth/me'),
   forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
   resetPassword: (token, newPassword) => api.post('/auth/reset-password', { token, new_password: newPassword }),
   verifyEmail: (token) => api.post('/auth/verify-email', { token }),
-  verify2FA: (code) => api.post('/auth/verify-2fa', { code }),
+  verify2FA: (code) => api.post('/auth/2fa/verify', { code }),
 }
 
 export const industryAPI = {
