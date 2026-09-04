@@ -1,5 +1,8 @@
 name: One-time dashboard tenant hardening
 on:
+  push:
+    branches:
+      - custom-erp-system-for-companies-24152
   workflow_dispatch:
 permissions:
   contents: write
@@ -20,14 +23,11 @@ jobs:
           '    engine = AnalyticsEngine(db)\n    result = engine.execute_dashboard(dashboard_id)': '''    tenant_id = user.get("tenant_id")\n    dash = db.execute(\n        text("SELECT id FROM dbp_dashboards WHERE id = :id AND (tenant_id = :tid OR tenant_id IS NULL)"),\n        {"id": dashboard_id, "tid": tenant_id},\n    ).fetchone()\n    if not dash:\n        raise HTTPException(status_code=404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Dashboard not found"}})\n\n    engine = AnalyticsEngine(db)\n    result = engine.execute_dashboard(dashboard_id, tenant_id=tenant_id)''',
           '    # Validate dashboard exists\n    dash = db.execute(\n        text("SELECT id FROM dbp_dashboards WHERE id = :id"),\n        {"id": dashboard_id},\n    ).fetchone()\n    if not dash:\n        raise HTTPException(status_code=404, detail={\n            "status": "error",\n            "error": {"code": "NOT_FOUND", "message": "Dashboard not found"},\n        })\n\n': '',
           '    result = db.execute(\n        text("DELETE FROM dbp_dashboard_widgets WHERE id = :id AND dashboard_id = :did"),\n        {"id": widget_id, "did": dashboard_id},\n    )': '''    result = db.execute(\n        text("""DELETE FROM dbp_dashboard_widgets w USING dbp_dashboards d\n                  WHERE w.id = :id AND w.dashboard_id = :did\n                    AND d.id = w.dashboard_id\n                    AND (d.tenant_id = :tid OR d.tenant_id IS NULL)"""),\n        {"id": widget_id, "did": dashboard_id, "tid": user["tenant_id"]},\n    )''',
-          '            "FROM dbp_kpis ORDER BY code"': '            "FROM dbp_kpis ORDER BY code"',
           }
           for a,b in replacements.items():
-              if a not in s and a != '            "FROM dbp_kpis ORDER BY code"':
+              if a not in s:
                   raise SystemExit(f'missing expected pattern: {a[:100]}')
               s=s.replace(a,b,1)
-          # KPI tables are legacy/global in this schema; prevent tenant-specific creation/deletion assumptions.
-          # Ensure entity validation is tenant-aware through the dashboard execution path, while KPI definitions remain read-only here.
           p.write_text(s)
           PY
           python -m py_compile routers/dashboards.py
@@ -37,9 +37,6 @@ jobs:
           from unittest.mock import MagicMock
           import pytest
           from routers.dashboards import get_dashboard, delete_dashboard, list_widgets, delete_widget
-          
-          def row(*values):
-              return values
           
           @pytest.mark.asyncio
           async def test_get_dashboard_rejects_foreign_tenant():
