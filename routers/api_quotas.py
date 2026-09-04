@@ -41,7 +41,7 @@ async def create_api_key(cid: str, body: dict,
 
 @router.post("/api-keys/{kid}/revoke",
              dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def revoke_api_key(kid: str, db: Session=None):
+async def revoke_api_key(kid: str, db: Session = Depends(get_db)):
     result = APIQuotaEngine(db).revoke_api_key(kid)
     if not result["success"]:
         raise HTTPException(404, detail={"status": "error",
