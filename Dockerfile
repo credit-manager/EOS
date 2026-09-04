@@ -2,7 +2,18 @@
 # Multi-stage build for smaller production image
 
 # ═══════════════════════════════════════════════
-# Stage 1: Build dependencies
+# Stage 1: Frontend build (canonical source: /frontend)
+# ═══════════════════════════════════════════════
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm install --no-audit --no-fund
+COPY frontend/ ./
+RUN npm run build
+
+# ═══════════════════════════════════════════════
+# Stage 2: Python build dependencies
 # ═══════════════════════════════════════════════
 FROM python:3.14-slim AS builder
 
@@ -19,7 +30,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # ═══════════════════════════════════════════════
-# Stage 2: Production runtime
+# Stage 3: Production runtime
 # ═══════════════════════════════════════════════
 FROM python:3.14-slim
 
@@ -39,6 +50,10 @@ COPY --from=builder /root/.local /home/eos/.local
 
 # Copy application code
 COPY --chown=eos:eos . .
+
+# Replace committed/stale UI output with the build generated from canonical frontend source
+RUN rm -rf /app/eos-system/frontend/dist
+COPY --from=frontend-builder --chown=eos:eos /app/frontend/dist /app/eos-system/frontend/dist
 
 # Switch to non-root user
 USER eos
