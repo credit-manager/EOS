@@ -67,9 +67,22 @@ class IdempotencyStore:
         if getattr(result, "rowcount", 1) == 0:
             raise RuntimeError("Idempotency key is missing or already completed")
 
+    def purge_completed(self, tenant_id: str, retention_days: int = 30) -> int:
+        """Remove completed keys after the retention window; tenant-scoped and bounded."""
+        retention_days = max(1, min(int(retention_days), 3650))
+        result = self.db.execute(text("""
+            DELETE FROM dbp_idempotency_keys
+            WHERE tenant_id=:tenant_id
+              AND completed_at IS NOT NULL
+              AND completed_at < NOW() - (:retention_days * INTERVAL '1 day')
+        """), {"tenant_id": tenant_id, "retention_days": retention_days})
+        return int(getattr(result, "rowcount", 0) or 0)
+
 
 class OutboxStore:
     """Transactional outbox access; the caller owns the surrounding transaction."""
+    MAX_ATTEMPTS = 10
+
     def __init__(self, db):
         self.db = db
 
@@ -77,29 +90,46 @@ class OutboxStore:
         if not tenant_id:
             raise ValueError("tenant_id is required")
         event_id = str(uuid.uuid4())
-        row = self.db.execute(text("""
+        inserted = self.db.execute(text("""
             INSERT INTO dbp_outbox_events
                 (id, tenant_id, event_type, aggregate_type, aggregate_id, payload)
             VALUES (:id, :tenant_id, :event_type, :aggregate_type, :aggregate_id, :payload)
-            ON CONFLICT (tenant_id, event_type, aggregate_type, aggregate_id) DO UPDATE
-                SET aggregate_id = EXCLUDED.aggregate_id
+            ON CONFLICT (tenant_id, event_type, aggregate_type, aggregate_id) DO NOTHING
             RETURNING id
         """), {"id": event_id, "tenant_id": tenant_id, "event_type": event_type,
                "aggregate_type": aggregate_type, "aggregate_id": aggregate_id,
                "payload": json.dumps(payload, default=str)}).fetchone()
+        if inserted:
+            return str(inserted[0])
+        row = self.db.execute(text("""
+            SELECT id FROM dbp_outbox_events
+            WHERE tenant_id=:tenant_id AND event_type=:event_type
+              AND aggregate_type=:aggregate_type AND aggregate_id=:aggregate_id
+        """), {"tenant_id": tenant_id, "event_type": event_type,
+               "aggregate_type": aggregate_type, "aggregate_id": aggregate_id}).fetchone()
         if not row:
             raise RuntimeError("Unable to enqueue outbox event")
         return str(row[0])
 
     def claim_batch(self, tenant_id: str, limit: int = 50) -> list[dict]:
+        """Atomically claim pending rows so concurrent workers cannot process the same event."""
+        if not tenant_id:
+            raise ValueError("tenant_id is required")
         limit = max(1, min(int(limit), 500))
         rows = self.db.execute(text("""
-            SELECT id, event_type, aggregate_type, aggregate_id, payload, attempts
-            FROM dbp_outbox_events
-            WHERE tenant_id=:tenant_id AND status='pending' AND available_at<=NOW()
-            ORDER BY created_at
-            LIMIT :limit
-            FOR UPDATE SKIP LOCKED
+            WITH candidates AS (
+                SELECT id
+                FROM dbp_outbox_events
+                WHERE tenant_id=:tenant_id AND status='pending' AND available_at<=NOW()
+                ORDER BY created_at
+                LIMIT :limit
+                FOR UPDATE SKIP LOCKED
+            )
+            UPDATE dbp_outbox_events AS e
+            SET status='processing', attempts=e.attempts+1
+            FROM candidates
+            WHERE e.id=candidates.id AND e.tenant_id=:tenant_id
+            RETURNING e.id, e.event_type, e.aggregate_type, e.aggregate_id, e.payload, e.attempts
         """), {"tenant_id": tenant_id, "limit": limit}).fetchall()
         return [dict(r._mapping) for r in rows]
 
@@ -110,4 +140,11 @@ class OutboxStore:
         self.db.execute(text("UPDATE dbp_outbox_events SET status='processed', processed_at=NOW(), last_error=NULL WHERE id=:id AND tenant_id=:tenant_id"), {"id": event_id, "tenant_id": tenant_id})
 
     def mark_failed(self, event_id: str, tenant_id: str, error: str) -> None:
-        self.db.execute(text("UPDATE dbp_outbox_events SET status='pending', last_error=:error, available_at=NOW() + LEAST(3600, POWER(2, attempts)) * INTERVAL '1 second' WHERE id=:id AND tenant_id=:tenant_id"), {"id": event_id, "tenant_id": tenant_id, "error": error[:4000]})
+        self.db.execute(text("""
+            UPDATE dbp_outbox_events
+            SET status=CASE WHEN attempts >= :max_attempts THEN 'failed' ELSE 'pending' END,
+                last_error=:error,
+                available_at=CASE WHEN attempts >= :max_attempts
+                    THEN NOW() ELSE NOW() + LEAST(3600, POWER(2, attempts)) * INTERVAL '1 second' END
+            WHERE id=:id AND tenant_id=:tenant_id AND status='processing'
+        """), {"id": event_id, "tenant_id": tenant_id, "error": error[:4000], "max_attempts": self.MAX_ATTEMPTS})
