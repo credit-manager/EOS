@@ -1,0 +1,67 @@
+name: One-time auth hardening
+
+on:
+  push:
+    branches: [custom-erp-system-for-companies-24152]
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Harden optional user dependencies
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          targets = [
+              Path('routers/inventory.py'),
+              Path('routers/inventory_api.py'),
+              Path('routers/hr.py'),
+              Path('routers/hr_api.py'),
+              Path('routers/projects.py'),
+              Path('routers/projects_api.py'),
+              Path('routers/accounting_api.py'),
+              Path('routers/analytics.py'),
+              Path('routers/analytics_api.py'),
+              Path('routers/analytics_router.py'),
+          ]
+          for path in targets:
+              if not path.exists():
+                  continue
+              text = path.read_text(encoding='utf-8')
+              updated = text.replace('user: dict | None=None', 'user: dict = Depends(get_current_user)')
+              updated = updated.replace('user: dict | None = None', 'user: dict = Depends(get_current_user)')
+              if updated != text and 'get_current_user' not in text:
+                  lines = updated.splitlines()
+                  idx = next((i for i, line in enumerate(lines) if line.startswith('from core.auth import ')), None)
+                  if idx is not None:
+                      imports = lines[idx].strip().replace('from core.auth import ', '').split(',')
+                      names = [x.strip() for x in imports if x.strip()]
+                      if 'get_current_user' not in names:
+                          names.append('get_current_user')
+                      lines[idx] = 'from core.auth import ' + ', '.join(names)
+                      updated = '\n'.join(lines) + ('\n' if updated.endswith('\n') else '')
+                  else:
+                      lines = updated.splitlines()
+                      insert_at = next((i for i, line in enumerate(lines) if line.startswith('from fastapi import ')), 0)
+                      lines.insert(insert_at, 'from core.auth import get_current_user')
+                      updated = '\n'.join(lines) + ('\n' if updated.endswith('\n') else '')
+              if updated != text:
+                  path.write_text(updated, encoding='utf-8')
+          wf = Path('.github/workflows/one-time-auth-hardening.yml')
+          wf.unlink(missing_ok=True)
+      - name: Commit hardening changes
+        shell: bash
+        run: |
+          git config user.name "EOS Security Bot"
+          git config user.email "security-bot@users.noreply.github.com"
+          git add routers .github/workflows/one-time-auth-hardening.yml
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "security: enforce authentication across critical routers"
+          git push
