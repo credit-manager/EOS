@@ -1,0 +1,25 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "name": "EOS Design Tokens",
+  "version": "1.0.0",
+  "color": {
+    "primary": { "950": "#111a2e", "900": "#18233f", "800": "#223052", "700": "#2d426b", "600": "#38578c", "500": "#486faf", "100": "#e8eef7", "50": "#f5f8fc" },
+    "neutral": { "950": "#111827", "900": "#1f2937", "800": "#374151", "700": "#4b5563", "600": "#6b7280", "500": "#9ca3af", "400": "#d1d5db", "300": "#e5e7eb", "200": "#edf0f3", "100": "#f3f4f6", "50": "#f8fafc", "surface": "#ffffff", "canvas": "#f6f8fb" },
+    "semantic": {
+      "success": { "foreground": "#147d4a", "background": "#eaf7f0" },
+      "warning": { "foreground": "#a15c00", "background": "#fff5e6" },
+      "error": { "foreground": "#b42318", "background": "#fff0ee" },
+      "info": { "foreground": "#175cd3", "background": "#eff6ff" }
+    }
+  },
+  "typography": {
+    "fontFamily": "IBM Plex Sans, IBM Plex Sans Arabic, Noto Sans Arabic, Noto Sans, system-ui, sans-serif",
+    "sizes": { "xs": "12px", "sm": "13px", "md": "14px", "lg": "16px", "xl": "20px", "2xl": "24px", "3xl": "32px" }
+  },
+  "spacing": { "1": "4px", "2": "8px", "3": "12px", "4": "16px", "5": "20px", "6": "24px", "8": "32px", "10": "40px", "12": "48px", "16": "64px" },
+  "radius": { "sm": "6px", "md": "8px", "lg": "12px", "xl": "16px" },
+  "density": { "row": "40px", "control": "36px", "mobileRow": "44px" },
+  "motion": { "fast": "120ms", "normal": "180ms" },
+  "accessibility": { "target": "WCAG 2.2 AA", "focusOutline": "2px", "minimumTouchTarget": "44px" },
+  "localization": { "directions": ["ltr", "rtl"], "dateStorage": "ISO-8601/UTC", "numberFormatting": "locale-aware", "currencyFormatting": "locale-aware" }
+}
