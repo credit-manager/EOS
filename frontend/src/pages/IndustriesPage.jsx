@@ -7,7 +7,6 @@ import {
   BuildOutlined,
   CloudOutlined,
   ShopOutlined,
-  FactoryOutlined,
   ShoppingOutlined,
   CoffeeOutlined,
   HeartOutlined,
@@ -19,73 +18,73 @@ import {
 const { Title, Paragraph } = Typography
 
 const industries = [
-  { 
-    key: 'construction', 
-    title: 'construction', 
-    icon: <BuildOutlined />, 
+  {
+    key: 'construction',
+    title: 'construction',
+    icon: <BuildOutlined />,
     color: '#1890ff',
     description: 'إدارة المشاريع والمقاولات الشاملة'
   },
-  { 
-    key: 'tourism', 
-    title: 'tourism', 
-    icon: <CloudOutlined />, 
+  {
+    key: 'tourism',
+    title: 'tourism',
+    icon: <CloudOutlined />,
     color: '#52c41a',
     description: 'أنظمة السياحة والسفر والحجوزات'
   },
-  { 
-    key: 'trading', 
-    title: 'trading', 
-    icon: <ShopOutlined />, 
+  {
+    key: 'trading',
+    title: 'trading',
+    icon: <ShopOutlined />,
     color: '#faad14',
     description: 'التجارة والتوزيع وسلاسل الإمداد'
   },
-  { 
-    key: 'manufacturing', 
-    title: 'manufacturing', 
-    icon: <FactoryOutlined />, 
+  {
+    key: 'manufacturing',
+    title: 'manufacturing',
+    icon: <BuildOutlined />,
     color: '#722ed1',
     description: 'التصنيع وإدارة خطوط الإنتاج'
   },
-  { 
-    key: 'retail', 
-    title: 'retail', 
-    icon: <ShoppingOutlined />, 
+  {
+    key: 'retail',
+    title: 'retail',
+    icon: <ShoppingOutlined />,
     color: '#eb2f96',
     description: 'التجزئة ونقاط البيع المتكاملة'
   },
-  { 
-    key: 'restaurant', 
-    title: 'restaurant', 
-    icon: <CoffeeOutlined />, 
+  {
+    key: 'restaurant',
+    title: 'restaurant',
+    icon: <CoffeeOutlined />,
     color: '#fa8c16',
     description: 'المطاعم وإدارة المطابخ'
   },
-  { 
-    key: 'healthcare', 
-    title: 'healthcare', 
-    icon: <HeartOutlined />, 
+  {
+    key: 'healthcare',
+    title: 'healthcare',
+    icon: <HeartOutlined />,
     color: '#f5222d',
     description: 'الرعاية الصحية والعيادات'
   },
-  { 
-    key: 'education', 
-    title: 'education', 
-    icon: <BookOutlined />, 
+  {
+    key: 'education',
+    title: 'education',
+    icon: <BookOutlined />,
     color: '#13c2c2',
     description: 'المؤسسات التعليمية والمدارس'
   },
-  { 
-    key: 'real_estate', 
-    title: 'real_estate', 
-    icon: <HomeOutlined />, 
+  {
+    key: 'real_estate',
+    title: 'real_estate',
+    icon: <HomeOutlined />,
     color: '#2f54eb',
     description: 'العقارات وإدارة الأملاك'
   },
-  { 
-    key: 'automotive', 
-    title: 'automotive', 
-    icon: <CarOutlined />, 
+  {
+    key: 'automotive',
+    title: 'automotive',
+    icon: <CarOutlined />,
     color: '#8c8c8c',
     description: 'السيارات وقطع الغيار'
   },
@@ -128,10 +127,10 @@ function IndustriesPage() {
                   border: `2px solid ${industry.color}`,
                 }}
               >
-                <div style={{ 
-                  fontSize: 48, 
-                  color: industry.color, 
-                  marginBottom: 16 
+                <div style={{
+                  fontSize: 48,
+                  color: industry.color,
+                  marginBottom: 16
                 }}>
                   {industry.icon}
                 </div>
