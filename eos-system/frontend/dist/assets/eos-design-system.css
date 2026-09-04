@@ -1,0 +1,314 @@
+:root {
+  /* EOS Design Tokens v1.0 */
+  --eos-color-primary-950: #111a2e;
+  --eos-color-primary-900: #18233f;
+  --eos-color-primary-800: #223052;
+  --eos-color-primary-700: #2d426b;
+  --eos-color-primary-600: #38578c;
+  --eos-color-primary-500: #486faf;
+  --eos-color-primary-100: #e8eef7;
+  --eos-color-primary-50: #f5f8fc;
+
+  --eos-color-neutral-950: #111827;
+  --eos-color-neutral-900: #1f2937;
+  --eos-color-neutral-800: #374151;
+  --eos-color-neutral-700: #4b5563;
+  --eos-color-neutral-600: #6b7280;
+  --eos-color-neutral-500: #9ca3af;
+  --eos-color-neutral-400: #d1d5db;
+  --eos-color-neutral-300: #e5e7eb;
+  --eos-color-neutral-200: #edf0f3;
+  --eos-color-neutral-100: #f3f4f6;
+  --eos-color-neutral-50: #f8fafc;
+  --eos-color-surface: #ffffff;
+  --eos-color-canvas: #f6f8fb;
+
+  --eos-color-success: #147d4a;
+  --eos-color-success-bg: #eaf7f0;
+  --eos-color-warning: #a15c00;
+  --eos-color-warning-bg: #fff5e6;
+  --eos-color-error: #b42318;
+  --eos-color-error-bg: #fff0ee;
+  --eos-color-info: #175cd3;
+  --eos-color-info-bg: #eff6ff;
+
+  --eos-font-sans: "IBM Plex Sans", "IBM Plex Sans Arabic", "Noto Sans Arabic", "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --eos-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --eos-font-size-xs: 12px;
+  --eos-font-size-sm: 13px;
+  --eos-font-size-md: 14px;
+  --eos-font-size-lg: 16px;
+  --eos-font-size-xl: 20px;
+  --eos-font-size-2xl: 24px;
+  --eos-font-size-3xl: 32px;
+
+  --eos-space-1: 4px;
+  --eos-space-2: 8px;
+  --eos-space-3: 12px;
+  --eos-space-4: 16px;
+  --eos-space-5: 20px;
+  --eos-space-6: 24px;
+  --eos-space-8: 32px;
+  --eos-space-10: 40px;
+  --eos-space-12: 48px;
+  --eos-space-16: 64px;
+
+  --eos-radius-sm: 6px;
+  --eos-radius-md: 8px;
+  --eos-radius-lg: 12px;
+  --eos-radius-xl: 16px;
+
+  --eos-shadow-sm: 0 1px 2px rgba(16, 24, 40, .05);
+  --eos-shadow-md: 0 4px 12px rgba(16, 24, 40, .08);
+  --eos-shadow-lg: 0 12px 32px rgba(16, 24, 40, .12);
+
+  --eos-density-row: 40px;
+  --eos-density-control: 36px;
+  --eos-motion-fast: 120ms;
+  --eos-motion-normal: 180ms;
+}
+
+html {
+  font-family: var(--eos-font-sans);
+  background: var(--eos-color-canvas);
+  color: var(--eos-color-neutral-950);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  background: var(--eos-color-canvas);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+/* Enterprise shell */
+.ant-layout,
+.ant-layout-content {
+  background: var(--eos-color-canvas) !important;
+}
+
+.ant-layout-sider {
+  background: var(--eos-color-primary-950) !important;
+}
+
+.ant-layout-header {
+  background: var(--eos-color-surface) !important;
+  border-bottom: 1px solid var(--eos-color-neutral-300);
+  box-shadow: var(--eos-shadow-sm);
+}
+
+.ant-menu-dark,
+.ant-menu-dark .ant-menu-sub,
+.ant-menu.ant-menu-dark {
+  background: transparent !important;
+}
+
+.ant-menu-dark .ant-menu-item-selected {
+  background: rgba(255, 255, 255, .10) !important;
+}
+
+.ant-menu-dark .ant-menu-item:hover,
+.ant-menu-dark .ant-menu-submenu-title:hover {
+  background: rgba(255, 255, 255, .06) !important;
+}
+
+/* Typography hierarchy */
+.ant-typography,
+.ant-form,
+.ant-table,
+.ant-btn,
+.ant-input,
+.ant-select,
+.ant-dropdown,
+.ant-modal,
+.ant-drawer,
+.ant-menu,
+.ant-card {
+  font-family: var(--eos-font-sans);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--eos-color-neutral-950);
+  letter-spacing: -0.01em;
+}
+
+/* Controls */
+.ant-btn {
+  border-radius: var(--eos-radius-md);
+  font-weight: 500;
+  transition: background var(--eos-motion-fast), border-color var(--eos-motion-fast), box-shadow var(--eos-motion-fast), transform var(--eos-motion-fast);
+}
+
+.ant-btn-primary {
+  background: var(--eos-color-primary-700) !important;
+  border-color: var(--eos-color-primary-700) !important;
+  box-shadow: none !important;
+}
+
+.ant-btn-primary:hover,
+.ant-btn-primary:focus-visible {
+  background: var(--eos-color-primary-600) !important;
+  border-color: var(--eos-color-primary-600) !important;
+}
+
+.ant-btn:focus-visible,
+.ant-input:focus-visible,
+.ant-select-focused .ant-select-selector,
+.ant-picker-focused {
+  outline: 2px solid var(--eos-color-primary-500);
+  outline-offset: 2px;
+}
+
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select-selector,
+.ant-picker,
+.ant-input-number {
+  border-radius: var(--eos-radius-md) !important;
+  border-color: var(--eos-color-neutral-400) !important;
+  box-shadow: none !important;
+}
+
+.ant-input:hover,
+.ant-input-affix-wrapper:hover,
+.ant-select:hover .ant-select-selector,
+.ant-picker:hover,
+.ant-input-number:hover {
+  border-color: var(--eos-color-primary-500) !important;
+}
+
+/* Cards */
+.ant-card {
+  border: 1px solid var(--eos-color-neutral-300);
+  border-radius: var(--eos-radius-lg);
+  box-shadow: var(--eos-shadow-sm);
+}
+
+.ant-card-head {
+  min-height: 48px;
+  border-bottom-color: var(--eos-color-neutral-300);
+}
+
+/* Data-dense ERP tables */
+.ant-table-wrapper {
+  border: 1px solid var(--eos-color-neutral-300);
+  border-radius: var(--eos-radius-lg);
+  overflow: hidden;
+  background: var(--eos-color-surface);
+}
+
+.ant-table {
+  font-size: var(--eos-font-size-md);
+}
+
+.ant-table-thead > tr > th {
+  background: var(--eos-color-neutral-100) !important;
+  color: var(--eos-color-neutral-800) !important;
+  font-weight: 600;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--eos-color-neutral-300) !important;
+}
+
+.ant-table-tbody > tr > td {
+  border-bottom-color: var(--eos-color-neutral-200) !important;
+  height: var(--eos-density-row);
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: var(--eos-color-primary-50) !important;
+}
+
+/* Status semantics */
+.eos-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--eos-font-size-sm);
+  font-weight: 600;
+}
+
+.eos-status-success { color: var(--eos-color-success); background: var(--eos-color-success-bg); }
+.eos-status-warning { color: var(--eos-color-warning); background: var(--eos-color-warning-bg); }
+.eos-status-error { color: var(--eos-color-error); background: var(--eos-color-error-bg); }
+.eos-status-info { color: var(--eos-color-info); background: var(--eos-color-info-bg); }
+
+/* Empty/error states */
+.eos-empty-state {
+  display: grid;
+  place-items: center;
+  min-height: 280px;
+  padding: var(--eos-space-8);
+  text-align: center;
+  background: var(--eos-color-surface);
+  border: 1px dashed var(--eos-color-neutral-400);
+  border-radius: var(--eos-radius-lg);
+}
+
+.eos-empty-state__title {
+  margin: 0 0 var(--eos-space-2);
+  font-size: var(--eos-font-size-xl);
+  font-weight: 600;
+}
+
+.eos-empty-state__description {
+  max-width: 520px;
+  margin: 0 0 var(--eos-space-6);
+  color: var(--eos-color-neutral-600);
+  line-height: 1.6;
+}
+
+/* RTL/LTR: use logical properties so the same components work in both directions. */
+[dir="rtl"] .ant-table,
+[dir="rtl"] .ant-form,
+[dir="rtl"] .ant-menu,
+[dir="rtl"] .ant-input,
+[dir="rtl"] .ant-select {
+  text-align: start;
+}
+
+/* Do not mirror semantic icons; directional components should opt into logical transforms. */
+[dir="rtl"] .eos-directional-icon {
+  transform: scaleX(-1);
+}
+
+/* Reduced motion is a first-class accessibility preference. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Responsive enterprise behavior */
+@media (max-width: 768px) {
+  :root {
+    --eos-density-row: 44px;
+  }
+
+  .ant-table-wrapper {
+    border-radius: var(--eos-radius-md);
+  }
+
+  .ant-card {
+    border-radius: var(--eos-radius-md);
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --eos-color-neutral-300: #b8bec7;
+    --eos-color-neutral-600: #4b5563;
+  }
+}
