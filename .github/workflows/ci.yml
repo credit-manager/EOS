@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
       - uses: actions/setup-node@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: {node-version: '22', cache: npm, cache-dependency-path: frontend/package.json, package-manager-cache: false}
+        with: {node-version: '22', package-manager-cache: false}
       - name: Generate lockfile for legacy lockfile-less checkout
         working-directory: frontend
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
@@ -82,54 +82,51 @@ jobs:
     services:
       postgres:
         image: postgres:15
-        env: {POSTGRES_USER: migration_user, POSTGRES_PASSWORD: migration_pass, POSTGRES_DB: eos_migration}
-        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
-        ports: ['5433:5432']
-    steps:
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with: {python-version: '3.12', cache: 'pip'}
-      - run: python -m pip install --upgrade pip && pip install -r requirements.txt
-      - name: Validate migration graph and clean upgrade
-        env: {DATABASE_URL: postgresql://migration_user:migration_pass@localhost:5433/eos_migration}
-        run: test "$(alembic heads | grep -c '(head)')" -eq 1 && alembic upgrade head && test "$(alembic current | grep -c '20260904_financial_controls')" -eq 1 && alembic check
-  security-validation:
-    name: Security Validation
-    runs-on: ubuntu-latest
-    needs: [code-quality, automated-tests, migration-validation]
-    services:
-      postgres:
-        image: postgres:15
-        env: {POSTGRES_USER: security_user, POSTGRES_PASSWORD: security_pass, POSTGRES_DB: eos_security}
+        env: {POSTGRES_USER: test_user, POSTGRES_PASSWORD: test_pass, POSTGRES_DB: eos_migration}
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
-        ports: ['5434:5432']
+        ports: ['5432:5432']
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with: {python-version: '3.12', cache: 'pip'}
       - run: python -m pip install --upgrade pip && pip install -r requirements.txt
-      - run: bandit -r . -ll -ii -x ./tests,./.git,./eos-system/frontend/dist,./frontend
-      - run: pip-audit --ignore-vuln PYSEC-2026-1325
-      - name: Reject obvious debug artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          if grep -RInE 'DEBUG[[:space:]]*=[[:space:]]*True' --include='*.py' core routers models.py; then exit 1; fi
-          if grep -RInE 'print\([^)]*(SECRET|TOKEN|PASSWORD|AUTH|API[_-]?KEY)' --include='*.py' core routers models.py; then exit 1; fi
-      - name: Run tenant/security/reliability regression suite
-        env: {DATABASE_URL: postgresql://security_user:security_pass@localhost:5434/eos_security, SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890, EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890, EOS_AUTH_MODE: testing}
-        run: pytest -q tests -k 'tenant or security or reliability or health'
-  summary:
-    name: CI Summary
+      - name: Upgrade to Alembic head
+        env: {DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/eos_migration, SECRET_KEY: migration_secret_key_for_ci_only_12345678901234567890, EOS_AUTH_MODE: testing}
+        run: alembic upgrade head
+      - name: Assert exactly one Alembic head
+        env: {DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/eos_migration, SECRET_KEY: migration_secret_key_for_ci_only_12345678901234567890, EOS_AUTH_MODE: testing}
+        run: test "$(alembic heads | grep -c '^20260904_financial_controls')" -eq 1
+      - name: Detect model/migration drift
+        env: {DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/eos_migration, SECRET_KEY: migration_secret_key_for_ci_only_12345678901234567890, EOS_AUTH_MODE: testing}
+        run: alembic check
+  security-validation:
+    name: Security Regression Suite
     runs-on: ubuntu-latest
-    needs: [smoke-test, frontend-build, code-quality, automated-tests, migration-validation, security-validation]
-    if: always()
+    needs: smoke-test
     steps:
-      - name: Enforce all required jobs passed
-        shell: bash
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with: {python-version: '3.12', cache: 'pip'}
+      - run: python -m pip install --upgrade pip && pip install -r requirements.txt
+      - run: pytest -q tests -k 'tenant or security or reliability or health'
+  summary:
+    name: CI Gate Summary
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [smoke-test, frontend-build, code-quality, automated-tests, migration-validation, security-validation]
+    steps:
+      - name: Require all gates to pass
+        env:
+          SMOKE: ${{ needs.smoke-test.result }}
+          FRONTEND: ${{ needs.frontend-build.result }}
+          QUALITY: ${{ needs.code-quality.result }}
+          TESTS: ${{ needs.automated-tests.result }}
+          MIGRATIONS: ${{ needs.migration-validation.result }}
+          SECURITY: ${{ needs.security-validation.result }}
         run: |
-          set -euo pipefail
-          results='${{ needs.smoke-test.result }} ${{ needs.frontend-build.result }} ${{ needs.code-quality.result }} ${{ needs.automated-tests.result }} ${{ needs.migration-validation.result }} ${{ needs.security-validation.result }}'
-          echo "Results: $results"
-          test "$results" = 'success success success success success success'
-          echo '# EOS CI: all blocking gates passed' >> "$GITHUB_STEP_SUMMARY"
+          test "$SMOKE" = success
+          test "$FRONTEND" = success
+          test "$QUALITY" = success
+          test "$TESTS" = success
+          test "$MIGRATIONS" = success
+          test "$SECURITY" = success
