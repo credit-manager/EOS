@@ -39,14 +39,15 @@ class PaymentGatewayEngine:
         self.db.commit()
         return {"gateway_id": gid, "message": f"Gateway {name} created"}
 
-    def create_transaction(self, tenant_id, amount, currency="SAR", tx_type="payment", ref_type=None, ref_id=None, customer_id=None, method=None, idempotency_key=None):
+    def create_transaction(self, tenant_id, amount, currency="SAR", tx_type="payment", ref_type=None, ref_id=None, customer_id=None, method=None, idempotency_key=None, gateway_metadata=None):
         if amount is None or float(amount) <= 0:
             raise ValueError("Payment amount must be positive")
         currency = (currency or "SAR").upper()
         if len(currency) != 3 or not currency.isalpha():
             raise ValueError("Currency must be a 3-letter ISO code")
+        metadata = gateway_metadata or {}
         idem = IdempotencyStore(self.db)
-        request_payload = {"amount": str(amount), "currency": currency, "transaction_type": tx_type, "reference_type": ref_type, "reference_id": ref_id, "customer_id": customer_id, "payment_method": method}
+        request_payload = {"amount": str(amount), "currency": currency, "transaction_type": tx_type, "reference_type": ref_type, "reference_id": ref_id, "customer_id": customer_id, "payment_method": method, "gateway_metadata": metadata}
         if idempotency_key:
             replay = idem.reserve(tenant_id, idempotency_key, request_payload)
             if replay is not None:
@@ -57,8 +58,11 @@ class PaymentGatewayEngine:
         tid = str(uuid.uuid4())
         ref_number = f"TXN-{secrets.token_hex(4).upper()}"
         response = {"transaction_id": tid, "ref_number": ref_number, "status": "pending"}
+        gateway_response = {"ref_number": ref_number}
+        if metadata:
+            gateway_response["metadata"] = metadata
         try:
-            self.db.execute(text("INSERT INTO dbp_payment_transactions (id, tenant_id, transaction_type, amount, currency, status, reference_type, reference_id, customer_id, payment_method, gateway_response) VALUES (:id, :t, :type, :amt, :cur, 'pending', :rtype, :rid, :cid, :method, :resp)"), {"id": tid, "t": tenant_id, "type": tx_type, "amt": float(amount), "cur": currency, "rtype": ref_type, "rid": ref_id, "cid": customer_id, "method": method, "resp": json.dumps({"ref_number": ref_number})})
+            self.db.execute(text("INSERT INTO dbp_payment_transactions (id, tenant_id, transaction_type, amount, currency, status, reference_type, reference_id, customer_id, payment_method, gateway_response) VALUES (:id, :t, :type, :amt, :cur, 'pending', :rtype, :rid, :cid, :method, :resp)"), {"id": tid, "t": tenant_id, "type": tx_type, "amt": float(amount), "cur": currency, "rtype": ref_type, "rid": ref_id, "cid": customer_id, "method": method, "resp": json.dumps(gateway_response)})
             OutboxStore(self.db).enqueue(tenant_id, "payment.created", "payment_transaction", tid, response)
             if idempotency_key:
                 idem.complete(tenant_id, idempotency_key, 200, response)
@@ -151,10 +155,11 @@ class PaymentGatewayEngine:
         if not reference:
             raise ValueError("Bank transfer reference is required")
         metadata = {"bank_name": bank_name, "account_number_last4": account_number[-4:], "reference": reference}
-        return self.create_transaction(tenant_id, amount, method="bank_transfer", ref_type="bank_transfer", ref_id=reference, idempotency_key=idempotency_key)
+        return self.create_transaction(tenant_id, amount, method="bank_transfer", ref_type="bank_transfer", ref_id=reference, idempotency_key=idempotency_key, gateway_metadata=metadata)
 
     def process_cash(self, tenant_id, amount, received_by=None, idempotency_key=None):
-        return self.create_transaction(tenant_id, amount, method="cash", idempotency_key=idempotency_key)
+        metadata = {"received_by": received_by} if received_by else None
+        return self.create_transaction(tenant_id, amount, method="cash", idempotency_key=idempotency_key, gateway_metadata=metadata)
 
     def get_summary(self, tenant_id):
         total = self.db.execute(text("SELECT COALESCE(SUM(amount),0) FROM dbp_payment_transactions WHERE tenant_id = :t AND status = 'completed' AND transaction_type = 'payment'"), {"t": tenant_id}).fetchone()[0]
