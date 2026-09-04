@@ -29,6 +29,12 @@ const menuItems = [
   { key: '/settings', icon: <SettingOutlined />, label: 'settings' },
 ]
 
+function clearAuthState() {
+  localStorage.removeItem('eos_token')
+  localStorage.removeItem('eos_tenant_id')
+  localStorage.removeItem('eos_user')
+}
+
 function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const [languageDrawerOpen, setLanguageDrawerOpen] = useState(false)
@@ -60,9 +66,8 @@ function Layout() {
         label: t('logout'),
         danger: true,
         onClick: () => {
-          localStorage.removeItem('eos_token')
-          localStorage.removeItem('eos_tenant_id')
-          navigate('/login')
+          clearAuthState()
+          navigate('/login', { replace: true })
         },
       },
     ],
@@ -97,14 +102,14 @@ function Layout() {
             <Badge count={3} size="small">
               <BellOutlined className="header-icon" />
             </Badge>
-            <GlobalOutlined 
-              className="header-icon" 
+            <GlobalOutlined
+              className="header-icon"
               onClick={() => setLanguageDrawerOpen(true)}
               style={{ cursor: 'pointer' }}
             />
             <Dropdown menu={userMenu} placement="bottomRight" arrow>
-              <Avatar 
-                icon={<UserOutlined />} 
+              <Avatar
+                icon={<UserOutlined />}
                 size="large"
                 style={{ backgroundColor: '#1890ff', cursor: 'pointer' }}
               />
@@ -116,7 +121,6 @@ function Layout() {
         </Content>
       </AntLayout>
 
-      {/* Language Switcher Drawer */}
       <Drawer
         title={t('language')}
         placement="right"
@@ -124,40 +128,22 @@ function Layout() {
         open={languageDrawerOpen}
       >
         <div className="language-options">
-          <div 
-            className={`language-option ${i18n.language === 'ar' ? 'active' : ''}`}
-            onClick={() => changeLanguage('ar')}
-          >
+          <div className={`language-option ${i18n.language === 'ar' ? 'active' : ''}`} onClick={() => changeLanguage('ar')}>
             🇸🇦 العربية
           </div>
-          <div 
-            className={`language-option ${i18n.language === 'en' ? 'active' : ''}`}
-            onClick={() => changeLanguage('en')}
-          >
+          <div className={`language-option ${i18n.language === 'en' ? 'active' : ''}`} onClick={() => changeLanguage('en')}>
             🇬🇧 English
           </div>
-          <div 
-            className={`language-option ${i18n.language === 'fr' ? 'active' : ''}`}
-            onClick={() => changeLanguage('fr')}
-          >
+          <div className={`language-option ${i18n.language === 'fr' ? 'active' : ''}`} onClick={() => changeLanguage('fr')}>
             🇫🇷 Français
           </div>
-          <div 
-            className={`language-option ${i18n.language === 'de' ? 'active' : ''}`}
-            onClick={() => changeLanguage('de')}
-          >
+          <div className={`language-option ${i18n.language === 'de' ? 'active' : ''}`} onClick={() => changeLanguage('de')}>
             🇩🇪 Deutsch
           </div>
-          <div 
-            className={`language-option ${i18n.language === 'es' ? 'active' : ''}`}
-            onClick={() => changeLanguage('es')}
-          >
+          <div className={`language-option ${i18n.language === 'es' ? 'active' : ''}`} onClick={() => changeLanguage('es')}>
             🇪🇸 Español
           </div>
-          <div 
-            className={`language-option ${i18n.language === 'zh' ? 'active' : ''}`}
-            onClick={() => changeLanguage('zh')}
-          >
+          <div className={`language-option ${i18n.language === 'zh' ? 'active' : ''}`} onClick={() => changeLanguage('zh')}>
             🇨🇳 中文
           </div>
         </div>
