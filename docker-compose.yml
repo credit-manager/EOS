@@ -103,6 +103,15 @@ services:
     networks: [eos-network]
     expose: ["9090"]
 
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager"]
+    networks: [eos-network]
+    expose: ["9093"]
+
   grafana:
     image: grafana/grafana:10.4.0
     restart: unless-stopped
