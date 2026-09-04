@@ -52,12 +52,14 @@ class FinancialReportingEngine:
             raise LookupError("Company not found")
         rows = self.db.execute(text("""
             SELECT a.id,a.code,a.name_en,a.account_type,a.opening_balance,
-                   COALESCE(SUM(l.debit),0) AS debit,COALESCE(SUM(l.credit),0) AS credit
+                   COALESCE(SUM(CASE WHEN j.id IS NOT NULL THEN l.debit ELSE 0 END),0) AS debit,
+                   COALESCE(SUM(CASE WHEN j.id IS NOT NULL THEN l.credit ELSE 0 END),0) AS credit
             FROM dbp_accounts a
             LEFT JOIN dbp_journal_lines l ON l.account_id=a.id
             LEFT JOIN dbp_journal_entries j ON j.id=l.journal_entry_id
               AND j.tenant_id=:tid AND j.company_id=:cid AND j.status='posted' AND j.entry_date<=:as_of
-            WHERE a.tenant_id=:tid AND a.company_id=:cid AND a.is_active=true AND a.account_type IN ('asset','liability','equity')
+            WHERE a.tenant_id=:tid AND a.company_id=:cid AND a.is_active=true
+              AND a.account_type IN ('asset','liability','equity')
             GROUP BY a.id,a.code,a.name_en,a.account_type,a.opening_balance ORDER BY a.code
         """), {"tid": tenant_id, "cid": company_id, "as_of": as_of}).fetchall()
         sections = {"asset": [], "liability": [], "equity": []}
