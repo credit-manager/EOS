@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from core.accounting_engine import AccountingEngine
 from core.auth import get_current_user, require_permission
+from core.financial_reporting import FinancialReportingEngine
 from core.rate_limit import read_limiter, write_limiter
 from database import get_db
 
@@ -15,6 +16,12 @@ def _tenant(user: dict) -> str:
     if not tenant_id:
         raise HTTPException(401, detail={"status": "error", "error": {"code": "TENANT_REQUIRED", "message": "Authenticated tenant is required"}})
     return tenant_id
+
+
+def _report_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, LookupError):
+        return HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": str(exc)}})
+    return HTTPException(400, detail={"status": "error", "error": {"code": "INVALID", "message": str(exc)}})
 
 
 @router.get("/companies/{company_id}/accounts", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
@@ -85,3 +92,36 @@ async def post_journal_entry(je_id: str, user: dict = Depends(get_current_user),
 @router.get("/companies/{company_id}/trial-balance", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_trial_balance(company_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     return {"status": "success", "data": AccountingEngine(db).get_trial_balance(company_id, _tenant(user))}
+
+
+@router.get("/companies/{company_id}/financials/income-statement", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
+async def income_statement(company_id: str, start_date: str, end_date: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        return {"status": "success", "data": FinancialReportingEngine(db).income_statement(_tenant(user), company_id, start_date, end_date)}
+    except (ValueError, LookupError) as exc:
+        raise _report_error(exc) from exc
+
+
+@router.get("/companies/{company_id}/financials/balance-sheet", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
+async def balance_sheet(company_id: str, as_of: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        return {"status": "success", "data": FinancialReportingEngine(db).balance_sheet(_tenant(user), company_id, as_of)}
+    except (ValueError, LookupError) as exc:
+        raise _report_error(exc) from exc
+
+
+@router.post("/companies/{company_id}/fiscal-periods", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
+async def create_fiscal_period(company_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        period_id = FinancialReportingEngine(db).create_period(_tenant(user), company_id, body["period_code"], body["start_date"], body["end_date"])
+        return {"status": "success", "data": {"id": period_id}}
+    except (KeyError, ValueError, LookupError) as exc:
+        raise _report_error(exc) from exc
+
+
+@router.post("/companies/{company_id}/fiscal-periods/{period_id}/close", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
+async def close_fiscal_period(company_id: str, period_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        return {"status": "success", "data": FinancialReportingEngine(db).close_period(_tenant(user), company_id, period_id, user.get("id") or user.get("user_id"))}
+    except (ValueError, LookupError) as exc:
+        raise _report_error(exc) from exc
