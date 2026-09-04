@@ -7,6 +7,7 @@ optional distributed tracing.
 import hmac
 import json
 import os
+import re
 import uuid
 
 from fastapi import FastAPI, Request, Response
@@ -35,6 +36,7 @@ from routers import (accounting, accounting_api, ai_composer, ai_features, analy
 from routers import auth as auth_router
 
 MAX_BODY_BYTES = int(os.getenv("EOS_MAX_BODY_BYTES", str(10 * 1024 * 1024)))
+REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 
 class SecurityMiddleware(BaseHTTPMiddleware):
@@ -45,7 +47,8 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 return Response(content='{"status":"error","error":{"code":"PAYLOAD_TOO_LARGE","message":"Request body exceeds size limit"}}', status_code=413, media_type="application/json")
         except ValueError:
             return Response(content='{"status":"error","error":{"code":"INVALID_CONTENT_LENGTH","message":"Invalid Content-Length header"}}', status_code=400, media_type="application/json")
-        rid = request.headers.get("x-request-id") or str(uuid.uuid4())
+        candidate_rid = request.headers.get("x-request-id", "")
+        rid = candidate_rid if REQUEST_ID_RE.fullmatch(candidate_rid) else str(uuid.uuid4())
         set_request_id(rid)
         with request_span(request.method, request.url.path) as span:
             response = await call_next(request)
