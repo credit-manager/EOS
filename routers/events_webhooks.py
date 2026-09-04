@@ -22,9 +22,9 @@ router = APIRouter(
 )
 
 
-# ──────────────────────────────────────────────────────────────
-# WEBHOOK CRUD
-# ──────────────────────────────────────────────────────────────
+def _tenant_id(current_user: dict):
+    return current_user.get("tenant_id")
+
 
 @router.post(
     "/webhooks",
@@ -35,7 +35,7 @@ router = APIRouter(
 )
 async def create_webhook(
     body: dict,
-    db: Session=None,
+    db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     required = ["code", "target_url", "entity_code", "event_types"]
@@ -44,26 +44,27 @@ async def create_webhook(
             raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
 
     code = body["code"]
-    if not re.match(r'^[a-z][a-z0-9_]{0,99}$', code):
+    if not re.match(r"^[a-z][a-z0-9_]{0,99}$", code):
         raise HTTPException(status_code=400, detail="Webhook code must be lowercase alphanumeric + underscore")
 
+    tenant_id = _tenant_id(current_user)
     existing = db.execute(
-        text("SELECT id FROM dbp_webhooks WHERE code = :code"),
-        {"code": code},
+        text("SELECT id FROM dbp_webhooks WHERE code = :code AND tenant_id = :tenant_id"),
+        {"code": code, "tenant_id": tenant_id},
     ).fetchone()
     if existing:
         raise HTTPException(status_code=409, detail=f"Webhook '{code}' already exists")
 
     event_types = body["event_types"]
     valid_types = EventBus.VALID_EVENT_TYPES | {"*"}
-    for et in event_types:
-        if et not in valid_types:
-            raise HTTPException(status_code=400, detail=f"Invalid event_type: {et}")
+    for event_type in event_types:
+        if event_type not in valid_types:
+            raise HTTPException(status_code=400, detail=f"Invalid event_type: {event_type}")
 
     webhook_id = str(uuid.uuid4())
     webhook = DBPWebhook(
         id=webhook_id,
-        tenant_id=current_user.get("tenant_id"),
+        tenant_id=tenant_id,
         code=code,
         target_url=body["target_url"],
         entity_code=body["entity_code"],
@@ -74,12 +75,7 @@ async def create_webhook(
     )
     db.add(webhook)
     db.commit()
-
-    return {
-        "status": "success",
-        "webhook_id": webhook_id,
-        "code": code,
-    }
+    return {"status": "success", "webhook_id": webhook_id, "code": code}
 
 
 @router.get(
@@ -90,28 +86,28 @@ async def create_webhook(
     ],
 )
 async def list_webhooks(
-    db: Session=None,
+    db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     rows = db.execute(
         text(
             "SELECT id, code, target_url, entity_code, event_types, "
-            "is_active, created_at "
-            "FROM dbp_webhooks ORDER BY created_at DESC LIMIT 100"
-        )
+            "is_active, created_at FROM dbp_webhooks "
+            "WHERE tenant_id = :tenant_id ORDER BY created_at DESC LIMIT 100"
+        ),
+        {"tenant_id": _tenant_id(current_user)},
     ).fetchall()
-
     data = [
         {
-            "id": r[0],
-            "code": r[1],
-            "target_url": r[2],
-            "entity_code": r[3],
-            "event_types": r[4] if isinstance(r[4], list) else [],
-            "is_active": r[5],
-            "created_at": str(r[6]) if r[6] else None,
+            "id": row[0],
+            "code": row[1],
+            "target_url": row[2],
+            "entity_code": row[3],
+            "event_types": row[4] if isinstance(row[4], list) else [],
+            "is_active": row[5],
+            "created_at": str(row[6]) if row[6] else None,
         }
-        for r in rows
+        for row in rows
     ]
     return {"data": data, "count": len(data)}
 
@@ -125,21 +121,19 @@ async def list_webhooks(
 )
 async def get_webhook(
     webhook_code: str,
-    db: Session=None,
+    db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     row = db.execute(
         text(
             "SELECT id, code, target_url, entity_code, event_types, "
-            "is_active, custom_headers, created_at "
-            "FROM dbp_webhooks WHERE code = :code"
+            "is_active, custom_headers, created_at FROM dbp_webhooks "
+            "WHERE code = :code AND tenant_id = :tenant_id"
         ),
-        {"code": webhook_code},
+        {"code": webhook_code, "tenant_id": _tenant_id(current_user)},
     ).fetchone()
-
     if not row:
         raise HTTPException(status_code=404, detail="Webhook not found")
-
     return {
         "data": {
             "id": row[0],
@@ -164,10 +158,14 @@ async def get_webhook(
 async def update_webhook(
     webhook_code: str,
     body: dict,
-    db: Session=None,
+    db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    webhook = db.query(DBPWebhook).filter(DBPWebhook.code == webhook_code).first()
+    webhook = (
+        db.query(DBPWebhook)
+        .filter(DBPWebhook.code == webhook_code, DBPWebhook.tenant_id == _tenant_id(current_user))
+        .first()
+    )
     if not webhook:
         raise HTTPException(status_code=404, detail="Webhook not found")
 
@@ -176,6 +174,9 @@ async def update_webhook(
         webhook.target_url = body["target_url"]
         changed.append("target_url")
     if "event_types" in body and body["event_types"] != webhook.event_types:
+        valid_types = EventBus.VALID_EVENT_TYPES | {"*"}
+        if any(event_type not in valid_types for event_type in body["event_types"]):
+            raise HTTPException(status_code=400, detail="Invalid event_type")
         webhook.event_types = body["event_types"]
         changed.append("event_types")
     if "is_active" in body and body["is_active"] != webhook.is_active:
@@ -190,7 +191,6 @@ async def update_webhook(
 
     if not changed:
         return {"status": "success", "message": "No changes"}
-
     db.commit()
     return {"status": "success", "changed": changed}
 
@@ -204,22 +204,20 @@ async def update_webhook(
 )
 async def delete_webhook(
     webhook_code: str,
-    db: Session=None,
+    db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    webhook = db.query(DBPWebhook).filter(DBPWebhook.code == webhook_code).first()
+    webhook = (
+        db.query(DBPWebhook)
+        .filter(DBPWebhook.code == webhook_code, DBPWebhook.tenant_id == _tenant_id(current_user))
+        .first()
+    )
     if not webhook:
         raise HTTPException(status_code=404, detail="Webhook not found")
-
     db.delete(webhook)
     db.commit()
-
     return {"status": "success", "deleted": webhook_code}
 
-
-# ──────────────────────────────────────────────────────────────
-# EVENT LOG ENDPOINTS
-# ──────────────────────────────────────────────────────────────
 
 @router.get(
     "/events",
@@ -229,7 +227,7 @@ async def delete_webhook(
     ],
 )
 async def list_events(
-    entity_code: str | None=None,
+    entity_code: str | None = None,
     event_type: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -240,7 +238,7 @@ async def list_events(
     events = bus.get_events(
         entity_code=entity_code,
         event_type=event_type,
-        tenant_id=current_user.get("tenant_id"),
+        tenant_id=_tenant_id(current_user),
         limit=limit,
         offset=offset,
     )
@@ -256,19 +254,15 @@ async def list_events(
 )
 async def get_event(
     event_id: str,
-    db: Session=None,
+    db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     bus = EventBus(db)
-    event = bus.get_event(event_id, tenant_id=current_user.get("tenant_id"))
+    event = bus.get_event(event_id, tenant_id=_tenant_id(current_user))
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     return {"data": event}
 
-
-# ──────────────────────────────────────────────────────────────
-# WEBHOOK DELIVERY LOG
-# ──────────────────────────────────────────────────────────────
 
 @router.get(
     "/webhooks/{webhook_code}/deliveries",
@@ -279,14 +273,19 @@ async def get_event(
 )
 async def list_webhook_deliveries(
     webhook_code: str,
-    limit: int | None=None,
+    limit: int | None = Query(None, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    webhook = db.query(DBPWebhook).filter(DBPWebhook.code == webhook_code).first()
+    webhook = (
+        db.query(DBPWebhook)
+        .filter(DBPWebhook.code == webhook_code, DBPWebhook.tenant_id == _tenant_id(current_user))
+        .first()
+    )
     if not webhook:
         raise HTTPException(status_code=404, detail="Webhook not found")
 
+    effective_limit = limit or 50
     rows = db.execute(
         text(
             "SELECT d.id, d.event_id, d.status, d.attempts, "
@@ -295,19 +294,18 @@ async def list_webhook_deliveries(
             "WHERE d.webhook_id = :wid "
             "ORDER BY d.created_at DESC LIMIT :limit"
         ),
-        {"wid": webhook.id, "limit": limit},
+        {"wid": webhook.id, "limit": effective_limit},
     ).fetchall()
-
     data = [
         {
-            "id": r[0],
-            "event_id": r[1],
-            "status": r[2],
-            "attempts": r[3],
-            "last_response_code": r[4],
-            "last_error": r[5],
-            "created_at": str(r[6]) if r[6] else None,
+            "id": row[0],
+            "event_id": row[1],
+            "status": row[2],
+            "attempts": row[3],
+            "last_response_code": row[4],
+            "last_error": row[5],
+            "created_at": str(row[6]) if row[6] else None,
         }
-        for r in rows
+        for row in rows
     ]
     return {"data": data, "count": len(data)}
