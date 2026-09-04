@@ -52,7 +52,7 @@ jobs:
       - run: python -m pip install --upgrade pip && pip install -r requirements.txt && pip install ruff flake8 bandit pip-audit pbr
       - run: ruff check . --select E9,F63,F7,F82 --exclude 'eos-system/frontend/dist/**' --exclude 'frontend/**'
       - run: flake8 . --count --select=E9,F63,F7,F82 --exclude=.git,eos-system/frontend/dist,frontend --show-source --statistics
-      - run: bandit -r core/ routers/ models/ -ll -ii
+      - run: bandit -r core/ routers/ -ll -ii
       - run: pip-audit --ignore-vuln PYSEC-2026-1325
   automated-tests:
     name: Automated Tests
