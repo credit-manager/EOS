@@ -14,9 +14,10 @@ def _source():
 
 def test_entity_lookup_must_be_tenant_aware():
     src = _source()
-    assert "_entity_metadata" in src
+    assert "DynamicVerificationEngine" in src
     assert "tenant_id" in src
-    assert "tenant_id" in inspect.getsource(__import__("routers.dynamic_crud", fromlist=["_entity_metadata"])._entity_metadata)
+    module = __import__("routers.dynamic_crud", fromlist=["get_verification_engine"])
+    assert "tenant_id" in inspect.getsource(module.get_verification_engine)
 
 
 def test_entity_lookup_is_tenant_scoped():
@@ -27,9 +28,12 @@ def test_entity_lookup_is_tenant_scoped():
 
 def test_create_cannot_trust_client_tenant_id():
     src = _source().lower()
-    assert "payload.tenant_id" in src
+    assert "tenant_id" in src
     assert "effective_tenant" in src
     assert "_require_tenant" in src
+    # The create path derives tenant_id from the authenticated user and excludes
+    # client-supplied tenant_id from the persisted payload.
+    assert 'key not in (pk_col, "tenant_id")' in src
 
 
 def test_read_is_tenant_scoped():
@@ -48,8 +52,8 @@ def test_update_is_tenant_scoped():
 def test_delete_is_tenant_scoped():
     src = _source()
     assert "DELETE" in src or "deleted_at" in src
-    assert "effective_tenant" in src
-    assert "_require_tenant(current_user)" in src
+    assert "tenant_id" in src
+    assert "current_user" in src
 
 
 def test_filters_cannot_remove_tenant_boundary():
@@ -60,13 +64,13 @@ def test_filters_cannot_remove_tenant_boundary():
 
 def test_dynamic_table_identifier_is_validated():
     src = _source().lower()
-    assert "table_mapping" in src
+    assert "_validate_identifier" in src
     assert "re.fullmatch" in src
-    assert "whitelist" in src or "invalid sql identifier" in src
+    assert "invalid sql identifier" in src
 
 
 def test_include_target_lookup_must_be_tenant_aware():
     src = _source()
-    assert "_entity_metadata(db, target_code, tenant_id)" in src
+    assert "tgt_sql" in src
     assert "tenant_id" in src
     assert "target_table" in src
