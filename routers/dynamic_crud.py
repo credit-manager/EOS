@@ -42,6 +42,19 @@ def _validate_identifier(identifier: str) -> str:
     return identifier
 
 
+def _junction_has_tenant_column(db: Session, junction_table: str) -> bool:
+    """Return whether an M2M junction table carries an explicit tenant scope."""
+    junction_table = _validate_identifier(junction_table)
+    row = db.execute(
+        text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = :table_name AND column_name = 'tenant_id' LIMIT 1"
+        ),
+        {"table_name": junction_table},
+    ).fetchone()
+    return bool(row)
+
+
 @router.get("/entities/{entity_code}/schema", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_schema(entity_code: str, db: Session = Depends(get_db), verification: DynamicVerificationEngine = Depends(get_verification_engine)):
     if not verification.entity_exists():
@@ -146,8 +159,10 @@ async def list_records(entity_code: str, filters: str | None = None, sort: str |
                     where_parts = [f"j.{j_src} = :sv"]
                     rel_params = {"sv": source_value}
                     if tenant_scope and tenant_id:
-                        where_parts.extend(["t.tenant_id = :tid", "j.tenant_id = :tid"])
+                        where_parts.append("t.tenant_id = :tid")
                         rel_params["tid"] = tenant_id
+                        if _junction_has_tenant_column(db, junction):
+                            where_parts.append("j.tenant_id = :tid")
                     rel_where = " AND ".join(where_parts)
                     rows = db.execute(text(f"SELECT t.* FROM {target_table} t INNER JOIN {junction} j ON j.{j_tgt} = t.{target_col} WHERE {rel_where} LIMIT 100"), rel_params).fetchall()
                     record[inc] = [{k: v for k, v in row._mapping.items() if k != "tenant_id"} for row in rows]
