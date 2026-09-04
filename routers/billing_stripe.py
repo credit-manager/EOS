@@ -2,15 +2,19 @@
 EOS Billing Engine - Stripe Integration
 Production-ready billing system with multi-currency and tax support.
 """
+import logging
 import os
+
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
 from core.security import get_current_user
 from database import get_db
 from models import User
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/billing", tags=["Billing"])
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
@@ -18,7 +22,8 @@ DEFAULT_CURRENCY = "usd"
 if STRIPE_SECRET_KEY:
     stripe.api_key = STRIPE_SECRET_KEY
 else:
-    print("⚠️ WARNING: STRIPE_SECRET_KEY not set. Billing will run in mock mode.")
+    logger.warning("Stripe secret key is not configured; billing is unavailable")
+
 
 class CreateCheckoutSessionRequest(BaseModel):
     price_id: str
@@ -26,12 +31,14 @@ class CreateCheckoutSessionRequest(BaseModel):
     cancel_url: str
     currency: str | None = "usd"
 
+
 class SubscriptionPlan(BaseModel):
     id: str
     name: str
     amount: int
     currency: str
     interval: str
+
 
 @router.post("/create-checkout-session")
 async def create_checkout_session(request: CreateCheckoutSessionRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -42,6 +49,7 @@ async def create_checkout_session(request: CreateCheckoutSessionRequest, db: Ses
         return {"session_id": session.id, "url": session.url}
     except stripe.error.StripeError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @router.post("/webhook")
 async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
@@ -58,11 +66,12 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         session = data_object
         customer_email = session.get("customer_details", {}).get("email")
         tenant_id = session.get("metadata", {}).get("tenant_id")
-        print(f"✅ Subscription completed for tenant: {tenant_id}, user: {customer_email}")
+        logger.info("Stripe checkout completed for tenant=%s user=%s", tenant_id, customer_email)
     elif event["type"] == "customer.subscription.deleted":
         sub_id = data_object["id"]
-        print(f"❌ Subscription cancelled: {sub_id}")
+        logger.info("Stripe subscription cancelled: %s", sub_id)
     return {"status": "success"}
+
 
 @router.get("/plans", response_model=list[SubscriptionPlan])
 async def list_plans(currency: str | None = "usd"):
@@ -73,6 +82,7 @@ async def list_plans(currency: str | None = "usd"):
         return [{"id": price.id, "name": price.nickname or "Unnamed Plan", "amount": price.unit_amount, "currency": price.currency, "interval": price.recurring.interval} for price in prices.data]
     except stripe.error.StripeError:
         raise HTTPException(status_code=500, detail="Failed to fetch plans from Stripe")
+
 
 @router.get("/portal")
 async def create_portal_session(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
