@@ -2,10 +2,12 @@ name: EOS Container Security & SBOM
 on:
   push: {branches: [main, develop]}
   pull_request: {branches: [main, develop]}
-permissions: {contents: read}
+permissions:
+  contents: read
+  id-token: write
 jobs:
   scan:
-    name: Build, scan and generate SBOM
+    name: Build, scan, SBOM and provenance
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -13,17 +15,12 @@ jobs:
         run: docker build --pull -t eos-dbp:${GITHUB_SHA} .
       - name: Scan image for CRITICAL/HIGH vulnerabilities
         run: >-
-          docker run --rm
-          -v /var/run/docker.sock:/var/run/docker.sock
-          -v "$PWD:/work"
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/work"
           ghcr.io/aquasecurity/trivy:0.74.0@sha256:ee940acbf1f58ebadb42d01434ce4609530bf1b52536afbd1eee66cd7123c5c9
-          image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed=false
-          --format table eos-dbp:${GITHUB_SHA}
+          image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed=false --format table eos-dbp:${GITHUB_SHA}
       - name: Generate SPDX SBOM
         run: >-
-          docker run --rm
-          -v /var/run/docker.sock:/var/run/docker.sock
-          -v "$PWD:/work"
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/work"
           ghcr.io/aquasecurity/trivy:0.74.0@sha256:ee940acbf1f58ebadb42d01434ce4609530bf1b52536afbd1eee66cd7123c5c9
           image --format spdx-json --output /work/eos-sbom.spdx.json eos-dbp:${GITHUB_SHA}
       - name: Upload SBOM
@@ -32,3 +29,7 @@ jobs:
           name: eos-container-sbom
           path: eos-sbom.spdx.json
           retention-days: 90
+      - name: Attest SBOM provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: eos-sbom.spdx.json
