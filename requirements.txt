@@ -47,11 +47,12 @@ Babel==2.13.1
 locust==2.20.0
 
 # Encryption for 2FA Secrets (Security Fix)
-cryptography==49.0.0
+cryptography==50.0.0
 
 # Billing & Payments
 stripe==5.5.0
 pycryptodome==3.19.1
+pyasn1==0.6.4
 
 # Monitoring & Logging
 sentry-sdk[fastapi]==2.8.0
