@@ -14,12 +14,12 @@ router = APIRouter(prefix="/api/v1/dynamic/onboarding", tags=["Onboarding"])
 
 
 @router.get("/industries", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_industries(is_active: bool | None = None, db: Session=None):
+async def list_industries(is_active: bool | None = None, db: Session = Depends(get_db)):
     return {"status": "success", "data": OnboardingEngine(db).list_industry_templates(is_active=is_active)}
 
 
 @router.get("/industries/{template_id}", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_industry(template_id: str, db: Session=None):
+async def get_industry(template_id: str, db: Session = Depends(get_db)):
     t = OnboardingEngine(db).get_industry_template(template_id)
     if not t:
         raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Industry template not found"}})
@@ -27,12 +27,12 @@ async def get_industry(template_id: str, db: Session=None):
 
 
 @router.get("/modules", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_modules(category: str | None = None, db: Session=None):
+async def list_modules(category: str | None = None, db: Session = Depends(get_db)):
     return {"status": "success", "data": OnboardingEngine(db).list_module_definitions(category=category)}
 
 
 @router.get("/modules/{module_id}", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_module(module_id: str, db: Session=None):
+async def get_module(module_id: str, db: Session = Depends(get_db)):
     m = OnboardingEngine(db).get_module_definition(module_id)
     if not m:
         raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Module definition not found"}})
@@ -46,11 +46,7 @@ async def start_onboarding(body: dict, user: dict | None=None, db: Session = Dep
     existing = engine.get_onboarding(tenant_id)
     if existing and existing["status"] == "completed":
         raise HTTPException(400, detail={"status": "error", "error": {"code": "ALREADY_COMPLETED", "message": "Onboarding already completed"}})
-    oid = engine.create_onboarding(
-        tenant_id,
-        admin_user_id=user.get("id") or body.get("admin_user_id"),
-        admin_email=body.get("admin_email"),
-    )
+    oid = engine.create_onboarding(tenant_id, admin_user_id=user.get("id") or body.get("admin_user_id"), admin_email=body.get("admin_email"))
     db.commit()
     return {"status": "success", "data": {"id": oid, "current_step": "industry_selection", "status": "in_progress"}}
 
@@ -82,5 +78,5 @@ async def complete_step(body: dict, user: dict | None=None, db: Session = Depend
 
 
 @router.get("/list", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_onboardings(status: str | None = None, db: Session=None):
+async def list_onboardings(status: str | None = None, db: Session = Depends(get_db)):
     return {"status": "success", "data": OnboardingEngine(db).list_onboardings(status=status)}
