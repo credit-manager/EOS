@@ -58,7 +58,7 @@ async def list_projects(
 
 
 @router.get("/{project_id}")
-async def get_project(project_id: str, user: dict | None=None, db: Session = Depends(get_db)):
+async def get_project(project_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     r = db.execute(
         text("SELECT id, code, name, description, start_date, end_date, status, "
              "budget, actual_cost, manager_id, created_at "
@@ -77,7 +77,7 @@ async def get_project(project_id: str, user: dict | None=None, db: Session = Dep
 
 
 @router.post("", status_code=201)
-async def create_project(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def create_project(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     if not body.get("name"):
         raise HTTPException(400, detail="name required")
     pid = str(uuid.uuid4())
@@ -98,7 +98,7 @@ async def create_project(body: dict, user: dict | None=None, db: Session = Depen
 
 
 @router.put("/{project_id}")
-async def update_project(project_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def update_project(project_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     existing = db.execute(text("SELECT id FROM dbp_projects WHERE id = :id"), {"id": project_id}).fetchone()
     if not existing:
         raise HTTPException(404, detail="Project not found")
@@ -118,7 +118,7 @@ async def update_project(project_id: str, body: dict, user: dict | None=None, db
 
 
 @router.delete("/{project_id}")
-async def delete_project(project_id: str, user: dict | None=None, db: Session = Depends(get_db)):
+async def delete_project(project_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     result = db.execute(text("DELETE FROM dbp_projects WHERE id = :id"), {"id": project_id})
     if result.rowcount == 0:
         raise HTTPException(404, detail="Project not found")
@@ -127,7 +127,7 @@ async def delete_project(project_id: str, user: dict | None=None, db: Session = 
 
 
 @router.post("/{project_id}/status")
-async def update_project_status(project_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def update_project_status(project_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     db.execute(text("UPDATE dbp_projects SET status = :st WHERE id = :id"),
                {"id": project_id, "st": body.get("status", "active")})
     db.commit()
@@ -135,7 +135,7 @@ async def update_project_status(project_id: str, body: dict, user: dict | None=N
 
 
 @router.post("/{project_id}/progress")
-async def update_project_progress(project_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def update_project_progress(project_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     return {"message": "Progress updated"}
 
 
@@ -180,7 +180,7 @@ async def list_tasks(
 
 
 @router.get("/{project_id}/tasks/{task_id}")
-async def get_task(project_id: str, task_id: str, user: dict | None=None, db: Session = Depends(get_db)):
+async def get_task(project_id: str, task_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     r = db.execute(
         text("SELECT id, name, description, assigned_to, status, priority, start_date, "
              "due_date, estimated_hours, actual_hours FROM dbp_project_tasks WHERE id = :id AND project_id = :pid"),
@@ -196,7 +196,7 @@ async def get_task(project_id: str, task_id: str, user: dict | None=None, db: Se
 
 
 @router.post("/{project_id}/tasks", status_code=201)
-async def create_task(project_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def create_task(project_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     tid = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     db.execute(
@@ -214,7 +214,7 @@ async def create_task(project_id: str, body: dict, user: dict | None=None, db: S
 
 
 @router.put("/{project_id}/tasks/{task_id}")
-async def update_task(project_id: str, task_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def update_task(project_id: str, task_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     existing = db.execute(text("SELECT id FROM dbp_project_tasks WHERE id = :id AND project_id = :pid"),
                           {"id": task_id, "pid": project_id}).fetchone()
     if not existing:
@@ -235,7 +235,7 @@ async def update_task(project_id: str, task_id: str, body: dict, user: dict | No
 
 
 @router.delete("/{project_id}/tasks/{task_id}")
-async def delete_task(project_id: str, task_id: str, user: dict | None=None, db: Session = Depends(get_db)):
+async def delete_task(project_id: str, task_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     result = db.execute(text("DELETE FROM dbp_project_tasks WHERE id = :id AND project_id = :pid"),
                         {"id": task_id, "pid": project_id})
     if result.rowcount == 0:
@@ -245,7 +245,7 @@ async def delete_task(project_id: str, task_id: str, user: dict | None=None, db:
 
 
 @router.post("/{project_id}/tasks/{task_id}/status")
-async def update_task_status(project_id: str, task_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def update_task_status(project_id: str, task_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     db.execute(text("UPDATE dbp_project_tasks SET status = :st WHERE id = :id AND project_id = :pid"),
                {"id": task_id, "pid": project_id, "st": body.get("status", "todo")})
     db.commit()
@@ -287,7 +287,7 @@ async def list_time_entries(
 
 
 @router.post("/time-entries", status_code=201)
-async def create_time_entry(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def create_time_entry(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     eid = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     try:
@@ -306,7 +306,7 @@ async def create_time_entry(body: dict, user: dict | None=None, db: Session = De
 
 
 @router.delete("/time-entries/{entry_id}")
-async def delete_time_entry(entry_id: str, user: dict | None=None, db: Session = Depends(get_db)):
+async def delete_time_entry(entry_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     result = db.execute(text("DELETE FROM dbp_project_time_entries WHERE id = :id"), {"id": entry_id})
     if result.rowcount == 0:
         raise HTTPException(404, detail="Time entry not found")
@@ -317,7 +317,7 @@ async def delete_time_entry(entry_id: str, user: dict | None=None, db: Session =
 # ─── Milestones ─────────────────────────────────
 
 @router.get("/{project_id}/milestones")
-async def list_milestones(project_id: str, user: dict | None=None, db: Session = Depends(get_db)):
+async def list_milestones(project_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
         rows = db.execute(
             text("SELECT id, name, due_date, status, description FROM dbp_project_milestones "
@@ -331,7 +331,7 @@ async def list_milestones(project_id: str, user: dict | None=None, db: Session =
 
 
 @router.post("/{project_id}/milestones", status_code=201)
-async def create_milestone(project_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def create_milestone(project_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     mid = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     try:
@@ -349,7 +349,7 @@ async def create_milestone(project_id: str, body: dict, user: dict | None=None, 
 
 
 @router.put("/{project_id}/milestones/{milestone_id}")
-async def update_milestone(project_id: str, milestone_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def update_milestone(project_id: str, milestone_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     fields, params = [], {"id": milestone_id}
     for col in ("name", "due_date", "status", "description"):
         if col in body:
@@ -362,7 +362,7 @@ async def update_milestone(project_id: str, milestone_id: str, body: dict, user:
 
 
 @router.delete("/{project_id}/milestones/{milestone_id}")
-async def delete_milestone(project_id: str, milestone_id: str, user: dict | None=None, db: Session = Depends(get_db)):
+async def delete_milestone(project_id: str, milestone_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     db.execute(text("DELETE FROM dbp_project_milestones WHERE id = :id"), {"id": milestone_id})
     db.commit()
     return {"message": "Milestone deleted"}
@@ -371,7 +371,7 @@ async def delete_milestone(project_id: str, milestone_id: str, user: dict | None
 # ─── Reports ─────────────────────────────────
 
 @router.get("/reports/progress")
-async def project_progress_report(user: dict | None=None, db: Session = Depends(get_db)):
+async def project_progress_report(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     rows = db.execute(text("SELECT id, name, status, budget, actual_cost FROM dbp_projects")).fetchall()
     return [{"id": r[0], "name": r[1], "status": r[2],
              "budget": float(r[3]) if r[3] else 0,
@@ -382,7 +382,7 @@ async def project_progress_report(user: dict | None=None, db: Session = Depends(
 async def time_tracking_report(
     start_date: str | None = None,
     end_date: str | None = None,
-    user: dict | None=None,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     return {"total_hours": 0, "by_project": []}

@@ -9,6 +9,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
+from core.auth import get_current_user
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 
@@ -23,7 +24,7 @@ router = APIRouter(prefix="/analytics", tags=["Cross-Industry Analytics"])
 # ═══════════════════════════════════════════════════
 
 @router.get("/overview")
-def get_overview(user: dict | None=None, db=Depends(get_db)):
+def get_overview(user: dict = Depends(get_current_user), db=Depends(get_db)):
     t = user["tenant_id"]
 
     industries = {}
@@ -102,7 +103,7 @@ def get_overview(user: dict | None=None, db=Depends(get_db)):
 # ═══════════════════════════════════════════════════
 
 @router.get("/by-industry")
-def get_by_industry(user: dict | None=None, db=Depends(get_db)):
+def get_by_industry(user: dict = Depends(get_current_user), db=Depends(get_db)):
     t = user["tenant_id"]
     data = []
 
@@ -157,7 +158,7 @@ def get_by_industry(user: dict | None=None, db=Depends(get_db)):
 # ═══════════════════════════════════════════════════
 
 @router.get("/alerts")
-def get_alerts(user: dict | None=None, db=Depends(get_db)):
+def get_alerts(user: dict = Depends(get_current_user), db=Depends(get_db)):
     t = user["tenant_id"]
     alerts = []
 
@@ -217,7 +218,7 @@ def get_alerts(user: dict | None=None, db=Depends(get_db)):
 # ═══════════════════════════════════════════════════
 
 @router.get("/inventory-summary")
-def inventory_summary(user: dict | None=None, db=Depends(get_db)):
+def inventory_summary(user: dict = Depends(get_current_user), db=Depends(get_db)):
     t = user["tenant_id"]
     try:
         items = db.execute(text(
@@ -246,7 +247,7 @@ def inventory_summary(user: dict | None=None, db=Depends(get_db)):
 # ═══════════════════════════════════════════════════
 
 @router.get("/hr-summary")
-def hr_summary(user: dict | None=None, db=Depends(get_db)):
+def hr_summary(user: dict = Depends(get_current_user), db=Depends(get_db)):
     t = user["tenant_id"]
     try:
         employees = db.execute(text("SELECT COUNT(*) FROM employees WHERE tenant_id=:t"), {"t": t}).fetchone()[0] or 0
@@ -261,7 +262,7 @@ def hr_summary(user: dict | None=None, db=Depends(get_db)):
 # ═══════════════════════════════════════════════════
 
 @router.get("/accounting-summary")
-def accounting_summary(user: dict | None=None, db=Depends(get_db)):
+def accounting_summary(user: dict = Depends(get_current_user), db=Depends(get_db)):
     t = user["tenant_id"]
     try:
         journals = db.execute(text("SELECT COUNT(*) FROM journals WHERE tenant_id=:t"), {"t": t}).fetchone()[0] or 0

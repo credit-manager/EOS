@@ -61,7 +61,7 @@ async def list_employees(
 
 
 @router.get("/employees/{employee_id}")
-async def get_employee(employee_id: str, user: dict | None=None, db: Session = Depends(get_db)):
+async def get_employee(employee_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     r = db.execute(
         text("SELECT id, employee_code, first_name, last_name, email, phone, "
              "department_id, position, hire_date, employment_status, salary, currency_code "
@@ -77,7 +77,7 @@ async def get_employee(employee_id: str, user: dict | None=None, db: Session = D
 
 
 @router.post("/employees", status_code=201)
-async def create_employee(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def create_employee(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     eid = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     db.execute(
@@ -97,7 +97,7 @@ async def create_employee(body: dict, user: dict | None=None, db: Session = Depe
 
 
 @router.put("/employees/{employee_id}")
-async def update_employee(employee_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def update_employee(employee_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     existing = db.execute(text("SELECT id FROM dbp_employees WHERE id = :id"), {"id": employee_id}).fetchone()
     if not existing:
         raise HTTPException(404, detail="Employee not found")
@@ -120,7 +120,7 @@ async def update_employee(employee_id: str, body: dict, user: dict | None=None, 
 
 
 @router.delete("/employees/{employee_id}")
-async def delete_employee(employee_id: str, user: dict | None=None, db: Session = Depends(get_db)):
+async def delete_employee(employee_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     result = db.execute(text("DELETE FROM dbp_employees WHERE id = :id"), {"id": employee_id})
     if result.rowcount == 0:
         raise HTTPException(404, detail="Employee not found")
@@ -131,7 +131,7 @@ async def delete_employee(employee_id: str, user: dict | None=None, db: Session 
 # ─── Departments ─────────────────────────────────
 
 @router.get("/departments")
-async def list_departments(user: dict | None=None, db: Session = Depends(get_db)):
+async def list_departments(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
         rows = db.execute(
             text("SELECT id, code, name_en, name_ar, parent_id, manager_id, is_active "
@@ -145,7 +145,7 @@ async def list_departments(user: dict | None=None, db: Session = Depends(get_db)
 
 
 @router.post("/departments", status_code=201)
-async def create_department(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def create_department(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     did = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     try:
@@ -166,7 +166,7 @@ async def create_department(body: dict, user: dict | None=None, db: Session = De
 
 
 @router.put("/departments/{dept_id}")
-async def update_department(dept_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def update_department(dept_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     fields, params = [], {"id": dept_id}
     for col in ("name_en", "name_ar", "code", "parent_id", "manager_id"):
         if col in body:
@@ -179,7 +179,7 @@ async def update_department(dept_id: str, body: dict, user: dict | None=None, db
 
 
 @router.delete("/departments/{dept_id}")
-async def delete_department(dept_id: str, user: dict | None=None, db: Session = Depends(get_db)):
+async def delete_department(dept_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     db.execute(text("DELETE FROM dbp_departments WHERE id = :id"), {"id": dept_id})
     db.commit()
     return {"message": "Department deleted"}
@@ -204,17 +204,17 @@ async def list_positions(
 
 
 @router.post("/positions", status_code=201)
-async def create_position(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def create_position(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     return {"id": body.get("name", ""), "message": "Position created (in-memory only)"}
 
 
 @router.put("/positions/{position_id}")
-async def update_position(position_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def update_position(position_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     return {"message": "Position updated"}
 
 
 @router.delete("/positions/{position_id}")
-async def delete_position(position_id: str, user: dict | None=None, db: Session = Depends(get_db)):
+async def delete_position(position_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     return {"message": "Position deleted"}
 
 
@@ -257,7 +257,7 @@ async def list_attendance(
 
 
 @router.post("/attendance", status_code=201)
-async def create_attendance(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def create_attendance(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     aid = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     try:
@@ -276,7 +276,7 @@ async def create_attendance(body: dict, user: dict | None=None, db: Session = De
 
 
 @router.post("/attendance/clock-in")
-async def clock_in(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def clock_in(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     aid = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     try:
@@ -292,7 +292,7 @@ async def clock_in(body: dict, user: dict | None=None, db: Session = Depends(get
 
 
 @router.post("/attendance/clock-out")
-async def clock_out(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def clock_out(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
         db.execute(
             text("UPDATE dbp_attendance SET clock_out = :co WHERE employee_id = :eid AND clock_out IS NULL"),
@@ -336,12 +336,12 @@ async def list_payroll(
 
 
 @router.post("/payroll/run", status_code=201)
-async def run_payroll(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def run_payroll(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     return {"message": "Payroll run initiated", "run_id": str(uuid.uuid4())}
 
 
 @router.get("/payroll/payslips/{payslip_id}")
-async def get_payslip(payslip_id: str, user: dict | None=None, db: Session = Depends(get_db)):
+async def get_payslip(payslip_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     return {"id": payslip_id, "message": "Payslip details"}
 
 
@@ -387,7 +387,7 @@ async def list_leave_requests(
 
 
 @router.post("/leave-requests", status_code=201)
-async def create_leave_request(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+async def create_leave_request(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     lid = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     try:
@@ -406,14 +406,14 @@ async def create_leave_request(body: dict, user: dict | None=None, db: Session =
 
 
 @router.post("/leave-requests/{request_id}/approve")
-async def approve_leave_request(request_id: str, user: dict | None=None, db: Session = Depends(get_db)):
+async def approve_leave_request(request_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     db.execute(text("UPDATE dbp_leave_requests SET status = 'approved' WHERE id = :id"), {"id": request_id})
     db.commit()
     return {"message": "Leave request approved"}
 
 
 @router.post("/leave-requests/{request_id}/reject")
-async def reject_leave_request(request_id: str, body: dict | None = None, user: dict | None=None, db: Session = Depends(get_db)):
+async def reject_leave_request(request_id: str, body: dict | None = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     if body is None:
         body = {}
     db.execute(text("UPDATE dbp_leave_requests SET status = 'rejected' WHERE id = :id"), {"id": request_id})
