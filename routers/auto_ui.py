@@ -18,7 +18,7 @@ router = APIRouter(
 )
 
 
-def _get_ui_engine(db: Session=None):
+def _get_ui_engine(db: Session = Depends(get_db)):
     return UISchemaEngine(db)
 
 
@@ -167,7 +167,7 @@ async def get_detail_schema(
 )
 async def get_openapi_schema(
     entity_code: str,
-    db: Session=None,
+    db: Session = Depends(get_db),
     engine: UISchemaEngine = Depends(_get_ui_engine),
 ):
     """Get OpenAPI-compatible schema for a dynamic entity."""
@@ -201,7 +201,7 @@ async def get_openapi_schema(
     ],
 )
 async def list_entity_ui_schemas(
-    db: Session=None,
+    db: Session = Depends(get_db),
     engine: UISchemaEngine = Depends(_get_ui_engine),
 ):
     """List all entities with basic UI metadata (for sidebar/navigation)."""
