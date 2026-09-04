@@ -1,10 +1,8 @@
-# EOS Dynamic Business Platform — Production Dockerfile
-# Multi-stage build with a minimal Alpine runtime and a non-root service user.
-
+# EOS Dynamic Business Platform — production image
 FROM node:22-alpine AS frontend-builder
 WORKDIR /app/frontend
-COPY frontend/package*.json ./
-RUN npm install --no-audit --no-fund
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
@@ -24,8 +22,6 @@ RUN rm -rf /app/eos-system/frontend/dist
 COPY --from=frontend-builder --chown=eos:eos /app/frontend/dist /app/eos-system/frontend/dist
 USER eos
 ENV PATH=/home/eos/.local/bin:$PATH
-
-# /health is the load-balancer/Kubernetes-compatible liveness endpoint.
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5)"
 EXPOSE 8000
-CMD ["gunicorn", "main:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120", "--keep-alive", "5", "--access-logfile", "-", "--error-logfile", "-"]
+CMD ["gunicorn","main:app","--workers","4","--worker-class","uvicorn.workers.UvicornWorker","--bind","0.0.0.0:8000","--timeout","120","--keep-alive","5","--access-logfile","-","--error-logfile","-"]
