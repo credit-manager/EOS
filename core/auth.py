@@ -11,7 +11,8 @@ from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError
 
 load_dotenv()
 
@@ -51,7 +52,7 @@ def verify_test_token(token: str) -> dict:
     """Verify and decode a test JWT token."""
     try:
         return jwt.decode(token, TEST_SECRET_KEY, algorithms=[TEST_ALGORITHM])
-    except JWTError as exc:
+    except InvalidTokenError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
