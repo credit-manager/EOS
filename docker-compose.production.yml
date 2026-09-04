@@ -1,0 +1,62 @@
+# Hardened production overlay. Use with:
+# docker compose -f docker-compose.yml -f docker-compose.production.yml up -d
+services:
+  api:
+    environment:
+      EOS_AUTH_MODE: production
+      EOS_ENVIRONMENT: production
+      EOS_DISABLE_DOCS: "true"
+      EOS_TRUSTED_HOSTS_ENABLED: "true"
+      EOS_RATE_LIMIT_FAIL_CLOSED: "true"
+      EOS_SECRET_KEY: ${EOS_SECRET_KEY:?EOS_SECRET_KEY is required}
+      EOS_2FA_ENCRYPTION_KEY: ${EOS_2FA_ENCRYPTION_KEY:?EOS_2FA_ENCRYPTION_KEY is required}
+      EOS_EMAIL_PROVIDER: ${EOS_EMAIL_PROVIDER:?EOS_EMAIL_PROVIDER is required}
+      EOS_PAYMENT_MODE: ${EOS_PAYMENT_MODE:?EOS_PAYMENT_MODE is required}
+      EOS_FRONTEND_URL: ${EOS_FRONTEND_URL:?EOS_FRONTEND_URL is required}
+      EOS_CORS_ORIGINS: ${EOS_CORS_ORIGINS:?EOS_CORS_ORIGINS is required}
+      EOS_ALLOWED_HOSTS: ${EOS_ALLOWED_HOSTS:?EOS_ALLOWED_HOSTS is required}
+      EOS_TRUSTED_PROXIES: ${EOS_TRUSTED_PROXIES:?EOS_TRUSTED_PROXIES is required}
+      EOS_METRICS_TOKEN: ${EOS_METRICS_TOKEN:?EOS_METRICS_TOKEN is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      DOMAIN: ${DOMAIN:?DOMAIN is required}
+    restart: always
+
+  nginx:
+    restart: always
+
+  certbot:
+    restart: always
+
+  prometheus:
+    ports: []
+    restart: always
+
+  grafana:
+    ports: []
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?GRAFANA_ADMIN_USER is required}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is required}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    restart: always
+
+  alertmanager:
+    ports: []
+    restart: always
+
+  postgres-exporter:
+    ports: []
+    restart: always
+
+  node-exporter:
+    ports: []
+    restart: always
+
+  loki:
+    ports: []
+    restart: always
+
+  promtail:
+    restart: always
