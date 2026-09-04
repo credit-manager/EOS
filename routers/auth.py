@@ -27,7 +27,7 @@ def _err(sc, code, msg):
 
 
 @router.post("/register", dependencies=[Depends(write_limiter.check)])
-async def register(body: dict, request: Request, db: Session=None):
+async def register(body: dict, request: Request, db: Session = Depends(get_db)):
     required = ["email", "password", "first_name", "last_name", "company_name"]
     for f in required:
         if not body.get(f):
@@ -90,7 +90,7 @@ async def register(body: dict, request: Request, db: Session=None):
 
 
 @router.post("/verify-email")
-async def verify_email(body: dict, db: Session=None):
+async def verify_email(body: dict, db: Session = Depends(get_db)):
     token = body.get("token")
     if not token:
         raise _err(400, "MISSING", "token required")
@@ -114,7 +114,7 @@ async def verify_email(body: dict, db: Session=None):
 
 
 @router.post("/login", dependencies=[Depends(write_limiter.check)])
-async def login(body: dict, db: Session=None):
+async def login(body: dict, db: Session = Depends(get_db)):
     email = body.get("email")
     password = body.get("password")
     if not email or not password:
@@ -127,11 +127,6 @@ async def login(body: dict, db: Session=None):
         raise _err(sc, "LOGIN_FAILED", result["error"])
 
     import os
-    # P80.5D FIX: Never fall back to the test signing key in production.
-    # Previously (secret_key = os.getenv("EOS_SECRET_KEY") or TEST_SECRET_KEY)
-    # a production deployment missing EOS_SECRET_KEY silently signed tokens
-    # with the dev/test key, enabling forgery. Now production requires the
-    # real secret or fails closed; only test mode may use the test key.
     mode = os.getenv("EOS_AUTH_MODE", "test").lower()
     secret_key = os.getenv("EOS_SECRET_KEY")
     if mode == "production":
@@ -145,36 +140,27 @@ async def login(body: dict, db: Session=None):
     expire = datetime.now(timezone.utc) + timedelta(minutes=60)
 
     payload = {
-        "sub": result["user_id"],
-        "exp": expire,
-        "iat": datetime.now(timezone.utc),
-        "type": "access",
-        "tenant_id": result["tenant_id"],
-        "email": result["email"],
+        "sub": result["user_id"], "exp": expire, "iat": datetime.now(timezone.utc),
+        "type": "access", "tenant_id": result["tenant_id"], "email": result["email"],
         "roles": [result["role"]],
     }
     token = jose_jwt.encode(payload, secret_key, algorithm=algorithm)
     return {"status": "success", "data": {
         "access_token": token, "token_type": "bearer",
-        "user": {
-            "id": result["user_id"], "email": result["email"],
-            "first_name": result.get("first_name"),
-            "last_name": result.get("last_name"),
-            "tenant_id": result["tenant_id"], "role": result["role"]
-        }
+        "user": {"id": result["user_id"], "email": result["email"],
+                  "first_name": result.get("first_name"), "last_name": result.get("last_name"),
+                  "tenant_id": result["tenant_id"], "role": result["role"]}
     }}
 
 
 @router.post("/forgot-password", dependencies=[Depends(write_limiter.check)])
-async def forgot_password(body: dict, request: Request, db: Session=None):
+async def forgot_password(body: dict, request: Request, db: Session = Depends(get_db)):
     email = body.get("email")
     if not email:
         raise _err(400, "MISSING", "email required")
-
     engine = UserEngine(db)
     result = engine.request_password_reset(email)
     db.commit()
-
     if result.get("reset_token"):
         user = engine.get_user_by_id(result.get("user_id", "")) if result.get("user_id") else None
         first_name = user.get("first_name", "User") if user else "User"
@@ -183,20 +169,16 @@ async def forgot_password(body: dict, request: Request, db: Session=None):
         tpl = EmailTemplateEngine.password_reset_email(reset_url, first_name)
         email_svc = get_email_service()
         email_svc.send(to_email=email, subject=tpl["subject"], html_body=tpl["html"], text_body=tpl.get("text"))
-
-    return {"status": "success", "data": {
-        "message": "If email exists, reset link sent",
-        "reset_token": result.get("reset_token") if os.getenv("EOS_EMAIL_PROVIDER", "console") == "console" else None
-    }}
+    return {"status": "success", "data": {"message": "If email exists, reset link sent",
+        "reset_token": result.get("reset_token") if os.getenv("EOS_EMAIL_PROVIDER", "console") == "console" else None}}
 
 
 @router.post("/reset-password")
-async def reset_password(body: dict, db: Session=None):
+async def reset_password(body: dict, db: Session = Depends(get_db)):
     token = body.get("token")
     new_password = body.get("new_password")
     if not token or not new_password:
         raise _err(400, "MISSING", "token and new_password required")
-
     engine = UserEngine(db)
     result = engine.reset_password(token, new_password)
     if not result["success"]:
@@ -206,13 +188,11 @@ async def reset_password(body: dict, db: Session=None):
 
 
 @router.post("/change-password", dependencies=[Depends(require_permission("dynamic", "update"))])
-async def change_password(body: dict, user: dict | None=None,
-                          db: Session = Depends(get_db)):
+async def change_password(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     current = body.get("current_password")
     new = body.get("new_password")
     if not current or not new:
         raise _err(400, "MISSING", "current_password and new_password required")
-
     engine = UserEngine(db)
     result = engine.change_password(user["id"], current, new)
     if not result["success"]:
@@ -223,8 +203,7 @@ async def change_password(body: dict, user: dict | None=None,
 
 @router.get("/me", dependencies=[Depends(require_permission("dynamic", "read"))])
 async def get_me(user: dict | None=None, db: Session = Depends(get_db)):
-    engine = UserEngine(db)
-    u = engine.get_user_by_id(user["id"])
+    u = UserEngine(db).get_user_by_id(user["id"])
     if not u:
         raise _err(404, "NOT_FOUND", "User not found")
     return {"status": "success", "data": u}
@@ -232,25 +211,21 @@ async def get_me(user: dict | None=None, db: Session = Depends(get_db)):
 
 @router.get("/users", dependencies=[Depends(require_permission("dynamic", "read"))])
 async def list_users(user: dict | None=None, db: Session = Depends(get_db)):
-    engine = UserEngine(db)
-    users = engine.list_users(user["tenant_id"])
+    users = UserEngine(db).list_users(user["tenant_id"])
     return {"status": "success", "data": users, "count": len(users)}
 
 
 @router.get("/users/{user_id}", dependencies=[Depends(require_permission("dynamic", "read"))])
 async def get_user(user_id: str, user: dict | None=None, db: Session = Depends(get_db)):
-    engine = UserEngine(db)
-    u = engine.get_user_by_id_tenant(user_id, user["tenant_id"])
+    u = UserEngine(db).get_user_by_id_tenant(user_id, user["tenant_id"])
     if not u:
         raise _err(404, "NOT_FOUND", "User not found")
     return {"status": "success", "data": u}
 
 
 @router.put("/users/{user_id}", dependencies=[Depends(require_permission("dynamic", "update"))])
-async def update_user(user_id: str, body: dict, user: dict | None=None,
-                      db: Session = Depends(get_db)):
-    engine = UserEngine(db)
-    result = engine.update_user(user_id, user["tenant_id"], body)
+async def update_user(user_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
+    result = UserEngine(db).update_user(user_id, user["tenant_id"], body)
     if not result["success"]:
         raise _err(400, "UPDATE_FAILED", result["error"])
     db.commit()
@@ -258,13 +233,11 @@ async def update_user(user_id: str, body: dict, user: dict | None=None,
 
 
 @router.put("/users/{user_id}/role", dependencies=[Depends(require_permission("dynamic", "update"))])
-async def change_role(user_id: str, body: dict, user: dict | None=None,
-                      db: Session = Depends(get_db)):
+async def change_role(user_id: str, body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     new_role = body.get("role")
     if not new_role:
         raise _err(400, "MISSING", "role required")
-    engine = UserEngine(db)
-    result = engine.change_role(user_id, user["tenant_id"], new_role)
+    result = UserEngine(db).change_role(user_id, user["tenant_id"], new_role)
     if not result["success"]:
         raise _err(400, "ROLE_FAILED", result["error"])
     db.commit()
@@ -272,10 +245,8 @@ async def change_role(user_id: str, body: dict, user: dict | None=None,
 
 
 @router.delete("/users/{user_id}", dependencies=[Depends(require_permission("dynamic", "update"))])
-async def deactivate_user(user_id: str, user: dict | None=None,
-                          db: Session = Depends(get_db)):
-    engine = UserEngine(db)
-    result = engine.deactivate_user(user_id, user["tenant_id"])
+async def deactivate_user(user_id: str, user: dict | None=None, db: Session = Depends(get_db)):
+    result = UserEngine(db).deactivate_user(user_id, user["tenant_id"])
     if not result["success"]:
         raise _err(400, "DELETE_FAILED", result["error"])
     db.commit()
@@ -283,29 +254,20 @@ async def deactivate_user(user_id: str, user: dict | None=None,
 
 
 @router.post("/users/invite", dependencies=[Depends(require_permission("dynamic", "create"))])
-async def invite_user(body: dict, user: dict | None=None,
-                      db: Session = Depends(get_db)):
+async def invite_user(body: dict, user: dict | None=None, db: Session = Depends(get_db)):
     email = body.get("email")
     role = body.get("role", "dynamic_viewer")
     if not email:
         raise _err(400, "MISSING", "email required")
-    engine = UserEngine(db)
-    result = engine.invite_user(
-        tenant_id=user["tenant_id"], email=email, role=role,
-        first_name=body.get("first_name", ""), last_name=body.get("last_name", "")
-    )
+    result = UserEngine(db).invite_user(tenant_id=user["tenant_id"], email=email, role=role,
+        first_name=body.get("first_name", ""), last_name=body.get("last_name", ""))
     if not result["success"]:
         raise _err(400, "INVITE_FAILED", result["error"])
     db.commit()
-
     email_svc = get_email_service()
     if result.get("verification_token"):
         frontend_url = os.getenv("EOS_FRONTEND_URL", "http://localhost:3000")
         verify_url = f"{frontend_url}/verify-email?token={result['verification_token']}"
         tpl = EmailTemplateEngine.verification_email(verify_url, body.get("first_name", "User"))
         email_svc.send(to_email=email, subject=tpl["subject"], html_body=tpl["html"], text_body=tpl.get("text"))
-
-    return {"status": "success", "data": {
-        "message": f"Invitation sent to {email}",
-        "user_id": result["user_id"]
-    }}
+    return {"status": "success", "data": {"message": f"Invitation sent to {email}", "user_id": result["user_id"]}}
