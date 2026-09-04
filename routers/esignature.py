@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/v1/dynamic", tags=["E-Signature & Approvals"])
 @router.get("/companies/{cid}/signature-requests",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def list_signature_requests(cid: str, status: str | None = None,
-                                  user: dict | None=None,
+                                  user: dict | None = None,
                                   db: Session = Depends(get_db)):
     data = ESignatureEngine(db).list_signature_requests(
         cid, tenant_id=user["tenant_id"], status=status)
@@ -27,7 +27,7 @@ async def list_signature_requests(cid: str, status: str | None = None,
 @router.post("/companies/{cid}/signature-requests",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_signature_request(cid: str, body: dict,
-                                   user: dict | None=None,
+                                   user: dict | None = None,
                                    db: Session = Depends(get_db)):
     if "title" not in body:
         raise HTTPException(400, detail={"status": "error",
@@ -48,7 +48,7 @@ async def create_signature_request(cid: str, body: dict,
 
 @router.get("/signature-requests/{rid}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_signature_request(rid: str, db: Session=None):
+async def get_signature_request(rid: str, db: Session = Depends(get_db)):
     data = ESignatureEngine(db).get_signature_request(rid)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -58,7 +58,7 @@ async def get_signature_request(rid: str, db: Session=None):
 
 @router.post("/signature-requests/{rid}/sign",
              dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def sign_request(rid: str, body: dict, db: Session=None):
+async def sign_request(rid: str, body: dict, db: Session = Depends(get_db)):
     for f in ("signer_id", "signature_data"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error",
@@ -73,7 +73,7 @@ async def sign_request(rid: str, body: dict, db: Session=None):
 
 @router.post("/signature-requests/{rid}/reject",
              dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def reject_request(rid: str, body: dict, db: Session=None):
+async def reject_request(rid: str, body: dict, db: Session = Depends(get_db)):
     for f in ("signer_id", "reason"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error",
@@ -90,7 +90,7 @@ async def reject_request(rid: str, body: dict, db: Session=None):
 
 @router.get("/companies/{cid}/approval-templates",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_approval_templates(cid: str, user: dict | None=None,
+async def list_approval_templates(cid: str, user: dict | None = None,
                                   db: Session = Depends(get_db)):
     data = ESignatureEngine(db).list_approval_templates(
         cid, tenant_id=user["tenant_id"])
@@ -100,7 +100,7 @@ async def list_approval_templates(cid: str, user: dict | None=None,
 @router.post("/companies/{cid}/approval-templates",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_approval_template(cid: str, body: dict,
-                                   user: dict | None=None,
+                                   user: dict | None = None,
                                    db: Session = Depends(get_db)):
     for f in ("name", "steps"):
         if f not in body:
@@ -116,7 +116,7 @@ async def create_approval_template(cid: str, body: dict,
 
 @router.get("/approval-templates/{tid}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_approval_template(tid: str, db: Session=None):
+async def get_approval_template(tid: str, db: Session = Depends(get_db)):
     data = ESignatureEngine(db).get_approval_template(tid)
     if not data:
         raise HTTPException(404, detail={"status": "error",
@@ -128,7 +128,7 @@ async def get_approval_template(tid: str, db: Session=None):
 
 @router.get("/companies/{cid}/delegations/active",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_active_delegation(cid: str, delegator_id: str | None=None,
+async def get_active_delegation(cid: str, delegator_id: str | None = None,
                                 entity_type: str | None = None,
                                 db: Session = Depends(get_db)):
     data = ESignatureEngine(db).get_active_delegation(
@@ -141,7 +141,7 @@ async def get_active_delegation(cid: str, delegator_id: str | None=None,
 
 @router.get("/companies/{cid}/delegations",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_delegations(cid: str, user: dict | None=None,
+async def list_delegations(cid: str, user: dict | None = None,
                            db: Session = Depends(get_db)):
     data = ESignatureEngine(db).list_delegations(
         cid, tenant_id=user["tenant_id"])
@@ -151,7 +151,7 @@ async def list_delegations(cid: str, user: dict | None=None,
 @router.post("/companies/{cid}/delegations",
              dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def create_delegation(cid: str, body: dict,
-                            user: dict | None=None,
+                            user: dict | None = None,
                             db: Session = Depends(get_db)):
     for f in ("delegator_id", "delegate_id", "start_date", "end_date"):
         if f not in body:
