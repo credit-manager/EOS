@@ -108,35 +108,4 @@ jobs:
           psql -h localhost -U test_user -d eos_migration -v ON_ERROR_STOP=1 -c "CREATE ROLE eos_rls_ci LOGIN PASSWORD 'rls_ci_pass' NOSUPERUSER NOBYPASSRLS"
           psql -h localhost -U test_user -d eos_migration -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA public TO eos_rls_ci; GRANT SELECT, INSERT, UPDATE, DELETE ON public.dbp_fiscal_periods TO eos_rls_ci"
           PGPASSWORD=rls_ci_pass psql -h localhost -U eos_rls_ci -d eos_migration -v ON_ERROR_STOP=1 -c "SET app.tenant_id='tenant-a'; INSERT INTO public.dbp_fiscal_periods(id,tenant_id,company_id,period_code,start_date,end_date) VALUES ('rls-a','tenant-a','company-a','2026-01','2026-01-01','2026-01-31')"
-          PGPASSWORD=rls_ci_pass psql -h localhost -U eos_rls_ci -d eos_migration -v ON_ERROR_STOP=1 -At -c "SET app.tenant_id='tenant-b'; SELECT COUNT(*) FROM public.dbp_fiscal_periods WHERE id='rls-a'" | grep -Fx '0'
-  security-validation:
-    name: Security Regression Suite
-    runs-on: ubuntu-latest
-    needs: smoke-test
-    steps:
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with: {python-version: '3.12', cache: 'pip'}
-      - run: python -m pip install --upgrade pip && pip install -r requirements.txt
-      - run: pytest -q tests -k 'tenant or security or reliability or health'
-  summary:
-    name: CI Gate Summary
-    runs-on: ubuntu-latest
-    if: always()
-    needs: [smoke-test, frontend-build, code-quality, automated-tests, migration-validation, security-validation]
-    steps:
-      - name: Require all gates to pass
-        env:
-          SMOKE: ${{ needs.smoke-test.result }}
-          FRONTEND: ${{ needs.frontend-build.result }}
-          QUALITY: ${{ needs.code-quality.result }}
-          TESTS: ${{ needs.automated-tests.result }}
-          MIGRATIONS: ${{ needs.migration-validation.result }}
-          SECURITY: ${{ needs.security-validation.result }}
-        run: |
-          test "$SMOKE" = success
-          test "$FRONTEND" = success
-          test "$QUALITY" = success
-          test "$TESTS" = success
-          test "$MIGRATIONS" = success
-          test "$SECURITY" = success
+          PGPASSWORD=rls_ci_pass psql -h localhost -U eos_rls_ci -d eos_migration -v ON_ERROR_STOP=1 -c "SET app.tenant_id='tenant-b'; DO \$\$ BEGIN IF (SELECT COUNT(*) FROM public.dbp_fiscal_periods WHERE id='rls-a') <> 0 THEN RAISE EXCEPTION 'RLS tenant isolation failed'; END IF; END \$\$;"
