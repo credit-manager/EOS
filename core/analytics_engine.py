@@ -955,10 +955,16 @@ class AnalyticsEngine:
 
     # ── Dashboard execution (for dashboards.py) ─────────────
 
-    def execute_dashboard(self, dashboard_id: str):
-        dash = self.db.execute(text(
-            "SELECT id, dashboard_name, dashboard_type FROM dbp_dashboards WHERE id = :id"
-        ), {"id": dashboard_id}).mappings().first()
+    def execute_dashboard(self, dashboard_id: str, tenant_id: str | None = None):
+        if tenant_id:
+            dash = self.db.execute(text(
+                "SELECT id, dashboard_name, dashboard_type FROM dbp_dashboards "
+                "WHERE id = :id AND (tenant_id = :tid OR tenant_id IS NULL)"
+            ), {"id": dashboard_id, "tid": tenant_id}).mappings().first()
+        else:
+            dash = self.db.execute(text(
+                "SELECT id, dashboard_name, dashboard_type FROM dbp_dashboards WHERE id = :id"
+            ), {"id": dashboard_id}).mappings().first()
         if not dash:
             return {"error": "Dashboard not found"}
         widgets = self.db.execute(text(
