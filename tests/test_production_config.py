@@ -24,7 +24,7 @@ def _base_env(monkeypatch):
         "POSTGRES_USER": "eos",
         "POSTGRES_PASSWORD": "password",
         "POSTGRES_DB": "eos",
-        "DOMAIN": "https://app.example.com",
+        "DOMAIN": "app.example.com",
         "EOS_METRICS_TOKEN": "m" * 64,
         "EOS_HEALTH_TOKEN": "h" * 64,
         "EOS_RUNTIME_SCHEMA": "false",
@@ -53,3 +53,10 @@ def test_production_requires_live_stripe_key_when_enabled(monkeypatch):
     monkeypatch.setenv("EOS_STRIPE_SECRET_KEY", "sk_live_" + "x" * 20)
     failures = [name for name, status, critical in validate_production_config() if critical and status != "OK"]
     assert failures == []
+
+
+def test_production_rejects_url_in_domain(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("DOMAIN", "https://app.example.com")
+    failures = {name for name, status, critical in validate_production_config() if critical and status != "OK"}
+    assert "DOMAIN" in failures
