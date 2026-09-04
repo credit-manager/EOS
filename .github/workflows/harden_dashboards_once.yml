@@ -1,8 +1,7 @@
 name: One-time dashboard tenant hardening
 on:
-  push:
-    branches:
-      - custom-erp-system-for-companies-24152
+  pull_request:
+    types: [synchronize]
   workflow_dispatch:
 permissions:
   contents: write
