@@ -3,13 +3,13 @@
 All gateway and transaction operations are tenant-bound through the
 authenticated principal and protected by explicit RBAC dependencies.
 """
-
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from core.auth import get_current_user, require_permission
 from core.payment_engine import PaymentGatewayEngine
 from core.rate_limit import read_limiter, write_limiter
+from core.reliability import IdempotencyConflict, IdempotencyInProgress
 from database import SessionLocal
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
@@ -52,7 +52,7 @@ class BankTransferRequest(BaseModel):
 def _tenant(user: dict) -> str:
     tenant_id = user.get("tenant_id")
     if not tenant_id:
-        raise HTTPException(401, detail={"status":"error","error":{"code":"TENANT_REQUIRED","message":"Authenticated tenant is required"}})
+        raise HTTPException(401, detail={"status": "error", "error": {"code": "TENANT_REQUIRED", "message": "Authenticated tenant is required"}})
     return tenant_id
 
 
@@ -60,11 +60,17 @@ def _session():
     return SessionLocal()
 
 
+def _idempotency_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, IdempotencyConflict):
+        return HTTPException(409, detail={"status": "error", "error": {"code": "IDEMPOTENCY_CONFLICT", "message": str(exc)}})
+    return HTTPException(409, detail={"status": "error", "error": {"code": "IDEMPOTENCY_IN_PROGRESS", "message": str(exc)}})
+
+
 @router.get("/gateways", dependencies=[Depends(require_permission("payments", "read")), Depends(read_limiter.check)])
 async def list_gateways(user: dict = Depends(get_current_user)):
     db = _session()
     try:
-        return {"status":"success","data":PaymentGatewayEngine(db).list_gateways(_tenant(user))}
+        return {"status": "success", "data": PaymentGatewayEngine(db).list_gateways(_tenant(user))}
     finally:
         db.close()
 
@@ -73,104 +79,143 @@ async def list_gateways(user: dict = Depends(get_current_user)):
 async def create_gateway(body: GatewayCreate, user: dict = Depends(get_current_user)):
     db = _session()
     try:
-        return {"status":"success","data":PaymentGatewayEngine(db).create_gateway(_tenant(user),body.gateway_name,body.gateway_type,body.config)}
+        return {"status": "success", "data": PaymentGatewayEngine(db).create_gateway(_tenant(user), body.gateway_name, body.gateway_type, body.config)}
     finally:
         db.close()
 
 
 @router.post("/transactions", dependencies=[Depends(require_permission("payments", "create")), Depends(write_limiter.check)])
-async def create_transaction(body: TransactionCreate, user: dict = Depends(get_current_user)):
+async def create_transaction(body: TransactionCreate, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=255), user: dict = Depends(get_current_user)):
+    if not idempotency_key:
+        raise HTTPException(428, detail={"status": "error", "error": {"code": "IDEMPOTENCY_KEY_REQUIRED", "message": "Idempotency-Key is required for payment creation"}})
     db = _session()
     try:
         try:
-            result=PaymentGatewayEngine(db).create_transaction(_tenant(user),body.amount,body.currency,body.transaction_type,body.reference_type,body.reference_id,body.customer_id,body.payment_method)
+            result = PaymentGatewayEngine(db).create_transaction(_tenant(user), body.amount, body.currency, body.transaction_type, body.reference_type, body.reference_id, body.customer_id, body.payment_method, idempotency_key)
+        except (IdempotencyConflict, IdempotencyInProgress) as exc:
+            raise _idempotency_error(exc) from exc
         except ValueError as exc:
-            raise HTTPException(400,detail={"status":"error","error":{"code":"INVALID","message":str(exc)}}) from exc
-        return {"status":"success","data":result}
-    finally: db.close()
+            raise HTTPException(400, detail={"status": "error", "error": {"code": "INVALID", "message": str(exc)}}) from exc
+        return {"status": "success", "data": result}
+    finally:
+        db.close()
 
 
 @router.get("/transactions", dependencies=[Depends(require_permission("payments", "read")), Depends(read_limiter.check)])
 async def list_transactions(status: str | None = None, limit: int = Query(50, ge=1, le=500), user: dict = Depends(get_current_user)):
-    db=_session()
-    try: return {"status":"success","data":PaymentGatewayEngine(db).list_transactions(_tenant(user),status,limit)}
-    finally: db.close()
+    db = _session()
+    try:
+        return {"status": "success", "data": PaymentGatewayEngine(db).list_transactions(_tenant(user), status, limit)}
+    finally:
+        db.close()
 
 
 @router.get("/transactions/{transaction_id}", dependencies=[Depends(require_permission("payments", "read")), Depends(read_limiter.check)])
 async def get_transaction(transaction_id: str, user: dict = Depends(get_current_user)):
-    db=_session()
+    db = _session()
     try:
-        data=PaymentGatewayEngine(db).get_transaction(transaction_id,_tenant(user))
-        if not data: raise HTTPException(404,detail="Transaction not found")
-        return {"status":"success","data":data}
-    finally: db.close()
+        data = PaymentGatewayEngine(db).get_transaction(transaction_id, _tenant(user))
+        if not data:
+            raise HTTPException(404, detail="Transaction not found")
+        return {"status": "success", "data": data}
+    finally:
+        db.close()
 
 
 @router.post("/transactions/{transaction_id}/complete", dependencies=[Depends(require_permission("payments", "update")), Depends(write_limiter.check)])
 async def complete_transaction(transaction_id: str, user: dict = Depends(get_current_user)):
-    db=_session()
+    db = _session()
     try:
-        result=PaymentGatewayEngine(db).complete_transaction(transaction_id,_tenant(user))
-        if result.get("error"): raise HTTPException(404,detail={"status":"error","error":{"code":"NOT_FOUND","message":result["error"]}})
-        return {"status":"success","data":result}
-    finally: db.close()
+        result = PaymentGatewayEngine(db).complete_transaction(transaction_id, _tenant(user))
+        if result.get("error"):
+            raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": result["error"]}})
+        return {"status": "success", "data": result}
+    finally:
+        db.close()
 
 
 @router.post("/transactions/{transaction_id}/fail", dependencies=[Depends(require_permission("payments", "update")), Depends(write_limiter.check)])
 async def fail_transaction(transaction_id: str, reason: str = Query("", max_length=500), user: dict = Depends(get_current_user)):
-    db=_session()
+    db = _session()
     try:
-        result=PaymentGatewayEngine(db).fail_transaction(transaction_id,_tenant(user),reason)
-        if result.get("error"): raise HTTPException(404,detail={"status":"error","error":{"code":"NOT_FOUND","message":result["error"]}})
-        return {"status":"success","data":result}
-    finally: db.close()
+        result = PaymentGatewayEngine(db).fail_transaction(transaction_id, _tenant(user), reason)
+        if result.get("error"):
+            raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": result["error"]}})
+        return {"status": "success", "data": result}
+    finally:
+        db.close()
 
 
 @router.post("/transactions/{transaction_id}/refund", dependencies=[Depends(require_permission("payments", "update")), Depends(write_limiter.check)])
-async def refund_transaction(transaction_id: str, body: RefundRequest, user: dict = Depends(get_current_user)):
-    db=_session()
+async def refund_transaction(transaction_id: str, body: RefundRequest, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=255), user: dict = Depends(get_current_user)):
+    if not idempotency_key:
+        raise HTTPException(428, detail={"status": "error", "error": {"code": "IDEMPOTENCY_KEY_REQUIRED", "message": "Idempotency-Key is required for refunds"}})
+    db = _session()
     try:
-        result=PaymentGatewayEngine(db).refund_transaction(transaction_id,_tenant(user),body.amount)
+        try:
+            result = PaymentGatewayEngine(db).refund_transaction(transaction_id, _tenant(user), body.amount, idempotency_key)
+        except (IdempotencyConflict, IdempotencyInProgress) as exc:
+            raise _idempotency_error(exc) from exc
         if result.get("error"):
-            err=result["error"]; code="NOT_FOUND" if err=="Transaction not found" else "REFUND_FAILED"
-            raise HTTPException(404 if code=="NOT_FOUND" else 400,detail={"status":"error","error":{"code":code,"message":err}})
-        return {"status":"success","data":result}
-    finally: db.close()
+            err = result["error"]
+            code = "NOT_FOUND" if err == "Transaction not found" else "REFUND_FAILED"
+            raise HTTPException(404 if code == "NOT_FOUND" else 400, detail={"status": "error", "error": {"code": code, "message": err}})
+        return {"status": "success", "data": result}
+    finally:
+        db.close()
 
 
 @router.post("/bank-transfer", dependencies=[Depends(require_permission("payments", "create")), Depends(write_limiter.check)])
-async def bank_transfer(body: BankTransferRequest, user: dict = Depends(get_current_user)):
-    db=_session()
+async def bank_transfer(body: BankTransferRequest, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=255), user: dict = Depends(get_current_user)):
+    if not idempotency_key:
+        raise HTTPException(428, detail={"status": "error", "error": {"code": "IDEMPOTENCY_KEY_REQUIRED", "message": "Idempotency-Key is required for bank transfers"}})
+    db = _session()
     try:
-        try: result=PaymentGatewayEngine(db).process_bank_transfer(_tenant(user),body.amount,body.bank_name,body.account_number,body.reference)
-        except ValueError as exc: raise HTTPException(400,detail={"status":"error","error":{"code":"INVALID","message":str(exc)}}) from exc
-        return {"status":"success","data":result}
-    finally: db.close()
+        try:
+            result = PaymentGatewayEngine(db).process_bank_transfer(_tenant(user), body.amount, body.bank_name, body.account_number, body.reference, idempotency_key)
+        except (IdempotencyConflict, IdempotencyInProgress) as exc:
+            raise _idempotency_error(exc) from exc
+        except ValueError as exc:
+            raise HTTPException(400, detail={"status": "error", "error": {"code": "INVALID", "message": str(exc)}}) from exc
+        return {"status": "success", "data": result}
+    finally:
+        db.close()
 
 
 @router.post("/cash", dependencies=[Depends(require_permission("payments", "create")), Depends(write_limiter.check)])
-async def cash_payment(amount: float = Query(..., gt=0), user: dict = Depends(get_current_user)):
-    db=_session()
+async def cash_payment(amount: float = Query(..., gt=0), idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=255), user: dict = Depends(get_current_user)):
+    if not idempotency_key:
+        raise HTTPException(428, detail={"status": "error", "error": {"code": "IDEMPOTENCY_KEY_REQUIRED", "message": "Idempotency-Key is required for cash payments"}})
+    db = _session()
     try:
-        try: result=PaymentGatewayEngine(db).process_cash(_tenant(user),amount)
-        except ValueError as exc: raise HTTPException(400,detail={"status":"error","error":{"code":"INVALID","message":str(exc)}}) from exc
-        return {"status":"success","data":result}
-    finally: db.close()
+        try:
+            result = PaymentGatewayEngine(db).process_cash(_tenant(user), amount, idempotency_key=idempotency_key)
+        except (IdempotencyConflict, IdempotencyInProgress) as exc:
+            raise _idempotency_error(exc) from exc
+        except ValueError as exc:
+            raise HTTPException(400, detail={"status": "error", "error": {"code": "INVALID", "message": str(exc)}}) from exc
+        return {"status": "success", "data": result}
+    finally:
+        db.close()
 
 
 @router.post("/links", dependencies=[Depends(require_permission("payments", "create")), Depends(write_limiter.check)])
 async def create_payment_link(body: PaymentLinkCreate, user: dict = Depends(get_current_user)):
-    db=_session()
+    db = _session()
     try:
-        try: result=PaymentGatewayEngine(db).create_payment_link(_tenant(user),body.amount,body.description,body.customer_email,body.expires_hours)
-        except ValueError as exc: raise HTTPException(400,detail={"status":"error","error":{"code":"INVALID","message":str(exc)}}) from exc
-        return {"status":"success","data":result}
-    finally: db.close()
+        try:
+            result = PaymentGatewayEngine(db).create_payment_link(_tenant(user), body.amount, body.description, body.customer_email, body.expires_hours)
+        except ValueError as exc:
+            raise HTTPException(400, detail={"status": "error", "error": {"code": "INVALID", "message": str(exc)}}) from exc
+        return {"status": "success", "data": result}
+    finally:
+        db.close()
 
 
 @router.get("/summary", dependencies=[Depends(require_permission("payments", "read")), Depends(read_limiter.check)])
 async def payment_summary(user: dict = Depends(get_current_user)):
-    db=_session()
-    try: return {"status":"success","data":PaymentGatewayEngine(db).get_summary(_tenant(user))}
-    finally: db.close()
+    db = _session()
+    try:
+        return {"status": "success", "data": PaymentGatewayEngine(db).get_summary(_tenant(user))}
+    finally:
+        db.close()
