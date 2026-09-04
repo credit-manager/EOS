@@ -2,7 +2,7 @@ name: EOS Container Security & SBOM
 on:
   push: {branches: [main, develop]}
   pull_request: {branches: [main, develop]}
-permissions: {contents: read, security-events: write, attestations: write, id-token: write}
+permissions: {contents: read, security-events: write}
 jobs:
   scan:
     name: Build, scan and generate SBOM
@@ -27,8 +27,3 @@ jobs:
           name: eos-container-sbom
           path: eos-sbom.spdx.json
           retention-days: 90
-      - name: Attest build provenance
-        if: github.event_name == 'push'
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0f6ec8f7e6b5f0d3e3 # immutable release action
-        with:
-          subject-path: eos-sbom.spdx.json
