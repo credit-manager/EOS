@@ -57,13 +57,15 @@ class IdempotencyStore:
         return {"status_code": row.status_code, "response_body": json.loads(row.response_body or "null")}
 
     def complete(self, tenant_id: str, key: str, status_code: int, response_body: Any) -> None:
-        self.db.execute(text("""
+        result = self.db.execute(text("""
             UPDATE dbp_idempotency_keys
             SET status_code=:status_code, response_body=:response_body, completed_at=:completed_at
-            WHERE tenant_id=:tenant_id AND key=:key
+            WHERE tenant_id=:tenant_id AND key=:key AND completed_at IS NULL
         """), {"tenant_id": tenant_id, "key": key, "status_code": status_code,
                "response_body": json.dumps(response_body, default=str),
                "completed_at": datetime.now(timezone.utc)})
+        if getattr(result, "rowcount", 1) == 0:
+            raise RuntimeError("Idempotency key is missing or already completed")
 
 
 class OutboxStore:
@@ -75,15 +77,19 @@ class OutboxStore:
         if not tenant_id:
             raise ValueError("tenant_id is required")
         event_id = str(uuid.uuid4())
-        self.db.execute(text("""
+        row = self.db.execute(text("""
             INSERT INTO dbp_outbox_events
                 (id, tenant_id, event_type, aggregate_type, aggregate_id, payload)
             VALUES (:id, :tenant_id, :event_type, :aggregate_type, :aggregate_id, :payload)
-            ON CONFLICT (tenant_id, event_type, aggregate_type, aggregate_id) DO NOTHING
+            ON CONFLICT (tenant_id, event_type, aggregate_type, aggregate_id) DO UPDATE
+                SET aggregate_id = EXCLUDED.aggregate_id
+            RETURNING id
         """), {"id": event_id, "tenant_id": tenant_id, "event_type": event_type,
                "aggregate_type": aggregate_type, "aggregate_id": aggregate_id,
-               "payload": json.dumps(payload, default=str)})
-        return event_id
+               "payload": json.dumps(payload, default=str)}).fetchone()
+        if not row:
+            raise RuntimeError("Unable to enqueue outbox event")
+        return str(row[0])
 
     def claim_batch(self, tenant_id: str, limit: int = 50) -> list[dict]:
         limit = max(1, min(int(limit), 500))
