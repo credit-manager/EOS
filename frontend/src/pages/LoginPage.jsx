@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
-import { Form, Input, Button, Card, message, Checkbox } from 'antd'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { Form, Input, Button, Card, message } from 'antd'
 import { UserOutlined, LockOutlined } from '@ant-design/icons'
 import { motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
@@ -16,14 +16,26 @@ function LoginPage() {
     setLoading(true)
     try {
       const response = await authAPI.login(values)
-      localStorage.setItem('eos_token', response.data.access_token)
-      if (response.data.tenant_id) {
-        localStorage.setItem('eos_tenant_id', response.data.tenant_id)
+      const data = response.data?.data
+      const accessToken = data?.access_token
+      const user = data?.user
+
+      if (!accessToken || !user?.tenant_id) {
+        throw new Error('Invalid authentication response')
       }
+
+      localStorage.setItem('eos_token', accessToken)
+      localStorage.setItem('eos_tenant_id', user.tenant_id)
+      localStorage.setItem('eos_user', JSON.stringify(user))
+
       message.success(t('welcome'))
-      navigate((location.state?.from?.pathname) || '/dashboard')
+      navigate(location.state?.from?.pathname || '/dashboard', { replace: true })
     } catch (error) {
-      message.error(error.response?.data?.detail || t('invalid_credentials'))
+      message.error(
+        error.response?.data?.detail?.error?.message ||
+        error.response?.data?.detail ||
+        t('invalid_credentials')
+      )
     } finally {
       setLoading(false)
     }
@@ -51,8 +63,8 @@ function LoginPage() {
           }}
         >
           <div style={{ textAlign: 'center', marginBottom: 30 }}>
-            <h1 style={{ 
-              fontSize: 32, 
+            <h1 style={{
+              fontSize: 32,
               margin: 0,
               background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               WebkitBackgroundClip: 'text',
@@ -63,7 +75,6 @@ function LoginPage() {
 
           <Form
             name="login"
-            initialValues={{ remember: true }}
             onFinish={onFinish}
             layout="vertical"
             size="large"
@@ -71,49 +82,28 @@ function LoginPage() {
             <Form.Item
               name="email"
               rules={[
-                { required: true, message: t('email') + ' ' + t('required') },
-                { type: 'email', message: t('email') + ' ' + t('invalid') },
+                { required: true, message: `${t('email')} ${t('required')}` },
+                { type: 'email', message: `${t('email')} ${t('invalid')}` },
               ]}
             >
-              <Input
-                prefix={<UserOutlined />}
-                placeholder={t('email')}
-                disabled={loading}
-              />
+              <Input prefix={<UserOutlined />} placeholder={t('email')} disabled={loading} />
             </Form.Item>
 
             <Form.Item
               name="password"
-              rules={[{ required: true, message: t('password') + ' ' + t('required') }]}
+              rules={[{ required: true, message: `${t('password')} ${t('required')}` }]}
             >
-              <Input.Password
-                prefix={<LockOutlined />}
-                placeholder={t('password')}
-                disabled={loading}
-              />
+              <Input.Password prefix={<LockOutlined />} placeholder={t('password')} disabled={loading} />
             </Form.Item>
 
             <Form.Item>
-              <Checkbox>{t('remember_me')}</Checkbox>
-              <a href="/forgot-password" style={{ float: 'right' }}>
+              <Link to="/forgot-password" style={{ float: 'right' }}>
                 {t('forgot_password')}
-              </a>
+              </Link>
             </Form.Item>
 
             <Form.Item>
-              <Button
-                type="primary"
-                htmlType="submit"
-                loading={loading}
-                block
-                size="large"
-                style={{
-                  height: 48,
-                  fontSize: 16,
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  border: 'none',
-                }}
-              >
+              <Button type="primary" htmlType="submit" loading={loading} block size="large">
                 {t('sign_in')}
               </Button>
             </Form.Item>
