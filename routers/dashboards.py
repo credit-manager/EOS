@@ -150,8 +150,16 @@ async def get_dashboard(
     db: Session = Depends(get_db),
 ):
     """Get dashboard with all widgets."""
+    tenant_id = user.get("tenant_id")
+    dash = db.execute(
+        text("SELECT id FROM dbp_dashboards WHERE id = :id AND (tenant_id = :tid OR tenant_id IS NULL)"),
+        {"id": dashboard_id, "tid": tenant_id},
+    ).fetchone()
+    if not dash:
+        raise HTTPException(status_code=404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Dashboard not found"}})
+
     engine = AnalyticsEngine(db)
-    result = engine.execute_dashboard(dashboard_id)
+    result = engine.execute_dashboard(dashboard_id, tenant_id=tenant_id)
 
     if "error" in result:
         raise HTTPException(status_code=404, detail={
@@ -211,17 +219,6 @@ async def create_widget(
     dash = db.execute(text("SELECT id FROM dbp_dashboards WHERE id = :id AND (tenant_id = :tid OR tenant_id IS NULL)"), {"id": dashboard_id, "tid": user["tenant_id"]}).fetchone()
     if not dash:
         raise HTTPException(status_code=404, detail="Dashboard not found")
-    # Validate dashboard exists
-    dash = db.execute(
-        text("SELECT id FROM dbp_dashboards WHERE id = :id"),
-        {"id": dashboard_id},
-    ).fetchone()
-    if not dash:
-        raise HTTPException(status_code=404, detail={
-            "status": "error",
-            "error": {"code": "NOT_FOUND", "message": "Dashboard not found"},
-        })
-
     code = body.get("code")
     entity_code = body.get("entity_code")
     title = body.get("title")
@@ -338,8 +335,11 @@ async def delete_widget(
     if not dash:
         raise HTTPException(status_code=404, detail="Dashboard not found")
     result = db.execute(
-        text("DELETE FROM dbp_dashboard_widgets WHERE id = :id AND dashboard_id = :did"),
-        {"id": widget_id, "did": dashboard_id},
+        text("""DELETE FROM dbp_dashboard_widgets w USING dbp_dashboards d
+                  WHERE w.id = :id AND w.dashboard_id = :did
+                    AND d.id = w.dashboard_id
+                    AND (d.tenant_id = :tid OR d.tenant_id IS NULL)"""),
+        {"id": widget_id, "did": dashboard_id, "tid": user["tenant_id"]},
     )
     db.commit()
 
