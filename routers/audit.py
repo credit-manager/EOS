@@ -24,7 +24,7 @@ async def get_audit_trail(cid: str, entity_type: str | None = None, entity_id: s
 
 
 @router.get("/companies/{cid}/audit-trail/entity/{entity_type}/{entity_id}", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_entity_history(cid: str, entity_type: str, entity_id: str, db: Session=None):
+async def get_entity_history(cid: str, entity_type: str, entity_id: str, db: Session = Depends(get_db)):
     return {"status": "success", "data": AuditComplianceEngine(db).get_entity_history(cid, entity_type, entity_id)}
 
 
@@ -72,7 +72,7 @@ async def create_compliance_rule(cid: str, body: dict, user: dict | None=None, d
 
 
 @router.put("/compliance-rules/{rid}", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def update_compliance_rule(rid: str, body: dict, db: Session=None):
+async def update_compliance_rule(rid: str, body: dict, db: Session = Depends(get_db)):
     result = AuditComplianceEngine(db).update_compliance_rule(rid, **body)
     if not result["success"]:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "UPDATE_FAILED", "message": result["error"]}})
