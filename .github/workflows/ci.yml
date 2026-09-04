@@ -103,11 +103,12 @@ jobs:
         env:
           PGPASSWORD: test_pass
         run: |
+          set -euo pipefail
+          trap 'psql -h localhost -U test_user -d eos_migration -v ON_ERROR_STOP=1 -c "DROP ROLE IF EXISTS eos_rls_ci"' EXIT
           psql -h localhost -U test_user -d eos_migration -v ON_ERROR_STOP=1 -c "CREATE ROLE eos_rls_ci LOGIN PASSWORD 'rls_ci_pass' NOSUPERUSER NOBYPASSRLS"
           psql -h localhost -U test_user -d eos_migration -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA public TO eos_rls_ci; GRANT SELECT, INSERT, UPDATE, DELETE ON public.dbp_fiscal_periods TO eos_rls_ci"
           PGPASSWORD=rls_ci_pass psql -h localhost -U eos_rls_ci -d eos_migration -v ON_ERROR_STOP=1 -c "SET app.tenant_id='tenant-a'; INSERT INTO public.dbp_fiscal_periods(id,tenant_id,company_id,period_code,start_date,end_date) VALUES ('rls-a','tenant-a','company-a','2026-01','2026-01-01','2026-01-31')"
-          PGPASSWORD=rls_ci_pass psql -h localhost -U eos_rls_ci -d eos_migration -v ON_ERROR_STOP=1 -c "SET app.tenant_id='tenant-b'; SELECT COUNT(*) FROM public.dbp_fiscal_periods WHERE id='rls-a'" | grep -E '\|[[:space:]]*0[[:space:]]*\|'
-          psql -h localhost -U test_user -d eos_migration -v ON_ERROR_STOP=1 -c "DROP ROLE eos_rls_ci"
+          PGPASSWORD=rls_ci_pass psql -h localhost -U eos_rls_ci -d eos_migration -v ON_ERROR_STOP=1 -At -c "SET app.tenant_id='tenant-b'; SELECT COUNT(*) FROM public.dbp_fiscal_periods WHERE id='rls-a'" | grep -Fx '0'
   security-validation:
     name: Security Regression Suite
     runs-on: ubuntu-latest
