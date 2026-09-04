@@ -55,7 +55,6 @@ def _collect_backend_paths() -> set[str]:
                 prefix = router_prefixes.get(decorator.func.value.id, "")
                 combined = f"{prefix}/{route.lstrip('/')}" if prefix else route
                 paths.add(re.sub(r"//+", "/", combined))
-
     return paths
 
 
@@ -72,12 +71,9 @@ if not frontend_api.exists():
     raise SystemExit("Canonical frontend API service is missing: frontend/src/services/api.js")
 
 text = frontend_api.read_text(encoding="utf-8-sig")
-raw_paths = set(
-    re.findall(r"['\"](/(?:api/v1|auth|users|dashboard|entities|reports|industries|builder)[^'\"]*)['\"]", text)
-)
-raw_paths.update(
-    re.findall(r"`(/(?:api/v1|auth|users|dashboard|entities|reports|industries|builder)[^`]*)`", text)
-)
+prefixes = r"api/v1|auth|users|dashboard|entities|reports|industries|builder|settings|tenants|dynamic"
+raw_paths = set(re.findall(rf"['\"](/(?:{prefixes})[^'\"]*)['\"]", text))
+raw_paths.update(re.findall(rf"`(/(?:{prefixes})[^`]*)`", text))
 paths = {p for p in raw_paths if p != "/api/v1"}
 backend_paths = _collect_backend_paths()
 
