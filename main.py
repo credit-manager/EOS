@@ -109,6 +109,11 @@ for _router in [dynamic_crud, relationships, entity_management, events_webhooks,
     app.include_router(_router.router)
 
 
+_FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "eos-system", "frontend", "dist")
+if os.path.isdir(_FRONTEND_DIST):
+    app.mount("/ui", StaticFiles(directory=_FRONTEND_DIST, html=True), name="frontend")
+
+
 @app.on_event("startup")
 async def validate_configuration():
     errors = []
@@ -135,41 +140,4 @@ app.include_router(health_router)
 
 @app.get("/")
 def root():
-    return {"message": "EOS DBP Core is running!", "api": "/api/v1", "docs_enabled": not _docs_disabled}
-
-
-@app.get("/app")
-async def serve_landing():
-    index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
-    if os.path.exists(index_path):
-        from fastapi.responses import FileResponse
-        return FileResponse(index_path, media_type="text/html")
-    return {"message": "Landing page not found"}
-
-
-_REACT_DIST = os.path.join(os.path.dirname(__file__), "eos-system", "frontend", "dist")
-if os.path.isdir(_REACT_DIST):
-    for _name in ("assets", "icons"):
-        _dir = os.path.join(_REACT_DIST, _name)
-        if os.path.isdir(_dir):
-            app.mount(f"/ui/{_name}", StaticFiles(directory=_dir), name=f"react-{_name}")
-
-    @app.get("/ui/manifest.webmanifest")
-    async def _serve_manifest():
-        from fastapi.responses import FileResponse
-        return FileResponse(os.path.join(_REACT_DIST, "manifest.webmanifest"), media_type="application/manifest+json")
-
-    @app.get("/ui/sw.js")
-    async def _serve_sw():
-        from fastapi.responses import FileResponse
-        return FileResponse(os.path.join(_REACT_DIST, "sw.js"), media_type="application/javascript")
-
-    @app.get("/ui/{full_path:path}")
-    async def _serve_react(full_path: str):
-        from fastapi.responses import FileResponse
-        return FileResponse(os.path.join(_REACT_DIST, "index.html"), media_type="text/html")
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host=os.getenv("EOS_BIND_HOST", "127.0.0.1"), port=int(os.getenv("PORT", "8001")), reload=False)
+    return {"message": "EOS DBP Core is running!", "api": "/api/v1", "ui": "/ui", "docs_enabled": not _docs_disabled}
