@@ -42,7 +42,27 @@ if is_production:
         cursor = dbapi_connection.cursor()
         cursor.execute("SET statement_timeout = 30000")
         cursor.execute("SET lock_timeout = 10000")
+        cursor.execute(
+            """
+            SELECT current_user,
+                   r.rolsuper,
+                   r.rolbypassrls,
+                   pg_get_userbyid(d.datdba) AS database_owner
+            FROM pg_roles r
+            CROSS JOIN pg_database d
+            WHERE r.rolname = current_user
+              AND d.datname = current_database()
+            """
+        )
+        row = cursor.fetchone()
         cursor.close()
+        if not row:
+            raise RuntimeError("Unable to verify PostgreSQL application role")
+        current_user, is_superuser, bypass_rls, database_owner = row
+        if is_superuser or bypass_rls or current_user == database_owner:
+            raise RuntimeError(
+                "Production database role must not be superuser, BYPASSRLS, or database owner"
+            )
 
 
 @event.listens_for(engine, "begin")
@@ -67,9 +87,6 @@ def _enforce_orm_tenant_boundary(session, flush_context, instances):
             continue
         obj_tenant = getattr(obj, "tenant_id", None)
         if tid is None:
-            # A tenant-owned object must never be written without an
-            # authenticated tenant context. Global/system objects may keep
-            # tenant_id=NULL and are intentionally allowed here.
             if obj_tenant is not None:
                 raise ValueError("Tenant context is required for tenant-owned ORM writes")
             continue
