@@ -13,6 +13,7 @@ from core.event_bus import EventBus
 from core.metadata_engine import MetadataEngine
 from core.query_parser import QueryParseError, QueryParser
 from core.rate_limit import read_limiter, write_limiter
+from database import get_db
 
 router = APIRouter(prefix="/api/v1/dynamic", tags=["Dynamic CRUD"])
 BULK_MAX_RECORDS = 500
@@ -20,7 +21,7 @@ BULK_MAX_RECORDS = 500
 
 def get_verification_engine(
     entity_code: str,
-    db: Session=None,
+    db: Session = Depends(get_db),
     current_user: dict | None = Depends(optional_get_current_user),
 ):
     """Resolve entity metadata only within the authenticated tenant context."""
@@ -42,7 +43,7 @@ def _validate_identifier(identifier: str) -> str:
 
 
 @router.get("/entities/{entity_code}/schema", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_schema(entity_code: str, db: Session=None, verification: DynamicVerificationEngine = Depends(get_verification_engine)):
+async def get_schema(entity_code: str, db: Session = Depends(get_db), verification: DynamicVerificationEngine = Depends(get_verification_engine)):
     if not verification.entity_exists():
         raise HTTPException(status_code=404, detail=f"الكيان '{entity_code}' غير موجود")
     table_error = verification.validate_table_mapping()
@@ -53,7 +54,7 @@ async def get_schema(entity_code: str, db: Session=None, verification: DynamicVe
 
 
 @router.get("/entities/{entity_code}/records", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_records(entity_code: str, filters: str | None = None, sort: str | None = None, limit: int = 100, offset: int = 0, include: str | None = None, include_deleted: bool = False, db: Session=None, current_user: dict | None = Depends(optional_get_current_user)):
+async def list_records(entity_code: str, filters: str | None = None, sort: str | None = None, limit: int = 100, offset: int = 0, include: str | None = None, include_deleted: bool = False, db: Session = Depends(get_db), current_user: dict | None = Depends(optional_get_current_user)):
     tenant_id = current_user.get("tenant_id") if current_user else None
     ent_sql = "SELECT id, table_mapping, tenant_id FROM dbp_entities WHERE code = :code"
     ent_params = {"code": entity_code}
@@ -151,7 +152,7 @@ async def list_records(entity_code: str, filters: str | None = None, sort: str |
 
 
 @router.post("/entities/{entity_code}/records", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_record(entity_code: str, payload: dict[str, Any], request: Request, db: Session=None, verification: DynamicVerificationEngine = Depends(get_verification_engine), current_user: dict | None = Depends(optional_get_current_user)):
+async def create_record(entity_code: str, payload: dict[str, Any], request: Request, db: Session = Depends(get_db), verification: DynamicVerificationEngine = Depends(get_verification_engine), current_user: dict | None = Depends(optional_get_current_user)):
     if not verification.entity_exists(): raise HTTPException(status_code=404, detail=f"الكيان '{entity_code}' غير موجود")
     table_error = verification.validate_table_mapping()
     if table_error: raise HTTPException(status_code=400, detail=table_error)
@@ -182,7 +183,7 @@ async def create_record(entity_code: str, payload: dict[str, Any], request: Requ
 
 
 @router.put("/entities/{entity_code}/records/{record_id}", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def update_record(entity_code: str, record_id: str, payload: dict[str, Any], request: Request, db: Session=None, verification: DynamicVerificationEngine = Depends(get_verification_engine), current_user: dict | None = Depends(optional_get_current_user)):
+async def update_record(entity_code: str, record_id: str, payload: dict[str, Any], request: Request, db: Session = Depends(get_db), verification: DynamicVerificationEngine = Depends(get_verification_engine), current_user: dict | None = Depends(optional_get_current_user)):
     if not verification.entity_exists(): raise HTTPException(status_code=404, detail=f"الكيان '{entity_code}' غير موجود")
     table_error = verification.validate_table_mapping()
     if table_error: raise HTTPException(status_code=400, detail=table_error)
@@ -206,7 +207,7 @@ async def update_record(entity_code: str, record_id: str, payload: dict[str, Any
 
 
 @router.delete("/entities/{entity_code}/records/{record_id}", dependencies=[Depends(require_permission("dynamic", "delete")), Depends(write_limiter.check)])
-async def delete_record(entity_code: str, record_id: str, request: Request, db: Session=None, current_user: dict | None = Depends(optional_get_current_user)):
+async def delete_record(entity_code: str, record_id: str, request: Request, db: Session = Depends(get_db), current_user: dict | None = Depends(optional_get_current_user)):
     tenant_id = current_user.get("tenant_id") if current_user else None
     ent_sql = "SELECT table_mapping, tenant_id FROM dbp_entities WHERE code = :code"
     ent_params = {"code": entity_code}
@@ -238,7 +239,7 @@ async def delete_record(entity_code: str, record_id: str, request: Request, db: 
 
 
 @router.post("/entities/{entity_code}/records/{record_id}/restore", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def restore_record(entity_code: str, record_id: str, request: Request, db: Session=None, verification: DynamicVerificationEngine = Depends(get_verification_engine), current_user: dict | None = Depends(optional_get_current_user)):
+async def restore_record(entity_code: str, record_id: str, request: Request, db: Session = Depends(get_db), verification: DynamicVerificationEngine = Depends(get_verification_engine), current_user: dict | None = Depends(optional_get_current_user)):
     if not verification.entity_exists(): raise HTTPException(status_code=404, detail=f"الكيان '{entity_code}' غير موجود")
     table_error = verification.validate_table_mapping()
     if table_error: raise HTTPException(status_code=400, detail=table_error)
