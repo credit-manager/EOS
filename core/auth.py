@@ -73,24 +73,35 @@ __all__ = [
 ]
 
 
+def _authorize_user(current_user: dict, module: str, action: str) -> dict:
+    """Apply RBAC policy to an already authenticated user."""
+    if not isinstance(current_user, dict):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    required = f"{module}:{action}"
+    if "*:*" in current_user.get("permissions", []):
+        return current_user
+    if required in current_user.get("permissions", []):
+        return current_user
+    roles = current_user.get("roles", [])
+    for role in roles:
+        if role in ("admin", "dynamic_manager"):
+            return current_user
+        if role == "dynamic_operator" and action in ("read", "create", "update"):
+            return current_user
+        if role == "dynamic_viewer" and action == "read":
+            return current_user
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+
 def require_permission(module: str, action: str):
     """Dependency factory requiring a specific permission."""
 
     async def _check(current_user: dict = Depends(get_current_user)):
-        required = f"{module}:{action}"
-        if "*:*" in current_user.get("permissions", []):
-            return current_user
-        if required in current_user.get("permissions", []):
-            return current_user
-        roles = current_user.get("roles", [])
-        for role in roles:
-            if role in ("admin", "dynamic_manager"):
-                return current_user
-            if role == "dynamic_operator" and action in ("read", "create", "update"):
-                return current_user
-            if role == "dynamic_viewer" and action == "read":
-                return current_user
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+        return _authorize_user(current_user, module, action)
 
     return _check
 
