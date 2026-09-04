@@ -1,4 +1,4 @@
-﻿"""
+"""
 P31 Audit & Compliance Router
 """
 
