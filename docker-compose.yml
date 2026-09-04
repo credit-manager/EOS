@@ -29,6 +29,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       EOS_DB_APP_USER: ${EOS_DB_APP_USER:?set EOS_DB_APP_USER}
+      EOS_DB_APP_PASSWORD: ${EOS_DB_APP_PASSWORD:?set EOS_DB_APP_PASSWORD}
       EOS_AUTH_MODE: testing
       EOS_RUNTIME_SCHEMA: "false"
     command: ["sh", "-c", "alembic upgrade head && python scripts/grant_app_role.py"]
