@@ -1,6 +1,7 @@
 """
 نقطة الدخول الرئيسية لتطبيق FastAPI
 """
+import os
 from contextlib import asynccontextmanager
 
 from app.api import (
@@ -80,7 +81,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "app.main:app",
-        host="0.0.0.0",
+        host=os.getenv("EOS_BIND_HOST", "127.0.0.1"),
         port=8000,
         reload=settings.DEBUG
     )
