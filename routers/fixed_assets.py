@@ -23,21 +23,13 @@ async def create_asset(cid: str, body: dict, user: dict | None=None, db: Session
     for f in ("name", "acquisition_date", "acquisition_cost", "useful_life_years"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
-    aid = FixedAssetEngine(db).create_asset(user.get("tenant_id"), cid, body["name"],
-                                             body["acquisition_date"], body["acquisition_cost"],
-                                             body["useful_life_years"],
-                                             description=body.get("description"),
-                                             category=body.get("category"),
-                                             salvage_value=body.get("salvage_value", 0),
-                                             depreciation_method=body.get("depreciation_method", "straight_line"),
-                                             location=body.get("location"),
-                                             employee_id=body.get("employee_id"))
+    aid = FixedAssetEngine(db).create_asset(user.get("tenant_id"), cid, body["name"], body["acquisition_date"], body["acquisition_cost"], body["useful_life_years"], description=body.get("description"), category=body.get("category"), salvage_value=body.get("salvage_value", 0), depreciation_method=body.get("depreciation_method", "straight_line"), location=body.get("location"), employee_id=body.get("employee_id"))
     db.commit()
     return {"status": "success", "data": {"id": aid}}
 
 
 @router.get("/fixed-assets/{aid}", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_asset(aid: str, db: Session=None):
+async def get_asset(aid: str, db: Session = Depends(get_db)):
     asset = FixedAssetEngine(db).get_asset(aid)
     if not asset:
         raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Asset not found"}})
@@ -45,7 +37,7 @@ async def get_asset(aid: str, db: Session=None):
 
 
 @router.put("/fixed-assets/{aid}", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def update_asset(aid: str, body: dict, db: Session=None):
+async def update_asset(aid: str, body: dict, db: Session = Depends(get_db)):
     result = FixedAssetEngine(db).update_asset(aid, **body)
     if not result["success"]:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "UPDATE_FAILED", "message": result["error"]}})
@@ -54,12 +46,10 @@ async def update_asset(aid: str, body: dict, db: Session=None):
 
 
 @router.post("/fixed-assets/{aid}/dispose", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def dispose_asset(aid: str, body: dict, db: Session=None):
+async def dispose_asset(aid: str, body: dict, db: Session = Depends(get_db)):
     if "disposal_date" not in body:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": "disposal_date required"}})
-    result = FixedAssetEngine(db).dispose_asset(aid, body["disposal_date"],
-                                                 disposal_amount=body.get("disposal_amount"),
-                                                 notes=body.get("notes"))
+    result = FixedAssetEngine(db).dispose_asset(aid, body["disposal_date"], disposal_amount=body.get("disposal_amount"), notes=body.get("notes"))
     if not result["success"]:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "DISPOSE_FAILED", "message": result["error"]}})
     db.commit()
@@ -71,9 +61,7 @@ async def run_depreciation(cid: str, body: dict, user: dict | None=None, db: Ses
     for f in ("period_start", "period_end"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
-    rid = FixedAssetEngine(db).run_depreciation(user.get("tenant_id"), cid,
-                                                 body["period_start"], body["period_end"],
-                                                 processed_by=user.get("id"))
+    rid = FixedAssetEngine(db).run_depreciation(user.get("tenant_id"), cid, body["period_start"], body["period_end"], processed_by=user.get("id"))
     db.commit()
     return {"status": "success", "data": {"id": rid}}
 
@@ -84,7 +72,7 @@ async def list_depreciation_runs(cid: str, user: dict | None=None, db: Session =
 
 
 @router.get("/depreciation/runs/{rid}", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_depreciation_run(rid: str, db: Session=None):
+async def get_depreciation_run(rid: str, db: Session = Depends(get_db)):
     run = FixedAssetEngine(db).get_depreciation_run(rid)
     if not run:
         raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Run not found"}})
@@ -97,8 +85,7 @@ async def transfer_asset(aid: str, body: dict, user: dict | None=None, db: Sessi
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
     try:
-        tid = FixedAssetEngine(db).transfer_asset(aid, body["to_location"], body["transfer_date"],
-                                                   user.get("id") or "admin", notes=body.get("notes"))
+        tid = FixedAssetEngine(db).transfer_asset(aid, body["to_location"], body["transfer_date"], user.get("id") or "admin", notes=body.get("notes"))
     except ValueError as e:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "TRANSFER_FAILED", "message": str(e)}})
     db.commit()
@@ -106,5 +93,5 @@ async def transfer_asset(aid: str, body: dict, user: dict | None=None, db: Sessi
 
 
 @router.get("/fixed-assets/{aid}/transfers", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_transfers(aid: str, db: Session=None):
+async def list_transfers(aid: str, db: Session = Depends(get_db)):
     return {"status": "success", "data": FixedAssetEngine(db).list_asset_transfers(asset_id=aid)}
