@@ -1,95 +1,185 @@
+@import './eos-tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 218 43% 39%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 214 32% 91%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 42%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 218 43% 39%;
     --radius: 0.5rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
+    --background: 222 47% 7%;
     --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
+    --card: 222 47% 11%;
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
+    --popover: 222 47% 11%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
+    --primary: 216 36% 61%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 217 33% 18%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
+    --muted: 217 33% 18%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 22%;
     --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 0 62% 40%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --border: 217 33% 22%;
+    --input: 217 33% 22%;
+    --ring: 216 36% 61%;
   }
-}
 
-@layer base {
-  * {
-    @apply border-border;
-  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Tajawal', system-ui, sans-serif;
-    direction: rtl;
+    margin: 0;
+    min-width: 320px;
+    font-family: var(--eos-font-sans);
+    font-size: var(--eos-text-md);
+    line-height: 1.5;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
   }
+
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--eos-focus-ring);
+  }
+
+  button, input, select, textarea { font: inherit; }
+  button { cursor: pointer; }
 }
 
 @layer components {
-  .btn-primary {
-    @apply bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+  .eos-page {
+    width: min(100% - 2rem, var(--eos-content-max));
+    margin-inline: auto;
   }
-  
-  .btn-secondary {
-    @apply bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+
+  .eos-card {
+    background: var(--eos-surface);
+    border: var(--eos-border);
+    border-radius: var(--eos-radius-lg);
+    box-shadow: var(--eos-shadow-sm);
   }
-  
-  .input-field {
-    @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-800 dark:border-gray-600;
+
+  .eos-status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--eos-space-2);
+    min-height: 1.5rem;
+    padding-inline: var(--eos-space-2);
+    border-radius: 999px;
+    font-size: var(--eos-text-xs);
+    font-weight: 600;
   }
-  
-  .card {
-    @apply bg-white dark:bg-gray-800 rounded-lg shadow-md p-6;
+
+  .eos-status[data-status='success'] { color: var(--eos-success-600); background: var(--eos-success-100); }
+  .eos-status[data-status='warning'] { color: var(--eos-warning-600); background: var(--eos-warning-100); }
+  .eos-status[data-status='error'] { color: var(--eos-error-600); background: var(--eos-error-100); }
+  .eos-status[data-status='info'] { color: var(--eos-info-600); background: var(--eos-info-100); }
+  .eos-status[data-status='neutral'] { color: var(--eos-neutral-700); background: var(--eos-neutral-100); }
+
+  .eos-data-grid {
+    width: 100%;
+    overflow: auto;
+    border: var(--eos-border);
+    border-radius: var(--eos-radius-lg);
+    background: var(--eos-surface);
+    scrollbar-gutter: stable;
   }
-  
-  .table-container {
-    @apply overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700;
+
+  .eos-data-grid table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    white-space: nowrap;
   }
-  
-  .table-base {
-    @apply min-w-full divide-y divide-gray-200 dark:divide-gray-700;
+
+  .eos-data-grid th,
+  .eos-data-grid td {
+    padding-block: var(--eos-space-2);
+    padding-inline: var(--eos-space-3);
+    border-block-end: var(--eos-border);
+    text-align: start;
   }
-  
-  .sidebar-link {
-    @apply flex items-center gap-3 px-4 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-200;
+
+  .eos-data-grid th {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 2;
+    background: var(--eos-surface-raised);
+    color: var(--eos-text-muted);
+    font-size: var(--eos-text-xs);
+    font-weight: 700;
   }
-  
-  .sidebar-link-active {
-    @apply flex items-center gap-3 px-4 py-3 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-lg;
+
+  .eos-density-compact .eos-data-grid th,
+  .eos-density-compact .eos-data-grid td { padding-block: 0.375rem; }
+  .eos-density-spacious .eos-data-grid th,
+  .eos-density-spacious .eos-data-grid td { padding-block: 0.75rem; }
+
+  .eos-empty-state {
+    display: grid;
+    place-items: center;
+    gap: var(--eos-space-3);
+    min-height: 14rem;
+    padding: var(--eos-space-8);
+    text-align: center;
+    color: var(--eos-text-muted);
+  }
+
+  .eos-visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+  }
+}
+
+[dir='rtl'] { direction: rtl; }
+[dir='ltr'] { direction: ltr; }
+
+/* Directional visuals should use logical mirroring; charts remain data-LTR. */
+.eos-chart, .recharts-wrapper, .recharts-surface { direction: ltr; }
+
+@media (max-width: 768px) {
+  .eos-page { width: min(100% - 1rem, var(--eos-content-max)); }
+  .eos-data-grid { border-inline: 0; border-radius: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
