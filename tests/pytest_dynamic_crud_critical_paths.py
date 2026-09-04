@@ -30,7 +30,7 @@ def test_dynamic_identifier_accepts_safe_sql_identifiers(identifier):
 
 @pytest.mark.parametrize('identifier', [
     'users;', 'users--', 'users drop', 'users.table', 'DROP TABLE users',
-    'users\' OR \'1\'=\'1', '', None,
+    "users' OR '1'='1", '', None,
 ])
 def test_dynamic_identifier_rejects_unsafe_sql_identifiers(identifier):
     with pytest.raises(HTTPException) as exc:
