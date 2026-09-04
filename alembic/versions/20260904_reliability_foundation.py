@@ -11,6 +11,7 @@ depends_on = None
 def _enable_tenant_rls(table: str):
     policy = f"tenant_isolation_{table}"
     op.execute(f'ALTER TABLE public."{table}" ENABLE ROW LEVEL SECURITY')
+    op.execute(f'ALTER TABLE public."{table}" FORCE ROW LEVEL SECURITY')
     op.execute(f'DROP POLICY IF EXISTS "{policy}" ON public."{table}"')
     op.execute(f'''CREATE POLICY "{policy}" ON public."{table}"
         USING (tenant_id::text = current_setting('app.tenant_id', true))
@@ -20,6 +21,7 @@ def _enable_tenant_rls(table: str):
 def _disable_tenant_rls(table: str):
     policy = f"tenant_isolation_{table}"
     op.execute(f'DROP POLICY IF EXISTS "{policy}" ON public."{table}"')
+    op.execute(f'ALTER TABLE public."{table}" NO FORCE ROW LEVEL SECURITY')
     op.execute(f'ALTER TABLE public."{table}" DISABLE ROW LEVEL SECURITY')
 
 
