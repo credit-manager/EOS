@@ -103,8 +103,8 @@ async def create_dashboard(
 
     # Check unique code
     existing = db.execute(
-        text("SELECT id FROM dbp_dashboards WHERE code = :code"),
-        {"code": code},
+        text("SELECT id FROM dbp_dashboards WHERE code = :code AND (tenant_id = :tid OR tenant_id IS NULL)"),
+        {"code": code, "tid": tenant_id},
     ).fetchone()
     if existing:
         raise HTTPException(status_code=400, detail={
@@ -146,6 +146,7 @@ async def create_dashboard(
 )
 async def get_dashboard(
     dashboard_id: str,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get dashboard with all widgets."""
@@ -170,12 +171,13 @@ async def get_dashboard(
 )
 async def delete_dashboard(
     dashboard_id: str,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Delete a dashboard and its widgets."""
     result = db.execute(
-        text("DELETE FROM dbp_dashboards WHERE id = :id"),
-        {"id": dashboard_id},
+        text("DELETE FROM dbp_dashboards WHERE id = :id AND tenant_id = :tid"),
+        {"id": dashboard_id, "tid": user["tenant_id"]},
     )
     db.commit()
 
@@ -202,9 +204,13 @@ async def delete_dashboard(
 async def create_widget(
     dashboard_id: str,
     body: dict,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Add a widget to a dashboard."""
+    dash = db.execute(text("SELECT id FROM dbp_dashboards WHERE id = :id AND (tenant_id = :tid OR tenant_id IS NULL)"), {"id": dashboard_id, "tid": user["tenant_id"]}).fetchone()
+    if not dash:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
     # Validate dashboard exists
     dash = db.execute(
         text("SELECT id FROM dbp_dashboards WHERE id = :id"),
@@ -283,9 +289,13 @@ async def create_widget(
 )
 async def list_widgets(
     dashboard_id: str,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """List widgets for a dashboard."""
+    dash = db.execute(text("SELECT id FROM dbp_dashboards WHERE id = :id AND (tenant_id = :tid OR tenant_id IS NULL)"), {"id": dashboard_id, "tid": user["tenant_id"]}).fetchone()
+    if not dash:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
     rows = db.execute(
         text(
             "SELECT id, code, widget_type, title, title_ar, entity_code, "
@@ -320,9 +330,13 @@ async def list_widgets(
 async def delete_widget(
     dashboard_id: str,
     widget_id: str,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Delete a widget from a dashboard."""
+    dash = db.execute(text("SELECT id FROM dbp_dashboards WHERE id = :id AND (tenant_id = :tid OR tenant_id IS NULL)"), {"id": dashboard_id, "tid": user["tenant_id"]}).fetchone()
+    if not dash:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
     result = db.execute(
         text("DELETE FROM dbp_dashboard_widgets WHERE id = :id AND dashboard_id = :did"),
         {"id": widget_id, "did": dashboard_id},
@@ -350,6 +364,7 @@ async def delete_widget(
     ],
 )
 async def list_kpis(
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """List all KPI definitions."""
@@ -384,6 +399,7 @@ async def list_kpis(
 )
 async def create_kpi(
     body: dict,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Create a KPI definition."""
@@ -470,6 +486,7 @@ async def execute_kpi(
 )
 async def delete_kpi(
     kpi_id: str,
+    user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Delete a KPI definition."""
