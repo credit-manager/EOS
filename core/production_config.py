@@ -12,6 +12,9 @@ class ProductionConfigError(Exception):
     pass
 
 
+_DOMAIN_RE = re.compile(r"^(?=.{1,253}$)(?!.*\.\.)[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$")
+
+
 def _check_database_role() -> tuple[str, str, bool]:
     """Ensure the application role cannot bypass PostgreSQL RLS."""
     try:
@@ -82,7 +85,11 @@ def validate_production_config() -> list[tuple[str, str, bool]]:
     check("POSTGRES_USER", os.getenv("POSTGRES_USER", ""), critical=True)
     check("POSTGRES_PASSWORD", os.getenv("POSTGRES_PASSWORD", ""), critical=True)
     check("POSTGRES_DB", os.getenv("POSTGRES_DB", ""), critical=True)
-    check("DOMAIN", os.getenv("DOMAIN", ""), r"^https://", True)
+    domain = os.getenv("DOMAIN", "")
+    if not domain or not _DOMAIN_RE.fullmatch(domain) or domain.lower() in {"localhost", "127.0.0.1"}:
+        checks.append(("DOMAIN", "INVALID FORMAT", True))
+    else:
+        checks.append(("DOMAIN", "OK", True))
     check("EOS_METRICS_TOKEN", os.getenv("EOS_METRICS_TOKEN", ""), r"^.{32,}$", True)
     check("EOS_HEALTH_TOKEN", os.getenv("EOS_HEALTH_TOKEN", ""), r"^.{32,}$", True)
     check("EOS_RUNTIME_SCHEMA", os.getenv("EOS_RUNTIME_SCHEMA", "false"), r"^false$", True)
