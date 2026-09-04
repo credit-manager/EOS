@@ -71,7 +71,7 @@ async def get_exchange_rate(from_currency: str | None=None, to_currency: str = Q
 
 
 @router.post("/exchange-rates", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def set_exchange_rate(body: dict, db: Session=None):
+async def set_exchange_rate(body: dict, db: Session = Depends(get_db)):
     for f in ("from_currency", "to_currency", "rate", "rate_date"):
         if f not in body:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
@@ -82,7 +82,7 @@ async def set_exchange_rate(body: dict, db: Session=None):
 
 
 @router.post("/convert", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def convert_amount(body: dict, db: Session=None):
+async def convert_amount(body: dict, db: Session = Depends(get_db)):
     result = FinanceEngine(db).convert_amount(body.get("amount", 0), body.get("from_currency", ""), body.get("to_currency", ""))
     if not result:
         raise HTTPException(404, detail={"status": "error", "error": {"code": "NO_RATE", "message": "Exchange rate not available"}})
