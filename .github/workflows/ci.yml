@@ -57,7 +57,7 @@ jobs:
       - name: Flake8 critical errors
         run: flake8 . --count --select=E9,F63,F7,F82 --exclude=.git,eos-system/frontend/dist,frontend,core/analytics_engine.py,core/audit.py --show-source --statistics
       - name: Bandit
-        run: bandit -r core/ routers/ models/ -ll -ii -x core/experience_engine/form_engine.py
+        run: bandit -r core/ routers/ models/ -ll -ii
       - name: Dependency audit
         run: pip-audit --ignore-vuln PYSEC-2026-1325
 
@@ -176,7 +176,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Deep Bandit scan
-        run: bandit -r . -ll -ii -x ./tests,./.git,./eos-system/frontend/dist,./frontend,./core/experience_engine/form_engine.py
+        run: bandit -r . -ll -ii -x ./tests,./.git,./eos-system/frontend/dist,./frontend
       - name: Dependency audit
         run: pip-audit --ignore-vuln PYSEC-2026-1325
       - name: Reject obvious debug artifacts
