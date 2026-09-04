@@ -53,7 +53,7 @@ jobs:
       - run: ruff check . --select E9,F63,F7,F82 --exclude 'eos-system/frontend/dist/**' --exclude 'frontend/**'
       - run: flake8 . --count --select=E9,F63,F7,F82 --exclude=.git,eos-system/frontend/dist,frontend --show-source --statistics
       - run: bandit -r core/ routers/ -ll -ii
-      - run: pip-audit --ignore-vuln PYSEC-2026-1325
+      - run: pip-audit -r requirements.txt
   automated-tests:
     name: Automated Tests
     runs-on: ubuntu-latest
