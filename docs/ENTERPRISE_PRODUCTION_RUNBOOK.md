@@ -33,6 +33,8 @@ Use tenant-scoped object keys/prefixes and server-side authorization on every re
 
 Production requires multiple application instances behind a health-checked load balancer. PostgreSQL and Redis, when used, require managed or self-hosted HA with documented failover behavior.
 
+Use `/health/live` for process liveness and `/health/ready` for load-balancer readiness. `/health/full` exposes operational telemetry and therefore requires `X-Health-Token` in production. Store `EOS_HEALTH_TOKEN` as a secret and never put it in source control.
+
 Record:
 - node count and zones
 - health-check configuration
@@ -55,7 +57,7 @@ Record:
 
 Production must provide metrics, structured logs, distributed traces, and actionable alerts. Define SLIs/SLOs and error budgets for availability, latency, error rate, queue age, database health, and webhook delivery.
 
-The service already exposes protected Prometheus metrics; tracing and SLO evidence remain deployment gates until verified.
+The service exposes a protected Prometheus metrics endpoint and request-correlated structured logs. Distributed tracing and SLO evidence remain deployment gates until verified.
 
 ## 7. Supply-chain security
 
