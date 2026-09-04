@@ -1,7 +1,10 @@
 version: '3.8'
 
+# LEGACY STACK
+# EOS DBP production uses the repository-root Dockerfile and canonical /frontend.
+# This compose file is retained only for legacy backend/database development.
+
 services:
-  # قاعدة بيانات PostgreSQL
   postgres:
     image: postgres:15-alpine
     container_name: erp_postgres
@@ -22,7 +25,6 @@ services:
     networks:
       - erp_network
 
-  # Redis للتخزين المؤقت
   redis:
     image: redis:7-alpine
     container_name: erp_redis
@@ -39,7 +41,6 @@ services:
     networks:
       - erp_network
 
-  # Backend API
   backend:
     build:
       context: ../backend
@@ -65,20 +66,6 @@ services:
     command: >
       sh -c "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
-  # Frontend
-  frontend:
-    build:
-      context: ../frontend
-      dockerfile: ../docker/Dockerfile.frontend
-    container_name: erp_frontend
-    depends_on:
-      - backend
-    ports:
-      - "3000:80"
-    networks:
-      - erp_network
-
-  # Celery Worker للمهام غير المتزامنة
   celery_worker:
     build:
       context: ../backend
@@ -98,7 +85,6 @@ services:
       - erp_network
     command: celery -A app.celery worker --loglevel=info
 
-  # Celery Beat للمهام المجدولة
   celery_beat:
     build:
       context: ../backend
