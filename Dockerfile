@@ -1,14 +1,13 @@
 # EOS Dynamic Business Platform — Production Dockerfile
-# Multi-stage build for smaller production image
+# Multi-stage build for a small, non-root production image.
 
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm install --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
-# Keep production Python aligned with the CI/test matrix.
 FROM python:3.12-slim AS builder
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev && rm -rf /var/lib/apt/lists/*
