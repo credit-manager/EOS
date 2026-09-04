@@ -25,9 +25,13 @@ def _base_env(monkeypatch):
         "POSTGRES_PASSWORD": "password",
         "POSTGRES_DB": "eos",
         "DOMAIN": "https://app.example.com",
+        "EOS_METRICS_TOKEN": "m" * 64,
+        "EOS_HEALTH_TOKEN": "h" * 64,
+        "EOS_RUNTIME_SCHEMA": "false",
     }
     for key, value in values.items():
         monkeypatch.setenv(key, value)
+    monkeypatch.setattr("core.production_config._check_database_role", lambda: ("DATABASE_ROLE_RLS_SAFE", "OK", True))
 
 
 def test_production_allows_disabled_payments(monkeypatch):
