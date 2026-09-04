@@ -1,13 +1,17 @@
-"""
-EOS Payment Gateway Engine
-Supports: Stripe, Mada, STC Pay, Bank Transfer, Cash
+"""EOS Payment Gateway Engine.
+
+Supports Stripe, Mada, STC Pay, bank transfer and cash while keeping all
+mutations tenant-scoped and making payment creation idempotent.
 """
 import json
+import os
 import secrets
 import uuid
 from decimal import Decimal
 
 from sqlalchemy import text
+
+from core.reliability import IdempotencyStore, OutboxStore
 
 
 class PaymentGatewayEngine:
@@ -16,6 +20,10 @@ class PaymentGatewayEngine:
         self._ensure_tables()
 
     def _ensure_tables(self):
+        # Migrations are authoritative in production. Runtime DDL remains only
+        # for legacy/dev environments so a fresh test database can boot.
+        if os.getenv("EOS_AUTH_MODE", "test").lower() == "production" or os.getenv("EOS_RUNTIME_SCHEMA", "true").lower() != "true":
+            return
         self.db.execute(text(
             "CREATE TABLE IF NOT EXISTS dbp_payment_gateways ("
             "id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text, "
@@ -41,6 +49,22 @@ class PaymentGatewayEngine:
             "description TEXT, customer_email TEXT, status TEXT DEFAULT 'active', "
             "expires_at TIMESTAMP, created_at TIMESTAMP DEFAULT NOW())"
         ))
+        self.db.execute(text(
+            "CREATE TABLE IF NOT EXISTS dbp_idempotency_keys ("
+            "id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, key TEXT NOT NULL, "
+            "request_hash TEXT NOT NULL, status_code INTEGER, response_body TEXT, "
+            "created_at TIMESTAMP DEFAULT NOW(), completed_at TIMESTAMP, "
+            "UNIQUE(tenant_id,key))"
+        ))
+        self.db.execute(text(
+            "CREATE TABLE IF NOT EXISTS dbp_outbox_events ("
+            "id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, event_type TEXT NOT NULL, "
+            "aggregate_type TEXT NOT NULL, aggregate_id TEXT NOT NULL, payload JSONB NOT NULL, "
+            "status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, "
+            "available_at TIMESTAMP DEFAULT NOW(), processed_at TIMESTAMP, last_error TEXT, "
+            "created_at TIMESTAMP DEFAULT NOW(), "
+            "UNIQUE(tenant_id,event_type,aggregate_type,aggregate_id))"
+        ))
         self.db.commit()
 
     def list_gateways(self, tenant_id):
@@ -60,21 +84,49 @@ class PaymentGatewayEngine:
         return {"gateway_id": gid, "message": f"Gateway {name} created"}
 
     def create_transaction(self, tenant_id, amount, currency="SAR", tx_type="payment",
-                           ref_type=None, ref_id=None, customer_id=None, method=None):
+                           ref_type=None, ref_id=None, customer_id=None, method=None,
+                           idempotency_key=None):
         if amount is None or float(amount) <= 0:
             raise ValueError("Payment amount must be positive")
+        currency = (currency or "SAR").upper()
+        if len(currency) != 3 or not currency.isalpha():
+            raise ValueError("Currency must be a 3-letter ISO code")
+
+        idem = IdempotencyStore(self.db)
+        if idempotency_key:
+            replay = idem.reserve(tenant_id, idempotency_key, {
+                "amount": str(amount), "currency": currency, "transaction_type": tx_type,
+                "reference_type": ref_type, "reference_id": ref_id,
+                "customer_id": customer_id, "payment_method": method,
+            })
+            if replay is not None:
+                body = replay.get("response_body") or {}
+                if isinstance(body, dict):
+                    body["idempotent_replay"] = True
+                return body
+
         tid = str(uuid.uuid4())
         ref_number = f"TXN-{secrets.token_hex(4).upper()}"
-        self.db.execute(text(
-            "INSERT INTO dbp_payment_transactions "
-            "(id, tenant_id, transaction_type, amount, currency, status, reference_type, "
-            "reference_id, customer_id, payment_method, gateway_response) "
-            "VALUES (:id, :t, :type, :amt, :cur, 'pending', :rtype, :rid, :cid, :method, :resp)"
-        ), {"id": tid, "t": tenant_id, "type": tx_type, "amt": float(amount),
-             "cur": currency, "rtype": ref_type, "rid": ref_id, "cid": customer_id,
-             "method": method, "resp": json.dumps({"ref_number": ref_number})})
-        self.db.commit()
-        return {"transaction_id": tid, "ref_number": ref_number, "status": "pending"}
+        response = {"transaction_id": tid, "ref_number": ref_number, "status": "pending"}
+        try:
+            self.db.execute(text(
+                "INSERT INTO dbp_payment_transactions "
+                "(id, tenant_id, transaction_type, amount, currency, status, reference_type, "
+                "reference_id, customer_id, payment_method, gateway_response) "
+                "VALUES (:id, :t, :type, :amt, :cur, 'pending', :rtype, :rid, :cid, :method, :resp)"
+            ), {"id": tid, "t": tenant_id, "type": tx_type, "amt": float(amount),
+                 "cur": currency, "rtype": ref_type, "rid": ref_id, "cid": customer_id,
+                 "method": method, "resp": json.dumps({"ref_number": ref_number})})
+            if idempotency_key:
+                OutboxStore(self.db).enqueue(
+                    tenant_id, "payment.created", "payment_transaction", tid, response
+                )
+                idem.complete(tenant_id, idempotency_key, 200, response)
+            self.db.commit()
+            return response
+        except Exception:
+            self.db.rollback()
+            raise
 
     def complete_transaction(self, transaction_id, tenant_id, gateway_response=None):
         row = self.db.execute(text(
@@ -105,42 +157,26 @@ class PaymentGatewayEngine:
         return {"status": "failed", "transaction_id": transaction_id}
 
     def refund_transaction(self, transaction_id, tenant_id, amount=None):
-        # Fixed H9: lock the transaction row against concurrent refunds,
-        # preventing double-refund race conditions.
-        # P80.5D FIX: scope every refund read/write to the caller's tenant so a
-        # tenant cannot refund another tenant's transactions or drain its refundable.
         row = self.db.execute(text(
             "SELECT * FROM dbp_payment_transactions WHERE id = :id AND tenant_id = :t FOR UPDATE"
         ), {"id": transaction_id, "t": tenant_id}).fetchone()
         if not row:
             return {"error": "Transaction not found"}
         row_dict = dict(row._mapping)
-
         if row_dict["transaction_type"] == "refund":
             return {"error": "Cannot refund a refund transaction"}
-
         original_amount = row_dict["amount"]
-
-        # Fixed H10: validate refund amount against the original transaction,
-        # and subtract any amounts already refunded for this transaction to
-        # prevent over-refunding.
         already_refunded = self.db.execute(text(
             "SELECT COALESCE(SUM(amount),0) FROM dbp_payment_transactions "
             "WHERE reference_type='payment' AND reference_id=:ref AND "
             "transaction_type='refund' AND tenant_id = :t"
         ), {"ref": transaction_id, "t": tenant_id}).fetchone()[0]
-
         refundable = Decimal(str(original_amount or 0)) - Decimal(str(already_refunded or 0))
-        if amount is None:
-            refund_amount = refundable
-        else:
-            refund_amount = Decimal(str(amount))
-
+        refund_amount = refundable if amount is None else Decimal(str(amount))
         if refund_amount <= 0:
             return {"error": "Nothing left to refund"}
         if refund_amount > refundable:
             return {"error": f"Refund amount {refund_amount} exceeds refundable {refundable} for this transaction"}
-
         refund_id = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_payment_transactions "
@@ -183,11 +219,15 @@ class PaymentGatewayEngine:
         return {"link_id": link_id, "payment_url": f"/pay/{token}", "token": token}
 
     def process_bank_transfer(self, tenant_id, amount, bank_name, account_number, reference):
+        if not account_number:
+            raise ValueError("Bank account number is required")
         tx = self.create_transaction(tenant_id, amount, method="bank_transfer")
+        masked = "*" * max(0, len(account_number) - 4) + account_number[-4:]
         self.db.execute(text(
-            "UPDATE dbp_payment_transactions SET gateway_response = gateway_response || :resp WHERE id = :id"
-        ), {"id": tx["transaction_id"], "resp": json.dumps({
-            "bank_name": bank_name, "account_number": account_number,
+            "UPDATE dbp_payment_transactions SET gateway_response = gateway_response || :resp "
+            "WHERE id = :id AND tenant_id = :t"
+        ), {"id": tx["transaction_id"], "t": tenant_id, "resp": json.dumps({
+            "bank_name": bank_name, "account_number_masked": masked,
             "transfer_reference": reference
         })})
         self.db.commit()
