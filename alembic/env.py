@@ -18,12 +18,12 @@ _original_drop_table = op.drop_table
 
 def _safe_drop_index(index_name, table_name=None, schema=None, **kw):
     kw.setdefault("if_exists", True)
-    return _original_drop_index(index_name, table_name, schema, **kw)
+    return _original_drop_index(index_name, table_name, schema=schema, **kw)
 
 
 def _safe_drop_table(table_name, schema=None, **kw):
     kw.setdefault("if_exists", True)
-    return _original_drop_table(table_name, schema, **kw)
+    return _original_drop_table(table_name, schema=schema, **kw)
 
 
 # Patch the Alembic op proxy used directly by generated migration modules.
@@ -37,12 +37,12 @@ _operations_drop_table = Operations.drop_table
 
 def _safe_operations_drop_index(self, index_name, table_name=None, schema=None, **kw):
     kw.setdefault("if_exists", True)
-    return _operations_drop_index(self, index_name, table_name, schema, **kw)
+    return _operations_drop_index(self, index_name, table_name, schema=schema, **kw)
 
 
 def _safe_operations_drop_table(self, table_name, schema=None, **kw):
     kw.setdefault("if_exists", True)
-    return _operations_drop_table(self, table_name, schema, **kw)
+    return _operations_drop_table(self, table_name, schema=schema, **kw)
 
 
 Operations.drop_index = _safe_operations_drop_index
