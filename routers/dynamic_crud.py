@@ -146,7 +146,19 @@ async def list_records(entity_code: str, filters: Optional[str] = None, sort: Op
                         record[inc] = []
                         continue
                     junction, j_src, j_tgt = map(_validate_identifier, (junction, j_src, j_tgt))
-                    rows = db.execute(text(f"SELECT t.* FROM {target_table} t INNER JOIN {junction} j ON j.{j_tgt} = t.{target_col} WHERE j.{j_src} = :sv LIMIT 100"), {"sv": source_value}).fetchall()
+                    m2m_where = [f"j.{j_src} = :sv"]
+                    m2m_params = {"sv": source_value}
+                    # Enforce the same tenant boundary as every other relationship
+                    # branch above. Without this, ?include=<m2m relation> could
+                    # return rows belonging to another tenant via the junction table.
+                    if tenant_scope and tenant_id:
+                        m2m_where.append("t.tenant_id = :tid")
+                        m2m_params["tid"] = tenant_id
+                    m2m_where_sql = " AND ".join(m2m_where)
+                    rows = db.execute(
+                        text(f"SELECT t.* FROM {target_table} t INNER JOIN {junction} j ON j.{j_tgt} = t.{target_col} WHERE {m2m_where_sql} LIMIT 100"),
+                        m2m_params,
+                    ).fetchall()
                     record[inc] = [{k: v for k, v in row._mapping.items() if k != "tenant_id"} for row in rows]
                 else:
                     rows = db.execute(text(f"SELECT * FROM {target_table} WHERE {rel_where} LIMIT 100"), rel_params).fetchall()
