@@ -1,7 +1,7 @@
 """
 EOS Dynamic Business Platform — FastAPI Application (P13 hardened)
 """
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -69,6 +69,7 @@ from routers import reporting_api
 from core.audit import set_request_id
 from core.health_check import router as health_router
 from core.api_versioning import APIVersionMiddleware, SUPPORTED_VERSIONS
+from core.auth import get_current_user, require_permission
 import os
 import json
 import uuid
@@ -105,6 +106,23 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         return response
 
 
+async def require_sales_api_permission(request: Request, user: dict = Depends(get_current_user)):
+    """Apply explicit RBAC to the direct Sales CRM surface."""
+    method = request.method.upper()
+    action = {
+        "GET": "read",
+        "HEAD": "read",
+        "POST": "create",
+        "PUT": "update",
+        "PATCH": "update",
+        "DELETE": "delete",
+    }.get(method)
+    if action is None:
+        raise HTTPException(status_code=405, detail="Method not allowed")
+    checker = require_permission("dynamic", action)
+    return await checker(user)
+
+
 setup_logging()
 
 app = FastAPI(
@@ -126,8 +144,10 @@ app.add_middleware(
     expose_headers=["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining"],
 )
 
-allowed_hosts = os.getenv("EOS_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
-if os.getenv("EOS_TRUSTED_HOSTS_ENABLED", "false").lower() == "true":
+allowed_hosts = [host.strip() for host in os.getenv("EOS_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
+auth_mode = os.getenv("EOS_AUTH_MODE", "test").lower()
+trusted_hosts_enabled = os.getenv("EOS_TRUSTED_HOSTS_ENABLED", "false").lower() == "true"
+if auth_mode == "production" or trusted_hosts_enabled:
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
 app.add_middleware(SecurityMiddleware)
@@ -135,7 +155,7 @@ app.add_middleware(RequestIdMiddleware)
 app.add_middleware(LocaleMiddleware)
 app.add_middleware(APIVersionMiddleware)
 
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry
+from prometheus_client import generate_latest, CollectorRegistry
 from prometheus_client import ProcessCollector, PlatformCollector
 
 _prometheus_registry = CollectorRegistry()
@@ -179,7 +199,7 @@ app.include_router(finance.router)
 app.include_router(procurement.router)
 app.include_router(inventory.router)
 app.include_router(sales.router)
-app.include_router(sales_api.router)
+app.include_router(sales_api.router, dependencies=[Depends(require_sales_api_permission)])
 app.include_router(inventory_api.router)
 app.include_router(accounting_api.router)
 app.include_router(projects_api.router)
@@ -238,6 +258,7 @@ app.include_router(currency_api.router)
 app.include_router(reconciliation_api.router)
 app.include_router(portal_customer_api.router)
 app.include_router(reporting_api.router)
+app.include_router(reporting_api.router, prefix="/api/v1")
 
 
 @app.on_event("startup")
@@ -270,7 +291,7 @@ async def validate_configuration():
     else:
         print(f"Configuration OK: auth_mode={auth_mode}")
     audit_logger.log_event(event="platform_startup", details={"auth_mode": auth_mode, "version": "1.0.0"})
-    print(f"Security: CORS={bool(cors_origins)}, body_limit={MAX_BODY_BYTES}, hosts={allowed_hosts}")
+    print(f"Security: CORS={bool(cors_origins)}, body_limit={MAX_BODY_BYTES}, hosts={allowed_hosts}, trusted_hosts={auth_mode == 'production' or trusted_hosts_enabled}")
 
 
 app.include_router(health_router)
@@ -278,7 +299,8 @@ app.include_router(health_router)
 
 @app.get("/")
 def root():
-    return {"message": "EOS DBP Core is running!", "docs": "/docs"}
+    docs_enabled = os.getenv("EOS_DISABLE_DOCS") != "true"
+    return {"message": "EOS DBP Core is running!", "docs": "/docs" if docs_enabled else None}
 
 
 @app.get("/app")

@@ -1,10 +1,18 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || `${window.location.origin}/api/v1`;
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json', 'Accept-Language': 'ar' },
 });
+
+const clearLocalSession = () => {
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('refresh_token');
+  localStorage.removeItem('eos_tenant_id');
+  localStorage.removeItem('eos_user');
+  window.dispatchEvent(new Event('eos:auth-expired'));
+};
 
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token');
@@ -13,13 +21,36 @@ apiClient.interceptors.request.use((config) => {
 });
 
 apiClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('eos_tenant_id');
-      localStorage.removeItem('eos_user');
-      window.dispatchEvent(new Event('eos:auth-expired'));
+  (response) => {
+    const data = response.data?.data;
+    if (data?.access_token) localStorage.setItem('access_token', data.access_token);
+    if (data?.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+    return response;
+  },
+  async (error: AxiosError) => {
+    const original = error.config as (typeof error.config & { _retry?: boolean }) | undefined;
+    const url = original?.url || '';
+    const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/refresh') || url.includes('/auth/register');
+    if (error.response?.status === 401 && original && !original._retry && !isAuthEndpoint) {
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (refreshToken) {
+        original._retry = true;
+        try {
+          const refreshResponse = await apiClient.post('/auth/refresh', { refresh_token: refreshToken });
+          const refreshed = refreshResponse.data?.data;
+          if (refreshed?.access_token && refreshed?.refresh_token) {
+            localStorage.setItem('access_token', refreshed.access_token);
+            localStorage.setItem('refresh_token', refreshed.refresh_token);
+            original.headers = original.headers || {};
+            original.headers.Authorization = `Bearer ${refreshed.access_token}`;
+            return apiClient.request(original);
+          }
+        } catch {
+          clearLocalSession();
+        }
+      } else {
+        clearLocalSession();
+      }
     }
     return Promise.reject(error);
   },
@@ -30,7 +61,15 @@ export default apiClient;
 export const authAPI = {
   login: (email: string, password: string) => apiClient.post('/auth/login', { email, password }),
   register: (userData: unknown) => apiClient.post('/auth/register', userData),
-  logout: () => apiClient.post('/auth/logout'),
+  logout: async () => {
+    const refreshToken = localStorage.getItem('refresh_token');
+    try {
+      if (refreshToken) await apiClient.post('/auth/logout', { refresh_token: refreshToken });
+    } finally {
+      clearLocalSession();
+    }
+    return { data: { status: 'success', data: { message: 'Logged out' } } };
+  },
   getCurrentUser: () => apiClient.get('/auth/me'),
 };
 
@@ -43,43 +82,47 @@ export const onboardingAPI = {
 };
 
 export const customersAPI = {
-  getAll: (params?: unknown) => apiClient.get('/customers', { params }),
-  getById: (id: number) => apiClient.get(`/customers/${id}`),
-  create: (data: unknown) => apiClient.post('/customers', data),
-  update: (id: number, data: unknown) => apiClient.put(`/customers/${id}`, data),
-  delete: (id: number) => apiClient.delete(`/customers/${id}`),
+  getAll: (params?: unknown) => apiClient.get('/sales/customers', { params }),
+  getById: (id: string | number) => apiClient.get(`/sales/customers/${id}`),
+  create: (data: unknown) => apiClient.post('/sales/customers', data),
+  update: (id: string | number, data: unknown) => apiClient.put(`/sales/customers/${id}`, data),
+  delete: (id: string | number) => apiClient.delete(`/sales/customers/${id}`),
 };
 
 export const suppliersAPI = {
-  getAll: (params?: unknown) => apiClient.get('/suppliers', { params }),
-  getById: (id: number) => apiClient.get(`/suppliers/${id}`),
-  create: (data: unknown) => apiClient.post('/suppliers', data),
-  update: (id: number, data: unknown) => apiClient.put(`/suppliers/${id}`, data),
-  delete: (id: number) => apiClient.delete(`/suppliers/${id}`),
+  getAll: (params?: unknown) => apiClient.get('/inventory/suppliers', { params }),
+  getById: (id: string | number) => apiClient.get(`/inventory/suppliers/${id}`),
+  create: (data: unknown) => apiClient.post('/inventory/suppliers', data),
+  update: (id: string | number, data: unknown) => apiClient.put(`/inventory/suppliers/${id}`, data),
+  delete: (id: string | number) => apiClient.delete(`/inventory/suppliers/${id}`),
 };
 
 export const productsAPI = {
-  getAll: (params?: unknown) => apiClient.get('/products', { params }),
-  getById: (id: number) => apiClient.get(`/products/${id}`),
-  create: (data: unknown) => apiClient.post('/products', data),
-  update: (id: number, data: unknown) => apiClient.put(`/products/${id}`, data),
-  delete: (id: number) => apiClient.delete(`/products/${id}`),
+  getAll: (params?: unknown) => apiClient.get('/inventory/products', { params }),
+  getById: (id: string | number) => apiClient.get(`/inventory/products/${id}`),
+  create: (data: unknown) => apiClient.post('/inventory/products', data),
+  update: (id: string | number, data: unknown) => apiClient.put(`/inventory/products/${id}`, data),
+  delete: (id: string | number) => apiClient.delete(`/inventory/products/${id}`),
 };
 
+const unavailableAPI = (resource: string) => () => Promise.reject(
+  new Error(`${resource} API is not wired to a generic backend endpoint yet; see docs/FRONTEND_API_CONTRACT_MISMATCHES.md`),
+);
+
 export const ordersAPI = {
-  getAll: (params?: unknown) => apiClient.get('/orders', { params }),
-  getById: (id: number) => apiClient.get(`/orders/${id}`),
-  create: (data: unknown) => apiClient.post('/orders', data),
-  update: (id: number, data: unknown) => apiClient.put(`/orders/${id}`, data),
-  delete: (id: number) => apiClient.delete(`/orders/${id}`),
+  getAll: unavailableAPI('orders'),
+  getById: (_id: string | number) => unavailableAPI('orders')(),
+  create: (_data: unknown) => unavailableAPI('orders')(),
+  update: (_id: string | number, _data: unknown) => unavailableAPI('orders')(),
+  delete: (_id: string | number) => unavailableAPI('orders')(),
 };
 
 export const invoicesAPI = {
-  getAll: (params?: unknown) => apiClient.get('/invoices', { params }),
-  getById: (id: number) => apiClient.get(`/invoices/${id}`),
-  create: (data: unknown) => apiClient.post('/invoices', data),
-  update: (id: number, data: unknown) => apiClient.put(`/invoices/${id}`, data),
-  delete: (id: number) => apiClient.delete(`/invoices/${id}`),
+  getAll: unavailableAPI('invoices'),
+  getById: (_id: string | number) => unavailableAPI('invoices')(),
+  create: (_data: unknown) => unavailableAPI('invoices')(),
+  update: (_id: string | number, _data: unknown) => unavailableAPI('invoices')(),
+  delete: (_id: string | number) => unavailableAPI('invoices')(),
 };
 
 export const reportsAPI = {

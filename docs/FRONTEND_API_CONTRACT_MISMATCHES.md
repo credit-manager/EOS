@@ -1,53 +1,43 @@
-# Frontend/Backend API Contract Mismatches — Requires Decision
+# Frontend/Backend API Contract — Status
 
-Discovered while verifying `erp-system/frontend` (the design-system-declared
-canonical frontend) against the live backend OpenAPI schema. The frontend
-was never actually exercised against the real backend before this check —
-these are confirmed by comparing `erp-system/frontend/src/services/api.ts`
-against `main.app.openapi()['paths']`.
+The canonical React frontend is now aligned with the versioned backend contracts for authentication, CRM customers, inventory suppliers/products, and reporting.
 
-## Confirmed mismatches
+## Fixed
 
-| Frontend calls | Backend reality | Status |
-|---|---|---|
-| `POST /api/v1/auth/refresh` | **Does not exist anywhere in the backend.** No refresh-token issuance/rotation logic exists in `routers/auth.py` or `core/auth*.py` at all. | Missing feature, not a naming issue. |
-| `GET/POST /api/v1/customers` | Real paths are `/api/v1/sales/customers` **and** `/api/v1/dynamic/companies/{cid}/customers` (two competing implementations — see the known `sales.py`/`sales_api.py` duplication). | Naming + duplication issue. |
-| `GET /api/v1/reports/profit-and-loss` | Real paths: `/api/v1/accounting/reports/profit-and-loss` **and** a separate unversioned `/reports/profit-and-loss`. | Naming + versioning inconsistency. |
-| `GET /api/v1/reports/sales` | No exact match; closest are `/api/v1/sales/leads`, `/api/v1/dynamic/sales-orders`. | Needs a defined canonical endpoint. |
-| `GET /api/v1/reports/inventory` | Real paths under `/api/v1/inventory/*` (`products`, `warehouses`, `stock/movements`), no single `/reports/inventory` aggregate. | Needs a defined canonical endpoint. |
+| Frontend contract | Backend contract |
+|---|---|
+| Authentication | `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`, `/api/v1/auth/me` |
+| Customers | `/api/v1/sales/customers` |
+| Suppliers | `/api/v1/inventory/suppliers` |
+| Products | `/api/v1/inventory/products` |
+| Reports | `/api/v1/reports/*` with the legacy `/reports/*` routes retained for compatibility |
 
-## Why this was not fixed blindly in this pass
+Refresh sessions use opaque, hashed, rotating tokens with a 30-day lifetime. Reuse of a rotated/revoked token revokes its entire token family. Password changes, password resets, role changes, and account deactivation revoke existing refresh sessions.
 
-Guessing which backend path is "correct" for `/customers` or
-`/reports/profit-and-loss` would mean silently picking a winner between
-the duplicated router implementations (`sales.py` vs `sales_api.py`, and
-similar) — an architectural decision that has been explicitly deferred to
-the product owner in prior reviews. Rewiring the frontend to point at the
-wrong one would just move the bug, not fix it.
+## Remaining architecture work
 
-## Required decision before this frontend can go live
+1. **Generic orders/invoices:** the platform still exposes industry-specific order/invoice contracts. The generic frontend facade remains intentionally fail-closed rather than guessing a schema.
+2. **Router consolidation:** `sales.py`/`sales_api.py`, `inventory.py`/`inventory_api.py`, `accounting.py`/`accounting_api.py`, and `hr.py`/`hr_api.py` still require a controlled deprecation/consolidation pass.
 
-1. Resolve the router duplication (`sales`/`sales_api`, etc.) so there is
-   exactly one canonical `/customers`-equivalent path.
-2. Decide on and implement a real refresh-token flow (issuance, storage,
-   rotation, revocation) — `erp-system/frontend/src/services/api.ts`
-   already has correct client-side handling for it; only the backend
-   endpoint is missing.
-3. Standardize report endpoints under one versioned prefix
-   (`/api/v1/reports/*` recommended) and update all report routers to
-   match, instead of the current mix of `/api/v1/accounting/reports/*`,
-   `/reports/*`, and `/api/v1/analytics/*`.
-
-## Verification method (for re-checking after fixes)
+## Verification
 
 ```bash
 python -c "
 import main
 schema = main.app.openapi()
 paths = set(schema['paths'].keys())
-required = ['/api/v1/auth/refresh', '/api/v1/customers',
-            '/api/v1/reports/profit-and-loss', '/api/v1/reports/sales',
-            '/api/v1/reports/inventory']
+required = [
+    '/api/v1/auth/login',
+    '/api/v1/auth/refresh',
+    '/api/v1/auth/logout',
+    '/api/v1/reports/profit-and-loss',
+    '/api/v1/reports/sales',
+    '/api/v1/reports/inventory',
+    '/api/v1/sales/customers',
+    '/api/v1/inventory/suppliers',
+    '/api/v1/inventory/products',
+]
 missing = [p for p in required if p not in paths]
 print('Missing:', missing or 'NONE')
 "
+```
