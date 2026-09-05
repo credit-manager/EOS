@@ -8,12 +8,13 @@ allowing rate limits to be bypassed across processes/restarts.
 Now uses a shared PostgreSQL table so limits are enforced
 consistently across workers and after restarts.
 
-The limiter lazily connects to the database engine and is fully
-compatible with the existing usage pattern:
-    limiter = RateLimiter(max_requests=100, window_seconds=60)
-    @router.get("/endpoint", dependencies=[Depends(limiter.check)])
+Forwarded client addresses are only honored when the immediate peer is
+explicitly configured as a trusted proxy, preventing clients from
+spoofing X-Forwarded-For to bypass per-IP limits.
 """
 
+import ipaddress
+import os
 import time
 from datetime import datetime, timezone
 from fastapi import Request, HTTPException, status
@@ -32,7 +33,6 @@ def _load_engine():
     global _ENGINE, _TEXT
     if _ENGINE is None:
         from sqlalchemy import create_engine, text as stext
-        import os
         url = os.getenv("DATABASE_URL")
         if not url:
             _ENGINE = None
@@ -57,7 +57,7 @@ _TEXT = None
 
 class RateLimiter:
     """
-    DB-backed sliding window rate limiter.
+    DB-backed fixed-window rate limiter.
 
     Usage:
         limiter = RateLimiter(max_requests=100, window_seconds=60)
@@ -77,12 +77,41 @@ class RateLimiter:
         self.window_seconds = window_seconds
         self.key_func = key_func or self._default_key_func
 
+    @staticmethod
+    def _trusted_proxy(peer: str) -> bool:
+        """Return whether the immediate peer is an explicitly trusted proxy."""
+        configured = os.getenv("EOS_TRUSTED_PROXY_IPS", "")
+        if not configured or not peer:
+            return False
+        try:
+            peer_ip = ipaddress.ip_address(peer)
+        except ValueError:
+            return False
+        for value in configured.split(","):
+            value = value.strip()
+            if not value:
+                continue
+            try:
+                if peer_ip in ipaddress.ip_network(value, strict=False):
+                    return True
+            except ValueError:
+                continue
+        return False
+
     def _default_key_func(self, request: Request) -> str:
-        """Default key function: client IP address."""
+        """Use X-Forwarded-For only when the immediate peer is trusted."""
+        peer = request.client.host if request.client else ""
         forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-        return request.client.host if request.client else "unknown"
+        if forwarded and self._trusted_proxy(peer):
+            # The first address is the original client under standard proxy
+            # forwarding semantics; malformed values are rejected from keying.
+            candidate = forwarded.split(",")[0].strip()
+            try:
+                ipaddress.ip_address(candidate)
+                return candidate
+            except ValueError:
+                pass
+        return peer or "unknown"
 
     def _bucket(self, request: Request) -> str:
         key = self.key_func(request)
@@ -132,7 +161,6 @@ class RateLimiter:
                 row_iso = str(row_start)[:19] if row_start else ""
 
                 if row_iso != cur_iso:
-                    # Expired window — reset atomically
                     conn.execute(
                         stext(
                             "UPDATE dbp_rate_limits SET window_start = :ws, "
@@ -171,14 +199,7 @@ class RateLimiter:
 # Pre-configured rate limiters
 # Usage: dependencies=[Depends(default_limiter.check)]
 
-# General API: 100 requests per minute
 default_limiter = RateLimiter(max_requests=100, window_seconds=60)
-
-# Auth endpoints: 10 requests per minute (stricter)
 auth_limiter = RateLimiter(max_requests=10, window_seconds=60)
-
-# Read endpoints: 200 requests per minute (more lenient)
 read_limiter = RateLimiter(max_requests=200, window_seconds=60)
-
-# Write endpoints: 200 requests per minute (moderate)
 write_limiter = RateLimiter(max_requests=200, window_seconds=60)
