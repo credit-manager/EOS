@@ -27,10 +27,22 @@ apiClient.interceptors.response.use(
 
 export default apiClient;
 
+const clearLocalSession = () => {
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('eos_tenant_id');
+  localStorage.removeItem('eos_user');
+  window.dispatchEvent(new Event('eos:auth-expired'));
+};
+
 export const authAPI = {
   login: (email: string, password: string) => apiClient.post('/auth/login', { email, password }),
   register: (userData: unknown) => apiClient.post('/auth/register', userData),
-  logout: () => apiClient.post('/auth/logout'),
+  // The backend is currently stateless and exposes no /auth/logout endpoint.
+  // Logout therefore clears the client session instead of calling a nonexistent route.
+  logout: async () => {
+    clearLocalSession();
+    return { data: { status: 'success', data: { message: 'Logged out' } } };
+  },
   getCurrentUser: () => apiClient.get('/auth/me'),
 };
 
@@ -44,26 +56,26 @@ export const onboardingAPI = {
 
 export const customersAPI = {
   getAll: (params?: unknown) => apiClient.get('/sales/customers', { params }),
-  getById: (id: number) => apiClient.get(`/sales/customers/${id}`),
+  getById: (id: string | number) => apiClient.get(`/sales/customers/${id}`),
   create: (data: unknown) => apiClient.post('/sales/customers', data),
-  update: (id: number, data: unknown) => apiClient.put(`/sales/customers/${id}`, data),
-  delete: (id: number) => apiClient.delete(`/sales/customers/${id}`),
+  update: (id: string | number, data: unknown) => apiClient.put(`/sales/customers/${id}`, data),
+  delete: (id: string | number) => apiClient.delete(`/sales/customers/${id}`),
 };
 
 export const suppliersAPI = {
   getAll: (params?: unknown) => apiClient.get('/inventory/suppliers', { params }),
-  getById: (id: number) => apiClient.get(`/inventory/suppliers/${id}`),
+  getById: (id: string | number) => apiClient.get(`/inventory/suppliers/${id}`),
   create: (data: unknown) => apiClient.post('/inventory/suppliers', data),
-  update: (id: number, data: unknown) => apiClient.put(`/inventory/suppliers/${id}`, data),
-  delete: (id: number) => apiClient.delete(`/inventory/suppliers/${id}`),
+  update: (id: string | number, data: unknown) => apiClient.put(`/inventory/suppliers/${id}`, data),
+  delete: (id: string | number) => apiClient.delete(`/inventory/suppliers/${id}`),
 };
 
 export const productsAPI = {
   getAll: (params?: unknown) => apiClient.get('/inventory/products', { params }),
-  getById: (id: number) => apiClient.get(`/inventory/products/${id}`),
+  getById: (id: string | number) => apiClient.get(`/inventory/products/${id}`),
   create: (data: unknown) => apiClient.post('/inventory/products', data),
-  update: (id: number, data: unknown) => apiClient.put(`/inventory/products/${id}`, data),
-  delete: (id: number) => apiClient.delete(`/inventory/products/${id}`),
+  update: (id: string | number, data: unknown) => apiClient.put(`/inventory/products/${id}`, data),
+  delete: (id: string | number) => apiClient.delete(`/inventory/products/${id}`),
 };
 
 // Orders and invoices are intentionally not wired to a guessed endpoint.
@@ -75,18 +87,18 @@ const unavailableAPI = (resource: string) => () => Promise.reject(
 
 export const ordersAPI = {
   getAll: unavailableAPI('orders'),
-  getById: (_id: number) => Promise.reject(new Error('orders API is not wired to a generic backend endpoint yet; see docs/FRONTEND_API_CONTRACT_MISMATCHES.md')),
-  create: (_data: unknown) => Promise.reject(new Error('orders API is not wired to a generic backend endpoint yet; see docs/FRONTEND_API_CONTRACT_MISMATCHES.md')),
-  update: (_id: number, _data: unknown) => Promise.reject(new Error('orders API is not wired to a generic backend endpoint yet; see docs/FRONTEND_API_CONTRACT_MISMATCHES.md')),
-  delete: (_id: number) => Promise.reject(new Error('orders API is not wired to a generic backend endpoint yet; see docs/FRONTEND_API_CONTRACT_MISMATCHES.md')),
+  getById: (_id: string | number) => unavailableAPI('orders')(),
+  create: (_data: unknown) => unavailableAPI('orders')(),
+  update: (_id: string | number, _data: unknown) => unavailableAPI('orders')(),
+  delete: (_id: string | number) => unavailableAPI('orders')(),
 };
 
 export const invoicesAPI = {
   getAll: unavailableAPI('invoices'),
-  getById: (_id: number) => Promise.reject(new Error('invoices API is not wired to a generic backend endpoint yet; see docs/FRONTEND_API_CONTRACT_MISMATCHES.md')),
-  create: (_data: unknown) => Promise.reject(new Error('invoices API is not wired to a generic backend endpoint yet; see docs/FRONTEND_API_CONTRACT_MISMATCHES.md')),
-  update: (_id: number, _data: unknown) => Promise.reject(new Error('invoices API is not wired to a generic backend endpoint yet; see docs/FRONTEND_API_CONTRACT_MISMATCHES.md')),
-  delete: (_id: number) => Promise.reject(new Error('invoices API is not wired to a generic backend endpoint yet; see docs/FRONTEND_API_CONTRACT_MISMATCHES.md')),
+  getById: (_id: string | number) => unavailableAPI('invoices')(),
+  create: (_data: unknown) => unavailableAPI('invoices')(),
+  update: (_id: string | number, _data: unknown) => unavailableAPI('invoices')(),
+  delete: (_id: string | number) => unavailableAPI('invoices')(),
 };
 
 export const reportsAPI = {
