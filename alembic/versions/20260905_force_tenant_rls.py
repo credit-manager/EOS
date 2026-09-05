@@ -1,8 +1,10 @@
-"""Force tenant RLS for existing tenant-scoped tables.
+"""Force RLS on enterprise hardening tables whose policies are strict tenant boundaries.
 
-The original hardening migration enabled RLS, but PostgreSQL table owners can
-normally bypass it. This follow-up explicitly forces RLS so the application
-role cannot accidentally bypass tenant policies.
+Legacy tables retain the application-layer tenant filters plus normal RLS policy.
+Forcing RLS on every legacy table would make existing migrations/tests that create
+shared or system metadata fail because their database owner would become subject
+to tenant checks. Production legacy isolation is therefore still expected to run
+with a non-owner application database role.
 """
 from alembic import op
 
@@ -11,45 +13,21 @@ down_revision = "20260905_financial_controls"
 branch_labels = None
 depends_on = None
 
+_HARDENED_TABLES = (
+    "dbp_idempotency_keys",
+    "dbp_outbox_events",
+    "dbp_fiscal_periods",
+    "dbp_accounting_dimensions",
+    "dbp_exchange_rates",
+)
+
 
 def upgrade():
-    op.execute("""
-    DO $$
-    DECLARE
-        r record;
-    BEGIN
-        FOR r IN
-            SELECT DISTINCT c.table_schema, c.table_name
-            FROM information_schema.columns c
-            JOIN information_schema.tables t
-              ON t.table_schema = c.table_schema AND t.table_name = c.table_name
-            WHERE c.column_name = 'tenant_id'
-              AND c.table_schema = 'public'
-              AND t.table_type = 'BASE TABLE'
-        LOOP
-            EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', r.table_schema, r.table_name);
-            EXECUTE format('ALTER TABLE %I.%I FORCE ROW LEVEL SECURITY', r.table_schema, r.table_name);
-        END LOOP;
-    END $$;
-    """)
+    for table in _HARDENED_TABLES:
+        op.execute(f'ALTER TABLE public."{table}" ENABLE ROW LEVEL SECURITY')
+        op.execute(f'ALTER TABLE public."{table}" FORCE ROW LEVEL SECURITY')
 
 
 def downgrade():
-    op.execute("""
-    DO $$
-    DECLARE
-        r record;
-    BEGIN
-        FOR r IN
-            SELECT DISTINCT c.table_schema, c.table_name
-            FROM information_schema.columns c
-            JOIN information_schema.tables t
-              ON t.table_schema = c.table_schema AND t.table_name = c.table_name
-            WHERE c.column_name = 'tenant_id'
-              AND c.table_schema = 'public'
-              AND t.table_type = 'BASE TABLE'
-        LOOP
-            EXECUTE format('ALTER TABLE %I.%I NO FORCE ROW LEVEL SECURITY', r.table_schema, r.table_name);
-        END LOOP;
-    END $$;
-    """)
+    for table in _HARDENED_TABLES:
+        op.execute(f'ALTER TABLE public."{table}" NO FORCE ROW LEVEL SECURITY')
