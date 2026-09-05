@@ -42,8 +42,11 @@ jobs:
           test -f dist/index.html
           test -n "$(find dist/assets -type f | head -1)"
 
+      - name: Install Playwright test runner
+        run: npm install --no-save --no-audit --no-fund @playwright/test@1.55.0
+
       - name: Install Chromium for browser certification
-        run: npx -y @playwright/test@1.55.0 install --with-deps chromium
+        run: npx playwright install --with-deps chromium
 
       - name: Run browser functional certification
-        run: npx -y @playwright/test@1.55.0 test
+        run: npx playwright test
