@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import statistics
 import time
 
 import httpx
 import pytest
-
-pytestmark = pytest.mark.performance
 
 
 def _enabled() -> bool:
@@ -36,6 +35,8 @@ async def test_health_performance_budget() -> None:
     concurrency = int(os.getenv("EOS_PERF_CONCURRENCY", "10"))
     p95_budget_ms = float(os.getenv("EOS_PERF_P95_BUDGET_MS", "500"))
     p99_budget_ms = float(os.getenv("EOS_PERF_P99_BUDGET_MS", "1000"))
+    if samples < 1 or concurrency < 1:
+        raise ValueError("EOS_PERF_SAMPLES and EOS_PERF_CONCURRENCY must be positive")
 
     transport = httpx.ASGITransport(app=app)
     limits = httpx.Limits(max_connections=concurrency, max_keepalive_connections=concurrency)
@@ -53,7 +54,7 @@ async def test_health_performance_budget() -> None:
         results: list[tuple[float, int]] = []
         for offset in range(0, samples, concurrency):
             batch = min(concurrency, samples - offset)
-            results.extend(await __import__("asyncio").gather(*(request() for _ in range(batch))))
+            results.extend(await asyncio.gather(*(request() for _ in range(batch))))
         wall_time = time.perf_counter() - started
 
     latencies = [latency for latency, status in results if status < 500]
