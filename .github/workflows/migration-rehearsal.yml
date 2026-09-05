@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_ALEMBIC_HEAD: 20260905_number_sequences
+  EXPECTED_ALEMBIC_HEAD: 20260905_restore_journal_tables
 
 jobs:
   migration-rehearsal:
