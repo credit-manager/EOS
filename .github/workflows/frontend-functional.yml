@@ -1,0 +1,49 @@
+name: EOS Frontend Functional Certification
+
+on:
+  push:
+    branches: [main, develop, 'feature/**']
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  frontend-functional-certification:
+    name: Phase 6 - Frontend Functional Certification
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: erp-system/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: erp-system/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint frontend
+        run: npm run lint
+
+      - name: Run frontend contract tests
+        run: npm run test:run
+
+      - name: Build production frontend
+        run: npm run build
+
+      - name: Verify production artifact
+        run: |
+          test -f dist/index.html
+          test -n "$(find dist/assets -type f | head -1)"
+
+      - name: Install Chromium for browser certification
+        run: npx -y @playwright/test@1.55.0 install --with-deps chromium
+
+      - name: Run browser functional certification
+        run: npx -y @playwright/test@1.55.0 test
