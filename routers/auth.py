@@ -68,8 +68,9 @@ async def register(body: dict, request: Request, db: Session = Depends(get_db)):
     try:
         tenant_id = f"tenant_{secrets.token_hex(8)}"
         company_name = body["company_name"]
+        company_id = str(uuid.uuid4())
         db2.execute(text("INSERT INTO dbp_companies (id, tenant_id, code, name_en, name_ar) VALUES (:id, :tid, :code, :name, :name)"),
-                    {"id": str(uuid.uuid4()), "tid": tenant_id, "code": company_name.lower().replace(" ", "_")[:30], "name": company_name})
+                    {"id": company_id, "tid": tenant_id, "code": company_name.lower().replace(" ", "_")[:30], "name": company_name})
         engine = UserEngine(db2)
         result = engine.register(tenant_id=tenant_id, email=body["email"], password=body["password"], first_name=body["first_name"],
                                  last_name=body["last_name"], first_name_ar=body.get("first_name_ar"), last_name_ar=body.get("last_name_ar"),
@@ -83,7 +84,7 @@ async def register(body: dict, request: Request, db: Session = Depends(get_db)):
         verification_token = result.get("verification_token", "")
         tpl = EmailTemplateEngine.verification_email(f"{frontend_url}/verify-email?token={verification_token}", body["first_name"])
         email_svc.send(to_email=body["email"], subject=tpl["subject"], html_body=tpl["html"], text_body=tpl.get("text"))
-        return {"status": "success", "data": {"user_id": result["user_id"], "tenant_id": tenant_id, "email": result["email"],
+        return {"status": "success", "data": {"user_id": result["user_id"], "tenant_id": tenant_id, "company_id": company_id, "email": result["email"],
                 "requires_verification": result["requires_verification"],
                 "verification_token": verification_token if email_svc.__class__.__name__ == "ConsoleEmailProvider" else None,
                 "message": "Registration successful. Please verify your email."}}
@@ -126,6 +127,8 @@ async def login(body: dict, db: Session = Depends(get_db)):
     try:
         token = _issue_access_token(result)
         refresh_token = _issue_refresh_token(db, result["user_id"], result["tenant_id"])
+        company = db.execute(text("SELECT id FROM dbp_companies WHERE tenant_id = :tenant_id ORDER BY id LIMIT 1"),
+                             {"tenant_id": result["tenant_id"]}).fetchone()
         db.commit()
     except HTTPException:
         db.rollback()
@@ -135,7 +138,7 @@ async def login(body: dict, db: Session = Depends(get_db)):
         raise _err(500, "SESSION_FAILED", "Unable to create authenticated session")
     return {"status": "success", "data": {"access_token": token, "refresh_token": refresh_token, "token_type": "bearer", "expires_in": 1800,
             "user": {"id": result["user_id"], "email": result["email"], "first_name": result.get("first_name"),
-                      "last_name": result.get("last_name"), "tenant_id": result["tenant_id"], "role": result["role"]}}}
+                      "last_name": result.get("last_name"), "tenant_id": result["tenant_id"], "company_id": company[0] if company else None, "role": result["role"]}}}
 
 
 @router.post("/refresh", dependencies=[Depends(auth_limiter.check)])
@@ -243,9 +246,12 @@ async def change_password(body: dict, user: dict = Depends(get_current_user), db
 
 @router.get("/me", dependencies=[Depends(require_permission("dynamic", "read"))])
 async def get_me(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    u = UserEngine(db).get_user_by_id(user["id"])
+    u = UserEngine(db).get_user_by_id_tenant(user["id"], user["tenant_id"])
     if not u:
         raise _err(404, "NOT_FOUND", "User not found")
+    company = db.execute(text("SELECT id FROM dbp_companies WHERE tenant_id = :tenant_id ORDER BY id LIMIT 1"),
+                         {"tenant_id": user["tenant_id"]}).fetchone()
+    u["company_id"] = company[0] if company else None
     return {"status": "success", "data": u}
 
 
@@ -261,12 +267,3 @@ async def get_user(user_id: str, user: dict = Depends(get_current_user), db: Ses
     if not u:
         raise _err(404, "NOT_FOUND", "User not found")
     return {"status": "success", "data": u}
-
-
-@router.put("/users/{user_id}", dependencies=[Depends(require_permission("dynamic", "update"))])
-async def update_user(user_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    result = UserEngine(db).update_user(user_id, user["tenant_id"], body)
-    if not result["success"]:
-        raise _err(400, "UPDATE_FAILED", result["error"])
-    db.commit()
-    return {"status": "success", "data": result}
