@@ -1,0 +1,58 @@
+name: EOS Performance Validation
+
+on:
+  push:
+    branches: [main, develop, 'feature/**']
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  performance-load:
+    name: Phase 4 - Performance / Load Validation
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: perf_user
+          POSTGRES_PASSWORD: perf_pass
+          POSTGRES_DB: eos_performance
+        options: >-
+          --health-cmd "pg_isready -U perf_user -d eos_performance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install performance dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Apply canonical schema
+        env:
+          DATABASE_URL: postgresql://perf_user:perf_pass@127.0.0.1:5432/eos_performance
+          SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          ENVIRONMENT: testing
+        run: alembic upgrade head
+      - name: Run deterministic API load benchmark
+        env:
+          DATABASE_URL: postgresql://perf_user:perf_pass@127.0.0.1:5432/eos_performance
+          SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          ENVIRONMENT: testing
+          EOS_RUN_PERFORMANCE: '1'
+          EOS_PERF_SAMPLES: '200'
+          EOS_PERF_CONCURRENCY: '20'
+          EOS_PERF_P95_BUDGET_MS: '500'
+          EOS_PERF_P99_BUDGET_MS: '1000'
+          PYTHONPATH: ${{ github.workspace }}
+        run: pytest tests/performance_load.py -v --tb=short -s
