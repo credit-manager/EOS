@@ -1,7 +1,7 @@
 """
 EOS Dynamic Business Platform — FastAPI Application (P13 hardened)
 """
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -69,6 +69,7 @@ from routers import reporting_api
 from core.audit import set_request_id
 from core.health_check import router as health_router
 from core.api_versioning import APIVersionMiddleware, SUPPORTED_VERSIONS
+from core.auth import get_current_user, require_permission
 import os
 import json
 import uuid
@@ -105,6 +106,28 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         return response
 
 
+async def require_sales_api_permission(request: Request, user: dict = Depends(get_current_user)):
+    """Apply explicit RBAC to the legacy/direct Sales CRM surface.
+
+    sales_api historically depended only on authentication, which allowed any
+    authenticated role to mutate CRM data. Keep the route surface compatible,
+    but enforce the same action model used by the rest of EOS.
+    """
+    method = request.method.upper()
+    action = {
+        "GET": "read",
+        "HEAD": "read",
+        "POST": "create",
+        "PUT": "update",
+        "PATCH": "update",
+        "DELETE": "delete",
+    }.get(method)
+    if action is None:
+        raise HTTPException(status_code=405, detail="Method not allowed")
+    checker = require_permission("dynamic", action)
+    return await checker(user)
+
+
 setup_logging()
 
 app = FastAPI(
@@ -128,9 +151,6 @@ app.add_middleware(
 
 allowed_hosts = [host.strip() for host in os.getenv("EOS_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
 auth_mode = os.getenv("EOS_AUTH_MODE", "test").lower()
-# Trusted hosts are optional in test mode for local development, but production
-# must always enforce the explicitly configured allow-list. This prevents a
-# production deployment from accidentally disabling Host-header validation.
 trusted_hosts_enabled = os.getenv("EOS_TRUSTED_HOSTS_ENABLED", "false").lower() == "true"
 if auth_mode == "production" or trusted_hosts_enabled:
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
@@ -140,7 +160,7 @@ app.add_middleware(RequestIdMiddleware)
 app.add_middleware(LocaleMiddleware)
 app.add_middleware(APIVersionMiddleware)
 
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry
+from prometheus_client import generate_latest, CollectorRegistry
 from prometheus_client import ProcessCollector, PlatformCollector
 
 _prometheus_registry = CollectorRegistry()
@@ -184,7 +204,7 @@ app.include_router(finance.router)
 app.include_router(procurement.router)
 app.include_router(inventory.router)
 app.include_router(sales.router)
-app.include_router(sales_api.router)
+app.include_router(sales_api.router, dependencies=[Depends(require_sales_api_permission)])
 app.include_router(inventory_api.router)
 app.include_router(accounting_api.router)
 app.include_router(projects_api.router)
@@ -243,8 +263,6 @@ app.include_router(currency_api.router)
 app.include_router(reconciliation_api.router)
 app.include_router(portal_customer_api.router)
 app.include_router(reporting_api.router)
-# Keep legacy /reports/* callers working while exposing the same reporting
-# contract under the versioned API prefix used by the canonical frontend.
 app.include_router(reporting_api.router, prefix="/api/v1")
 
 
