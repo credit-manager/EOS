@@ -23,6 +23,12 @@ async def get_current_user(
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required", headers={"WWW-Authenticate": "Bearer"})
 
+    # Never let a tenant context left by an earlier request influence the
+    # authentication lookup for this request. The authenticated tenant is set
+    # only after the token and current user record have both been validated.
+    from database import current_tenant_id
+    current_tenant_id.set(None)
+
     production = _is_production()
     if production:
         from core.production_auth import verify_token, _get_secret_key
@@ -47,10 +53,9 @@ async def get_current_user(
     roles = payload.get("roles", [])
 
     if production:
-        # Access JWTs are intentionally short-lived, but account deactivation and
-        # privilege changes must still take effect immediately. Query before setting
-        # the request RLS context so this authentication lookup cannot be blocked by
-        # the tenant policy it is establishing.
+        # Access JWTs are intentionally short-lived, but deactivation and
+        # privilege changes must take effect immediately. Query before setting
+        # the request RLS context it is establishing.
         from database import SessionLocal
         db = SessionLocal()
         try:
@@ -65,7 +70,6 @@ async def get_current_user(
         email = row[0]
         roles = [row[1]]
 
-    from database import current_tenant_id
     current_tenant_id.set(tenant_id)
     return {"id": user_id, "tenant_id": tenant_id, "email": email, "roles": roles}
 
