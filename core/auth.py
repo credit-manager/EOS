@@ -14,20 +14,18 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from dotenv import load_dotenv
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 load_dotenv()
 
 # Test-only secret key — MUST be set explicitly via env.
-# H3 FIX: No hardcoded fallback key. If EOS_TEST_SECRET_KEY is not set,
-# test token creation/verification raises instead of using a known default.
 TEST_SECRET_KEY = os.getenv("EOS_TEST_SECRET_KEY", "")
 TEST_ALGORITHM = "HS256"
 TEST_TOKEN_EXPIRE_MINUTES = 60
 
-# Bearer Token extractor
 security = HTTPBearer()
 
 
@@ -38,26 +36,15 @@ def create_test_token(
     roles: Optional[list] = None,
     expires_delta: Optional[timedelta] = None
 ) -> str:
-    """
-    Create a test JWT token.
-
-    This is for verification/testing only.
-    The tenant_id embedded in the token is the
-    AUTHENTICATED TENANT — the source of truth
-    for tenant isolation.
-    """
+    """Create a test JWT token."""
     if not TEST_SECRET_KEY:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="EOS_TEST_SECRET_KEY is not configured",
         )
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(
-            minutes=TEST_TOKEN_EXPIRE_MINUTES
-        )
-
+    expire = datetime.now(timezone.utc) + (
+        expires_delta if expires_delta else timedelta(minutes=TEST_TOKEN_EXPIRE_MINUTES)
+    )
     payload = {
         "sub": user_id,
         "exp": expire,
@@ -67,26 +54,19 @@ def create_test_token(
         "email": email,
         "roles": roles or ["user"],
     }
-
     return jwt.encode(payload, TEST_SECRET_KEY, algorithm=TEST_ALGORITHM)
 
 
 def verify_test_token(token: str) -> dict:
-    """
-    Verify and decode a test JWT token.
-
-    Returns the full payload including tenant_id.
-    Raises HTTPException on invalid/expired token.
-    """
-    try:
-        payload = jwt.decode(
-            token,
-            TEST_SECRET_KEY,
-            algorithms=[TEST_ALGORITHM]
+    """Verify and decode a test JWT token."""
+    if not TEST_SECRET_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="EOS_TEST_SECRET_KEY is not configured",
         )
-        return payload
-    except JWTError:
-        # Never expose JWT error details to client
+    try:
+        return jwt.decode(token, TEST_SECRET_KEY, algorithms=[TEST_ALGORITHM])
+    except InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
@@ -94,9 +74,6 @@ def verify_test_token(token: str) -> dict:
         )
 
 
-# Delegate to auth_adapter for get_current_user
-# This allows switching between test and production auth
-# via EOS_AUTH_MODE environment variable
 from core.auth_adapter import get_current_user, optional_get_current_user
 
 __all__ = [
@@ -112,34 +89,19 @@ __all__ = [
 
 
 def require_permission(module: str, action: str):
-    """
-    Dependency factory: require a specific permission.
-    
-    Usage:
-        @router.post("/accounts", dependencies=[Depends(require_permission("dynamic", "create"))])
-    """
+    """Dependency factory: require a specific permission."""
     async def _check(current_user: Optional[dict] = Depends(optional_get_current_user)):
-        # H2 FIX: Never bypass auth. A permission requirement implies the
-        # caller must be authenticated. Previously a missing token (None user)
-        # fell through and accessed the endpoint without any permission check.
         if current_user is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication required",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-
         required = f"{module}:{action}"
-        
-        # Check if user has wildcard permission
         if "*:*" in current_user.get("permissions", []):
             return
-        
-        # Check direct permissions
         if required in current_user.get("permissions", []):
             return
-        
-        # Check roles for permission (test mode fallback)
         roles = current_user.get("roles", [])
         for role in roles:
             if role == "admin":
@@ -150,7 +112,6 @@ def require_permission(module: str, action: str):
                 return
             if role == "dynamic_viewer" and action == "read":
                 return
-        
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions",
@@ -159,37 +120,18 @@ def require_permission(module: str, action: str):
 
 
 def _designated_platform_owners() -> set:
-    """Resolve the set of designated platform-owner email addresses.
-
-    Read from EOS_PLATFORM_OWNER_EMAILS (comma-separated). Defaults to the
-    demo platform admin. This is an EXPLICIT allow-list independent of the
-    generic 'admin' role, so a tenant admin cannot access the control plane
-    merely by holding the 'admin' role.
-    """
+    """Resolve designated platform-owner email addresses."""
     raw = os.getenv("EOS_PLATFORM_OWNER_EMAILS", "admin@demo.com")
-    owners = {e.strip().lower() for e in raw.split(",") if e.strip()}
-    return owners
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
 
 
 async def require_platform_owner(user: dict = Depends(get_current_user)) -> dict:
-    """
-    Platform Owner dependency for the Owner Control Plane (/api/v1/control).
-
-    Grants access ONLY to:
-      1. users whose token carries the 'platform_owner' role, OR
-      2. users explicitly listed as designated platform owners (email).
-
-    The generic 'admin'/'tenant_admin' role is NOT sufficient — this closes the
-    vulnerability where any tenant admin could impersonate/manage other tenants.
-    Returns the authenticated user dict on success, 403 otherwise.
-    """
+    """Allow only explicit platform owners to access the control plane."""
     if "platform_owner" in user.get("roles", []):
         return user
-
     email = (user.get("email") or "").strip().lower()
     if email and email in _designated_platform_owners():
         return user
-
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Platform owner privileges required",
