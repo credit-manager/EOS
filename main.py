@@ -238,6 +238,9 @@ app.include_router(currency_api.router)
 app.include_router(reconciliation_api.router)
 app.include_router(portal_customer_api.router)
 app.include_router(reporting_api.router)
+# Keep legacy /reports/* callers working while exposing the same reporting
+# contract under the versioned API prefix used by the canonical frontend.
+app.include_router(reporting_api.router, prefix="/api/v1")
 
 
 @app.on_event("startup")
