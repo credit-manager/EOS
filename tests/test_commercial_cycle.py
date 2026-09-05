@@ -12,16 +12,24 @@ def test_real_commercial_cycle_posts_to_general_ledger():
     test_client = TestClient(app)
     registration = test_client.post("/api/v1/auth/register", json={"email": email, "password": password, "first_name": "Commercial", "last_name": "Smoke", "company_name": "Commercial Smoke Company", "company_code": f"CSC-{uuid4().hex[:8].upper()}"})
     assert registration.status_code in (200, 201), registration.text
+    registration_data = registration.json()["data"]
+    tenant_id = registration_data["tenant_id"]
+    company_id = registration_data["company_id"]
     db = SessionLocal()
     try:
-        user = db.execute(text("SELECT id, tenant_id, company_id FROM dbp_users WHERE email = :email"), {"email": email}).fetchone()
+        user = db.execute(text("SELECT id, tenant_id FROM dbp_users WHERE email = :email"), {"email": email}).fetchone()
         assert user
-        tenant_id, company_id = user[1], user[2]
+        assert user[1] == tenant_id
+        company = db.execute(text("SELECT id FROM dbp_companies WHERE id = :cid AND tenant_id = :tid"), {"cid": company_id, "tid": tenant_id}).fetchone()
+        assert company
     finally:
         db.close()
-    login = test_client.post("/api/v1/auth/login", data={"username": email, "password": password})
+    login = test_client.post("/api/v1/auth/login", json={"email": email, "password": password})
     assert login.status_code == 200, login.text
-    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    login_data = login.json()["data"]
+    headers = {"Authorization": f"Bearer {login_data['access_token']}"}
+    assert login_data["user"]["tenant_id"] == tenant_id
+    assert login_data["user"]["company_id"] == company_id
     customer = test_client.post(f"/api/v1/dynamic/companies/{company_id}/customers", headers=headers, json={"name": "Commercial Smoke Customer", "email": "customer@example.test"})
     assert customer.status_code == 200, customer.text
     customer_id = customer.json()["data"]["id"]
