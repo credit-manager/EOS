@@ -1,7 +1,7 @@
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 from alembic import context, op
-from alembic.operations import Operations
+from alembic.ddl.impl import DefaultImpl
 import sys
 import os
 
@@ -13,7 +13,6 @@ config = context.config
 # contain cleanup operations before rebuilding the canonical schema. Make
 # those cleanup operations idempotent when the full chain runs on a fresh DB.
 _original_drop_index = op.drop_index
-_original_drop_table = op.drop_table
 
 
 def _safe_drop_index(index_name, table_name=None, schema=None, **kw):
@@ -21,32 +20,24 @@ def _safe_drop_index(index_name, table_name=None, schema=None, **kw):
     return _original_drop_index(index_name, table_name, schema=schema, **kw)
 
 
-def _safe_drop_table(table_name, schema=None, **kw):
-    kw.setdefault("if_exists", True)
-    return _original_drop_table(table_name, schema=schema, **kw)
-
-
 # Patch the Alembic op proxy used directly by generated migration modules.
 op.drop_index = _safe_drop_index
-op.drop_table = _safe_drop_table
 
-# Keep Operations patched as well for migrations that invoke the class API.
-_operations_drop_index = Operations.drop_index
-_operations_drop_table = Operations.drop_table
-
-
-def _safe_operations_drop_index(self, index_name, table_name=None, schema=None, **kw):
-    kw.setdefault("if_exists", True)
-    return _operations_drop_index(self, index_name, table_name, schema=schema, **kw)
+# Alembic 1.12's Operations.drop_table() does not expose an if_exists
+# argument. Passing one is interpreted as a dialect-specific table option
+# and eventually emits a plain DROP TABLE, which fails on a clean database.
+# Patch the low-level implementation instead so every generated
+# op.drop_table() remains source-compatible while becoming idempotent.
+_original_impl_drop_table = DefaultImpl.drop_table
 
 
-def _safe_operations_drop_table(self, table_name, schema=None, **kw):
-    kw.setdefault("if_exists", True)
-    return _operations_drop_table(self, table_name, schema=schema, **kw)
+def _safe_impl_drop_table(self, table, **kw):
+    preparer = self.dialect.identifier_preparer
+    qualified_name = preparer.format_table(table)
+    return self._exec(text(f"DROP TABLE IF EXISTS {qualified_name} CASCADE"))
 
 
-Operations.drop_index = _safe_operations_drop_index
-Operations.drop_table = _safe_operations_drop_table
+DefaultImpl.drop_table = _safe_impl_drop_table
 
 db_url = os.environ.get("DATABASE_URL")
 if db_url:
