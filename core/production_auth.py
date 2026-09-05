@@ -11,6 +11,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 JWT_ALGORITHM = "HS256"
 security = HTTPBearer()
+_RESERVED_CLAIMS = {"sub", "exp", "iat", "type", "iss", "aud", "jti"}
 
 
 def _get_secret_key() -> str:
@@ -42,28 +43,18 @@ def create_access_token(subject: str, expires_delta: Optional[timedelta] = None,
     algorithm = _get_algorithm()
     now = datetime.now(timezone.utc)
     expire = now + (expires_delta or timedelta(minutes=30))
-    payload = {
-        "sub": subject,
-        "exp": expire,
-        "iat": now,
-        "type": "access",
-        "iss": _get_issuer(),
-        "aud": _get_audience(),
-        "jti": str(uuid.uuid4()),
-    }
+    payload = {"sub": subject, "exp": expire, "iat": now, "type": "access", "iss": _get_issuer(), "aud": _get_audience(), "jti": str(uuid.uuid4())}
     if extra_data:
-        payload.update(extra_data)
+        payload.update({k: v for k, v in extra_data.items() if k not in _RESERVED_CLAIMS})
     return jwt.encode(payload, secret_key, algorithm=algorithm)
 
 
 def verify_token(token: str) -> dict:
     try:
-        secret_key = _get_secret_key()
-        algorithm = _get_algorithm()
         return jwt.decode(
             token,
-            secret_key,
-            algorithms=[algorithm],
+            _get_secret_key(),
+            algorithms=[_get_algorithm()],
             issuer=_get_issuer(),
             audience=_get_audience(),
             options={"require": ["exp", "iat", "sub", "iss", "aud", "type", "jti"]},
