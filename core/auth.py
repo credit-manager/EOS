@@ -32,18 +32,42 @@ def _get_test_secret_key() -> str:
     return secret
 
 
+def _jwt_issuer() -> str:
+    return os.getenv("EOS_JWT_ISSUER", "eos-dbp").strip() or "eos-dbp"
+
+
+def _jwt_audience() -> str:
+    return os.getenv("EOS_JWT_AUDIENCE", "eos-api").strip() or "eos-api"
+
+
 def create_test_token(tenant_id: str, user_id: str = "test-user", email: str = "test@example.com", roles: Optional[list] = None, expires_delta: Optional[timedelta] = None) -> str:
     secret_key = _get_test_secret_key()
     now = datetime.now(timezone.utc)
     expire = now + (expires_delta or timedelta(minutes=TEST_TOKEN_EXPIRE_MINUTES))
-    payload = {"sub": user_id, "exp": expire, "iat": now, "type": "access", "tenant_id": tenant_id.lower(), "email": email, "roles": roles or ["user"]}
+    payload = {
+        "sub": user_id,
+        "exp": expire,
+        "iat": now,
+        "type": "access",
+        "tenant_id": tenant_id.lower(),
+        "email": email,
+        "roles": roles or ["user"],
+        "iss": _jwt_issuer(),
+        "aud": _jwt_audience(),
+    }
     return jwt.encode(payload, secret_key, algorithm=TEST_ALGORITHM)
 
 
 def verify_test_token(token: str) -> dict:
     secret_key = _get_test_secret_key()
     try:
-        return jwt.decode(token, secret_key, algorithms=[TEST_ALGORITHM])
+        return jwt.decode(
+            token,
+            secret_key,
+            algorithms=[TEST_ALGORITHM],
+            issuer=_jwt_issuer(),
+            audience=_jwt_audience(),
+        )
     except InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid or expired token", headers={"WWW-Authenticate": "Bearer"})
 
