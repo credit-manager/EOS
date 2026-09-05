@@ -10,7 +10,7 @@ def test_real_commercial_cycle_posts_to_general_ledger():
     email = f"commercial-{uuid4().hex[:10]}@example.test"
     password = "StrongPass!123"
     test_client = TestClient(app)
-    registration = test_client.post("/api/v1/auth/register", json={"email": email, "password": password, "company_name": "Commercial Smoke Company", "company_code": f"CSC-{uuid4().hex[:8].upper()}"})
+    registration = test_client.post("/api/v1/auth/register", json={"email": email, "password": password, "first_name": "Commercial", "last_name": "Smoke", "company_name": "Commercial Smoke Company", "company_code": f"CSC-{uuid4().hex[:8].upper()}"})
     assert registration.status_code in (200, 201), registration.text
     db = SessionLocal()
     try:
