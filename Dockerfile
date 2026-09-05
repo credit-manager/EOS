@@ -15,7 +15,7 @@ RUN npm run build
 # ═══════════════════════════════════════════════
 # Stage 2: Build Python dependencies
 # ═══════════════════════════════════════════════
-FROM python:3.14-slim AS python-builder
+FROM python:3.12-slim AS python-builder
 
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -29,7 +29,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # ═══════════════════════════════════════════════
 # Stage 3: Production runtime
 # ═══════════════════════════════════════════════
-FROM python:3.14-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
