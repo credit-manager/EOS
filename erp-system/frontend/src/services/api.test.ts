@@ -51,11 +51,19 @@ describe('EOS API client functional contract', () => {
     expect(apiClient.post).toHaveBeenCalledWith('/auth/login', { email: 'user@example.com', password: 'password' });
   });
 
+  it('supports email verification as a public authentication action', async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: { message: 'Email verified' } } } as never);
+    await authAPI.verifyEmail('verification-token');
+    expect(apiClient.post).toHaveBeenCalledWith('/auth/verify-email', { token: 'verification-token' });
+  });
+
   it('persists tokens returned by the response interceptor', async () => {
     expect(interceptorHandlers.responseSuccess).toBeDefined();
-    await interceptorHandlers.responseSuccess!({ data: { data: { access_token: 'access-1', refresh_token: 'refresh-1' } } });
+    await interceptorHandlers.responseSuccess!({ data: { data: { access_token: 'access-1', refresh_token: 'refresh-1', user: { tenant_id: 't1', company_id: 'c1' } } } });
     expect(localStorage.getItem('access_token')).toBe('access-1');
     expect(localStorage.getItem('refresh_token')).toBe('refresh-1');
+    expect(localStorage.getItem('eos_tenant_id')).toBe('t1');
+    expect(localStorage.getItem('eos_company_id')).toBe('c1');
   });
 
   it('attaches the current bearer token to requests', () => {
@@ -105,9 +113,24 @@ describe('EOS API client functional contract', () => {
     expect(apiClient.get).toHaveBeenCalledWith('/inventory/products', { params: { search: 'Widget' } });
   });
 
-  it('fails closed for unavailable order and invoice contracts', async () => {
-    await expect(ordersAPI.getAll()).rejects.toThrow(/orders API is not wired/);
-    await expect(invoicesAPI.getAll()).rejects.toThrow(/invoices API is not wired/);
+  it('routes commercial sales-order and invoice workflows to real backend contracts', async () => {
+    localStorage.setItem('eos_company_id', 'company-1');
+    vi.mocked(apiClient.get).mockResolvedValue({ data: { data: [] } } as never);
+    vi.mocked(apiClient.post).mockResolvedValue({ data: { data: { id: 'x1' } } } as never);
+    await ordersAPI.getAll();
+    await ordersAPI.create({ customer_id: 'c1', order_date: '2026-09-05', lines: [] });
+    await ordersAPI.getById('o1');
+    await invoicesAPI.getAll();
+    await invoicesAPI.create({ customer_id: 'c1', invoice_date: '2026-09-05', lines: [] });
+    await invoicesAPI.getById('i1');
+    await invoicesAPI.recordPayment('i1', 100, '2026-09-05');
+    expect(apiClient.get).toHaveBeenCalledWith('/dynamic/companies/company-1/sales-orders', { params: undefined });
+    expect(apiClient.post).toHaveBeenCalledWith('/dynamic/companies/company-1/sales-orders', { customer_id: 'c1', order_date: '2026-09-05', lines: [] });
+    expect(apiClient.get).toHaveBeenCalledWith('/dynamic/sales-orders/o1');
+    expect(apiClient.get).toHaveBeenCalledWith('/dynamic/companies/company-1/invoices', { params: undefined });
+    expect(apiClient.post).toHaveBeenCalledWith('/dynamic/companies/company-1/invoices', { customer_id: 'c1', invoice_date: '2026-09-05', lines: [] });
+    expect(apiClient.get).toHaveBeenCalledWith('/dynamic/invoices/i1');
+    expect(apiClient.post).toHaveBeenCalledWith('/dynamic/invoices/i1/payments', { amount: 100, payment_date: '2026-09-05', company_id: 'company-1' });
   });
 });
 
