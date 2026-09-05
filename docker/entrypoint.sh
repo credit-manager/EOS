@@ -12,6 +12,7 @@ echo "EOS: applying database migrations..."
 alembic upgrade head
 echo "EOS: database migrations complete."
 
+# Keep the runtime process as PID 1 for correct signal handling and graceful shutdown.
 exec gunicorn main:app \
   --workers "${GUNICORN_WORKERS:-4}" \
   --worker-class uvicorn.workers.UvicornWorker \
