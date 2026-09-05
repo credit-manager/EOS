@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { authAPI } from '../services/api';
 import Login from './Login';
 
-export default function AuthGate({ children }: { children: React.ReactNode }) {
+export default function AuthGate({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
   const [checking, setChecking] = useState(true);
 
@@ -38,13 +38,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('eos:auth-expired', onExpired);
   }, []);
 
-  if (checking) {
-    return <main className="eos-auth-loading" aria-live="polite">EOS</main>;
-  }
-
-  if (!authenticated) {
-    return <Login onAuthenticated={() => setAuthenticated(true)} />;
-  }
-
+  if (checking) return <main className="eos-auth-loading" aria-live="polite">EOS</main>;
+  if (!authenticated) return <Login onAuthenticated={() => setAuthenticated(true)} />;
   return <>{children}</>;
 }
