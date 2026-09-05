@@ -11,9 +11,10 @@ vi.mock('axios', async () => {
     removeItem: vi.fn((key: string) => storage.delete(key)),
     clear: vi.fn(() => storage.clear()),
   };
-  if (typeof globalThis.localStorage === 'undefined') {
-    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: localStorageMock });
-  }
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: localStorageMock,
+  });
   const client = {
     defaults: { headers: { common: {} } },
     interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
@@ -38,10 +39,10 @@ describe('EOS API client functional contract', () => {
     expect(apiClient.post).toHaveBeenCalledWith('/auth/login', { email: 'user@example.com', password: 'password' });
   });
 
-  it('persists tokens returned by the response interceptor', () => {
+  it('persists tokens returned by the response interceptor', async () => {
     const client = vi.mocked(axios.create).mock.results[0]?.value;
     const [, onSuccess] = client.interceptors.response.use.mock.calls[0] || [];
-    onSuccess({ data: { data: { access_token: 'access-1', refresh_token: 'refresh-1' } } });
+    await onSuccess({ data: { data: { access_token: 'access-1', refresh_token: 'refresh-1' } } });
     expect(localStorage.getItem('access_token')).toBe('access-1');
     expect(localStorage.getItem('refresh_token')).toBe('refresh-1');
   });
