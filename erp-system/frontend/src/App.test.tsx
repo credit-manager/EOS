@@ -86,7 +86,7 @@ describe('EOS frontend functional API flows', () => {
 
   it('does not attempt refresh for authentication 401 responses', async () => {
     await loadApi();
-    const [, onRejected] = mockedClient.interceptors.response.use.use.mock.calls[0];
+    const [, onRejected] = mockedClient.interceptors.response.use.mock.calls[0];
     const error = { response: { status: 401 }, config: { url: '/auth/login' } };
     await expect(onRejected(error)).rejects.toEqual(error);
     expect(mockedClient.post).not.toHaveBeenCalled();
