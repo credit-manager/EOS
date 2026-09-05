@@ -1,12 +1,34 @@
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
+from alembic.operations import Operations
 import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 config = context.config
+
+# Some historical EOS schema migrations were generated from an already
+# populated database. Their upgrade phase contains cleanup operations before
+# recreating the canonical schema. Make those cleanup operations idempotent so
+# a fresh PostgreSQL database can execute the same migration chain safely.
+_original_drop_index = Operations.drop_index
+_original_drop_table = Operations.drop_table
+
+
+def _safe_drop_index(self, index_name, table_name=None, schema=None, **kw):
+    kw.setdefault("if_exists", True)
+    return _original_drop_index(self, index_name, table_name, schema, **kw)
+
+
+def _safe_drop_table(self, table_name, schema=None, **kw):
+    kw.setdefault("if_exists", True)
+    return _original_drop_table(self, table_name, schema, **kw)
+
+
+Operations.drop_index = _safe_drop_index
+Operations.drop_table = _safe_drop_table
 
 db_url = os.environ.get("DATABASE_URL")
 if db_url:
