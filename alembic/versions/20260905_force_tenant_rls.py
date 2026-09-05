@@ -1,10 +1,8 @@
-"""Force RLS on enterprise hardening tables whose policies are strict tenant boundaries.
+"""Force RLS on enterprise hardening tables when they exist.
 
-Legacy tables retain the application-layer tenant filters plus normal RLS policy.
-Forcing RLS on every legacy table would make existing migrations/tests that create
-shared or system metadata fail because their database owner would become subject
-to tenant checks. Production legacy isolation is therefore still expected to run
-with a non-owner application database role.
+Some supported fresh-database profiles do not materialize every optional
+enterprise table in the historical migration chain. The hardening migration
+must therefore be additive and idempotent with respect to table presence.
 """
 from alembic import op
 
@@ -22,12 +20,27 @@ _HARDENED_TABLES = (
 )
 
 
+def _table_exists(table: str) -> bool:
+    bind = op.get_bind()
+    return bool(
+        bind.execute(
+            __import__("sqlalchemy").text(
+                "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema = 'public' AND table_name = :table)"
+            ),
+            {"table": table},
+        ).scalar()
+    )
+
+
 def upgrade():
     for table in _HARDENED_TABLES:
-        op.execute(f'ALTER TABLE public."{table}" ENABLE ROW LEVEL SECURITY')
-        op.execute(f'ALTER TABLE public."{table}" FORCE ROW LEVEL SECURITY')
+        if _table_exists(table):
+            op.execute(f'ALTER TABLE public."{table}" ENABLE ROW LEVEL SECURITY')
+            op.execute(f'ALTER TABLE public."{table}" FORCE ROW LEVEL SECURITY')
 
 
 def downgrade():
     for table in _HARDENED_TABLES:
-        op.execute(f'ALTER TABLE public."{table}" NO FORCE ROW LEVEL SECURITY')
+        if _table_exists(table):
+            op.execute(f'ALTER TABLE public."{table}" NO FORCE ROW LEVEL SECURITY')
