@@ -53,8 +53,9 @@ export default function EosDataGrid({ entityCode, language }: Props) {
   useEffect(() => {
     let alive = true;
     setLoading(true); setRemoteError(false);
-    const activeFilter = filter.field && filter.value ? `${filter.field}:${filter.operator}:${filter.value.replaceAll(',', ' ')}` : undefined;
-    const searchFilter = search ? `name:like:${search.replaceAll(',', ' ')}` : undefined;
+    const normalize = (value: string) => value.replace(/,/g, ' ');
+    const activeFilter = filter.field && filter.value ? `${filter.field}:${filter.operator}:${normalize(filter.value)}` : undefined;
+    const searchFilter = search ? `name:like:${normalize(search)}` : undefined;
     const filters = [activeFilter, searchFilter].filter(Boolean).join(',') || undefined;
     dynamicAPI.records(entityCode, { filters, sort: sort || undefined, limit, offset })
       .then((response) => { if (alive) { setRows(response.data.data || []); setTotal(response.data.pagination?.total ?? response.data.count ?? 0); setSelected(new Set()); } })
@@ -73,7 +74,7 @@ export default function EosDataGrid({ entityCode, language }: Props) {
   const toggleAll = () => setSelected(allVisibleSelected ? new Set() : new Set(rows.map(rowKey)));
   const exportCsv = () => {
     if (!rows.length) return;
-    const escape = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    const escape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const csv = [visibleColumns.map((c) => escape(language === 'ar' ? c.label_ar || c.label || c.field : c.label || c.field)).join(','), ...rows.map((row) => visibleColumns.map((c) => escape(c.maskable ? '••••••' : row[c.field])).join(','))].join('\n');
     const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `${entityCode}.csv`; link.click(); URL.revokeObjectURL(url);
