@@ -9,11 +9,8 @@ const apiClient = axios.create({
 
 const clearLocalSession = () => {
   if (typeof localStorage !== 'undefined') {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    localStorage.removeItem('eos_tenant_id');
-    localStorage.removeItem('eos_company_id');
-    localStorage.removeItem('eos_user');
+    localStorage.removeItem('access_token'); localStorage.removeItem('refresh_token');
+    localStorage.removeItem('eos_tenant_id'); localStorage.removeItem('eos_company_id'); localStorage.removeItem('eos_user');
   }
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('eos:auth-expired'));
 };
@@ -38,7 +35,7 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const original = error.config as (typeof error.config & { _retry?: boolean }) | undefined;
     const url = original?.url || '';
-    const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/refresh') || url.includes('/auth/register') || url.includes('/auth/verify-email');
+    const isAuthEndpoint = ['/auth/login', '/auth/refresh', '/auth/register', '/auth/verify-email'].some((p) => url.includes(p));
     if (error.response?.status === 401 && original && !original._retry && !isAuthEndpoint) {
       const refreshToken = typeof localStorage !== 'undefined' ? localStorage.getItem('refresh_token') : null;
       if (refreshToken) {
@@ -53,9 +50,7 @@ apiClient.interceptors.response.use(
             original.headers.Authorization = `Bearer ${refreshed.access_token}`;
             return apiClient.request(original);
           }
-        } catch {
-          clearLocalSession();
-        }
+        } catch { clearLocalSession(); }
       } else clearLocalSession();
     }
     return Promise.reject(error);
@@ -70,11 +65,8 @@ export const authAPI = {
   verifyEmail: (token: string) => apiClient.post('/auth/verify-email', { token }),
   logout: async () => {
     const refreshToken = typeof localStorage !== 'undefined' ? localStorage.getItem('refresh_token') : null;
-    try {
-      if (refreshToken) await apiClient.post('/auth/logout', { refresh_token: refreshToken });
-    } finally {
-      clearLocalSession();
-    }
+    try { if (refreshToken) await apiClient.post('/auth/logout', { refresh_token: refreshToken }); }
+    finally { clearLocalSession(); }
     return { data: { status: 'success', data: { message: 'Logged out' } } };
   },
   getCurrentUser: () => apiClient.get('/auth/me'),
@@ -122,15 +114,16 @@ export const ordersAPI = {
   getAll: (companyId = getCompanyId(), params?: { status?: string }) => apiClient.get(`/dynamic/companies/${companyId}/sales-orders`, { params }),
   getById: (id: string | number) => apiClient.get(`/dynamic/sales-orders/${id}`),
   create: (data: Record<string, unknown>, companyId = getCompanyId()) => apiClient.post(`/dynamic/companies/${companyId}/sales-orders`, data),
-  update: (_id: string | number, _data: unknown) => Promise.reject(new Error('Sales order updates require an explicit workflow endpoint and are intentionally not inferred.')),
-  delete: (_id: string | number) => Promise.reject(new Error('Sales order deletion is intentionally disabled after creation to preserve financial auditability.')),
+  update: (_id: string | number, _data: unknown) => Promise.reject(new Error('Sales order updates require an explicit workflow endpoint.')),
+  delete: (_id: string | number) => Promise.reject(new Error('Sales order deletion is disabled to preserve financial auditability.')),
 };
 
 export const invoicesAPI = {
   getAll: (companyId = getCompanyId(), params?: { status?: string }) => apiClient.get(`/dynamic/companies/${companyId}/invoices`, { params }),
   getById: (id: string | number) => apiClient.get(`/dynamic/invoices/${id}`),
   create: (data: Record<string, unknown>, companyId = getCompanyId()) => apiClient.post(`/dynamic/companies/${companyId}/invoices`, data),
-  recordPayment: (id: string | number, amount: number, paymentDate: string, companyId = getCompanyId()) => apiClient.post(`/dynamic/invoices/${id}/payments`, { amount, payment_date: paymentDate, company_id: companyId }),
+  issue: (id: string | number) => apiClient.post(`/dynamic/invoices/${id}/issue`),
+  recordPayment: (id: string | number, amount: number, paymentDate: string) => apiClient.post(`/dynamic/invoices/${id}/payments`, { amount, payment_date: paymentDate }),
   update: (_id: string | number, _data: unknown) => Promise.reject(new Error('Issued invoice updates are disabled; use controlled credit/debit workflows.')),
   delete: (_id: string | number) => Promise.reject(new Error('Issued invoice deletion is disabled to preserve financial auditability.')),
 };
