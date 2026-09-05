@@ -1,21 +1,13 @@
-"""Deterministic performance/load validation for EOS API.
-
-This suite is intentionally opt-in: CI runs the deterministic benchmark only
-when EOS_RUN_PERFORMANCE=1. It uses the same ASGI application as production
-without requiring an external server, and reports latency percentiles plus
-throughput so regressions become measurable rather than anecdotal.
-"""
+"""Deterministic performance/load validation for the EOS API."""
 
 from __future__ import annotations
 
 import os
 import statistics
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 import pytest
-
 
 pytestmark = pytest.mark.performance
 
@@ -28,18 +20,12 @@ def _percentile(values: list[float], percentile: float) -> float:
     ordered = sorted(values)
     if not ordered:
         return 0.0
-    index = min(len(ordered) - 1, max(0, int(round((percentile / 100) * len(ordered))) - 1))
-    return ordered[index]
+    rank = max(1, int((percentile / 100) * len(ordered) + 0.999999))
+    return ordered[min(len(ordered), rank) - 1]
 
 
-def _request(client: httpx.Client, path: str) -> tuple[float, int]:
-    started = time.perf_counter()
-    response = client.get(path)
-    elapsed_ms = (time.perf_counter() - started) * 1000
-    return elapsed_ms, response.status_code
-
-
-def test_health_performance_budget() -> None:
+@pytest.mark.asyncio
+async def test_health_performance_budget() -> None:
     if not _enabled():
         pytest.skip("Set EOS_RUN_PERFORMANCE=1 to run performance validation")
 
@@ -52,14 +38,22 @@ def test_health_performance_budget() -> None:
     p99_budget_ms = float(os.getenv("EOS_PERF_P99_BUDGET_MS", "1000"))
 
     transport = httpx.ASGITransport(app=app)
-    with httpx.Client(transport=transport, base_url="http://testserver") as client:
+    limits = httpx.Limits(max_connections=concurrency, max_keepalive_connections=concurrency)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver", limits=limits) as client:
         for _ in range(warmup):
-            response = client.get("/health")
+            response = await client.get("/health")
             assert response.status_code < 500, response.text
 
+        async def request() -> tuple[float, int]:
+            started = time.perf_counter()
+            response = await client.get("/health")
+            return (time.perf_counter() - started) * 1000, response.status_code
+
         started = time.perf_counter()
-        with ThreadPoolExecutor(max_workers=concurrency) as pool:
-            results = list(pool.map(lambda _: _request(client, "/health"), range(samples)))
+        results: list[tuple[float, int]] = []
+        for offset in range(0, samples, concurrency):
+            batch = min(concurrency, samples - offset)
+            results.extend(await __import__("asyncio").gather(*(request() for _ in range(batch))))
         wall_time = time.perf_counter() - started
 
     latencies = [latency for latency, status in results if status < 500]
@@ -70,15 +64,15 @@ def test_health_performance_budget() -> None:
     p50 = _percentile(latencies, 50)
     p95 = _percentile(latencies, 95)
     p99 = _percentile(latencies, 99)
-    throughput = samples / wall_time if wall_time else float("inf")
+    mean = statistics.mean(latencies)
     stdev = statistics.pstdev(latencies) if len(latencies) > 1 else 0.0
+    throughput = samples / wall_time if wall_time else float("inf")
 
     print(
         "PERFORMANCE_RESULT "
         f"samples={samples} concurrency={concurrency} "
         f"p50_ms={p50:.2f} p95_ms={p95:.2f} p99_ms={p99:.2f} "
-        f"mean_ms={statistics.mean(latencies):.2f} stdev_ms={stdev:.2f} "
-        f"throughput_rps={throughput:.2f}"
+        f"mean_ms={mean:.2f} stdev_ms={stdev:.2f} throughput_rps={throughput:.2f}"
     )
 
     assert p95 <= p95_budget_ms, f"p95 {p95:.2f}ms exceeds budget {p95_budget_ms:.2f}ms"
