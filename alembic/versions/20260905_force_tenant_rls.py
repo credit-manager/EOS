@@ -9,7 +9,7 @@ with a non-owner application database role.
 from alembic import op
 
 revision = "20260905_force_tenant_rls"
-down_revision = "20260905_financial_controls"
+down_revision = "20260905_sales_crm_tenant_scope"
 branch_labels = None
 depends_on = None
 
