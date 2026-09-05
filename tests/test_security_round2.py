@@ -23,7 +23,7 @@ def test_admin_is_tenant_admin():
     assert user["id"] == "u1"
 
 
-def test_production_jwt_requires_issuer_audience_and_type(monkeypatch):
+def test_production_jwt_requires_trust_claims(monkeypatch):
     monkeypatch.setenv("EOS_SECRET_KEY", "x" * 64)
     monkeypatch.setenv("EOS_JWT_ISSUER", "eos-test")
     monkeypatch.setenv("EOS_JWT_AUDIENCE", "eos-api-test")
@@ -33,7 +33,7 @@ def test_production_jwt_requires_issuer_audience_and_type(monkeypatch):
     assert payload["iss"] == "eos-test"
     assert payload["aud"] == "eos-api-test"
     assert payload["type"] == "access"
-    assert payload["jti"] is not None if "jti" in payload else True
+    assert payload["jti"]
 
 
 def test_production_jwt_rejects_wrong_audience(monkeypatch):
@@ -41,7 +41,7 @@ def test_production_jwt_rejects_wrong_audience(monkeypatch):
     monkeypatch.setenv("EOS_JWT_ISSUER", "eos-test")
     monkeypatch.setenv("EOS_JWT_AUDIENCE", "eos-api-test")
     token = jwt.encode(
-        {"sub": "u1", "iat": 1_000_000_000, "exp": 4_000_000_000, "iss": "eos-test", "aud": "wrong", "type": "access"},
+        {"sub": "u1", "iat": 1_000_000_000, "exp": 4_000_000_000, "iss": "eos-test", "aud": "wrong", "type": "access", "jti": "j1"},
         "x" * 64,
         algorithm="HS256",
     )
