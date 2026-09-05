@@ -12,11 +12,17 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-# Set test environment variables BEFORE importing application modules.
-os.environ["DATABASE_URL"] = "postgresql://eos_test:test_password@localhost:5432/eos_test"
-os.environ["SECRET_KEY"] = "test_secret_key_for_testing_only_12345678901234567890"
-os.environ["ENVIRONMENT"] = "test"
-os.environ["REDIS_URL"] = "redis://localhost:6379/1"
+# Set safe local defaults without overriding CI-provided configuration.
+os.environ.setdefault(
+    "DATABASE_URL",
+    "postgresql://eos_test:test_password@localhost:5432/eos_test",
+)
+os.environ.setdefault(
+    "SECRET_KEY",
+    "test_secret_key_for_testing_only_12345678901234567890",
+)
+os.environ.setdefault("ENVIRONMENT", "test")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/1")
 
 
 @pytest.fixture(scope="session")
