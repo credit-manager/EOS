@@ -1,17 +1,19 @@
 """
-P61 Auth Router — Production authentication endpoints.
-Register, login, verify email, password reset, user management.
+Production authentication endpoints: registration, login, verification,
+password reset and tenant user administration.
 """
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from database import get_db
-from core.auth import get_current_user, require_permission, TEST_SECRET_KEY, TEST_ALGORITHM
+from core.auth import get_current_user, require_permission, require_admin_role, TEST_SECRET_KEY, TEST_ALGORITHM
 from core.user_engine import UserEngine
 from core.email_adapter import get_email_service, EmailTemplateEngine
 from core.rate_limit import write_limiter
 from datetime import datetime, timedelta, timezone
 import jwt
 import os
+import uuid
+import secrets
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 
@@ -28,7 +30,6 @@ async def register(body: dict, request: Request, db: Session = Depends(get_db)):
             raise _err(400, "MISSING", f"{f} required")
     from database import SessionLocal
     from sqlalchemy import text
-    import uuid, secrets
     db2 = SessionLocal()
     try:
         tenant_id = f"tenant_{secrets.token_hex(8)}"
@@ -105,12 +106,15 @@ async def login(body: dict, db: Session = Depends(get_db)):
         secret_key = TEST_SECRET_KEY
         if not secret_key:
             raise _err(500, "SERVER_CONFIG", "EOS_TEST_SECRET_KEY is not configured")
-    algorithm = os.getenv("EOS_ALGORITHM", TEST_ALGORITHM)
+    algorithm = "HS256"
     now = datetime.now(timezone.utc)
     expire = now + timedelta(minutes=60)
     payload = {
         "sub": result["user_id"], "exp": expire, "iat": now, "type": "access",
         "tenant_id": result["tenant_id"], "email": result["email"], "roles": [result["role"]],
+        "iss": os.getenv("EOS_JWT_ISSUER", "eos-dbp"),
+        "aud": os.getenv("EOS_JWT_AUDIENCE", "eos-api"),
+        "jti": str(uuid.uuid4()),
     }
     token = jwt.encode(payload, secret_key, algorithm=algorithm)
     return {"status": "success", "data": {
@@ -208,11 +212,16 @@ async def update_user(user_id: str, body: dict, user: dict = Depends(get_current
     return {"status": "success", "data": {"message": result["message"]}}
 
 
-@router.put("/users/{user_id}/role", dependencies=[Depends(require_permission("dynamic", "update"))])
-async def change_role(user_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+@router.put("/users/{user_id}/role", dependencies=[Depends(require_admin_role)])
+async def change_role(user_id: str, body: dict, user: dict = Depends(require_admin_role), db: Session = Depends(get_db)):
     new_role = body.get("role")
     if not new_role:
         raise _err(400, "MISSING", "role required")
+    if user_id == user["id"]:
+        raise _err(403, "ROLE_SELF_CHANGE", "Users cannot change their own role")
+    allowed_roles = {"admin", "dynamic_manager", "dynamic_operator", "dynamic_viewer"}
+    if new_role not in allowed_roles:
+        raise _err(400, "ROLE_FAILED", "Invalid role")
     engine = UserEngine(db)
     result = engine.change_role(user_id, user["tenant_id"], new_role)
     if not result["success"]:
@@ -221,8 +230,10 @@ async def change_role(user_id: str, body: dict, user: dict = Depends(get_current
     return {"status": "success", "data": {"message": result["message"]}}
 
 
-@router.delete("/users/{user_id}", dependencies=[Depends(require_permission("dynamic", "update"))])
-async def deactivate_user(user_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+@router.delete("/users/{user_id}", dependencies=[Depends(require_admin_role)])
+async def deactivate_user(user_id: str, user: dict = Depends(require_admin_role), db: Session = Depends(get_db)):
+    if user_id == user["id"]:
+        raise _err(403, "SELF_DEACTIVATE", "Users cannot deactivate themselves")
     engine = UserEngine(db)
     result = engine.deactivate_user(user_id, user["tenant_id"])
     if not result["success"]:
@@ -231,12 +242,15 @@ async def deactivate_user(user_id: str, user: dict = Depends(get_current_user), 
     return {"status": "success", "data": {"message": result["message"]}}
 
 
-@router.post("/users/invite", dependencies=[Depends(require_permission("dynamic", "create"))])
-async def invite_user(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+@router.post("/users/invite", dependencies=[Depends(require_admin_role)])
+async def invite_user(body: dict, user: dict = Depends(require_admin_role), db: Session = Depends(get_db)):
     email = body.get("email")
     role = body.get("role", "dynamic_viewer")
     if not email:
         raise _err(400, "MISSING", "email required")
+    allowed_roles = {"admin", "dynamic_manager", "dynamic_operator", "dynamic_viewer"}
+    if role not in allowed_roles:
+        raise _err(400, "ROLE_FAILED", "Invalid role")
     engine = UserEngine(db)
     result = engine.invite_user(
         tenant_id=user["tenant_id"], email=email, role=role,
