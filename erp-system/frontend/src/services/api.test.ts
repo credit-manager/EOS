@@ -2,6 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import axios from 'axios';
 import apiClient, { authAPI, customersAPI, invoicesAPI, ordersAPI, productsAPI, suppliersAPI } from './api';
 
+const interceptorHandlers = vi.hoisted(() => ({
+  request: undefined as ((config: { headers: Record<string, string> }) => unknown) | undefined,
+  responseSuccess: undefined as ((response: unknown) => unknown) | undefined,
+  responseError: undefined as ((error: unknown) => unknown) | undefined,
+}));
+
 vi.mock('axios', async () => {
   const actual = await vi.importActual<typeof import('axios')>('axios');
   const storage = new Map<string, string>();
@@ -11,13 +17,19 @@ vi.mock('axios', async () => {
     removeItem: vi.fn((key: string) => storage.delete(key)),
     clear: vi.fn(() => storage.clear()),
   };
-  Object.defineProperty(globalThis, 'localStorage', {
-    configurable: true,
-    value: localStorageMock,
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: localStorageMock });
+  const requestUse = vi.fn((handler: (config: { headers: Record<string, string> }) => unknown) => {
+    interceptorHandlers.request = handler;
+    return 0;
+  });
+  const responseUse = vi.fn((success: (response: unknown) => unknown, error: (error: unknown) => unknown) => {
+    interceptorHandlers.responseSuccess = success;
+    interceptorHandlers.responseError = error;
+    return 0;
   });
   const client = {
     defaults: { headers: { common: {} } },
-    interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
+    interceptors: { request: { use: requestUse }, response: { use: responseUse } },
     get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn(), request: vi.fn(),
   };
   return { ...actual, default: { ...actual.default, create: vi.fn(() => client) } };
@@ -40,28 +52,25 @@ describe('EOS API client functional contract', () => {
   });
 
   it('persists tokens returned by the response interceptor', async () => {
-    const client = vi.mocked(axios.create).mock.results[0]?.value;
-    const [, onSuccess] = client.interceptors.response.use.mock.calls[0] || [];
-    await onSuccess({ data: { data: { access_token: 'access-1', refresh_token: 'refresh-1' } } });
+    expect(interceptorHandlers.responseSuccess).toBeDefined();
+    await interceptorHandlers.responseSuccess!({ data: { data: { access_token: 'access-1', refresh_token: 'refresh-1' } } });
     expect(localStorage.getItem('access_token')).toBe('access-1');
     expect(localStorage.getItem('refresh_token')).toBe('refresh-1');
   });
 
   it('attaches the current bearer token to requests', () => {
     localStorage.setItem('access_token', 'access-2');
-    const client = vi.mocked(axios.create).mock.results[0]?.value;
-    const [onRequest] = client.interceptors.request.use.mock.calls[0] || [];
-    const config = onRequest({ headers: {} });
-    expect(config.headers.Authorization).toBe('Bearer access-2');
+    expect(interceptorHandlers.request).toBeDefined();
+    const config = interceptorHandlers.request!({ headers: {} });
+    expect((config as { headers: Record<string, string> }).headers.Authorization).toBe('Bearer access-2');
   });
 
   it('refreshes a failed request and rotates both tokens', async () => {
     localStorage.setItem('refresh_token', 'refresh-old');
     vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: { access_token: 'access-new', refresh_token: 'refresh-new' } } } as never);
     vi.mocked(apiClient.request).mockResolvedValueOnce({ data: { ok: true } } as never);
-    const client = vi.mocked(axios.create).mock.results[0]?.value;
-    const [, onError] = client.interceptors.response.use.mock.calls[0] || [];
-    const result = await onError({ response: { status: 401 }, config: { url: '/sales/customers', headers: {} } });
+    expect(interceptorHandlers.responseError).toBeDefined();
+    const result = await interceptorHandlers.responseError!({ response: { status: 401 }, config: { url: '/sales/customers', headers: {} } });
     expect(apiClient.post).toHaveBeenCalledWith('/auth/refresh', { refresh_token: 'refresh-old' });
     expect(localStorage.getItem('access_token')).toBe('access-new');
     expect(localStorage.getItem('refresh_token')).toBe('refresh-new');
@@ -73,9 +82,8 @@ describe('EOS API client functional contract', () => {
     localStorage.setItem('access_token', 'access-old');
     localStorage.setItem('refresh_token', 'refresh-old');
     vi.mocked(apiClient.post).mockRejectedValueOnce(new Error('refresh failed'));
-    const client = vi.mocked(axios.create).mock.results[0]?.value;
-    const [, onError] = client.interceptors.response.use.mock.calls[0] || [];
-    await expect(onError({ response: { status: 401 }, config: { url: '/reports/sales', headers: {} } })).rejects.toBeDefined();
+    expect(interceptorHandlers.responseError).toBeDefined();
+    await expect(interceptorHandlers.responseError!({ response: { status: 401 }, config: { url: '/reports/sales', headers: {} } })).rejects.toBeDefined();
     expect(localStorage.getItem('access_token')).toBeNull();
     expect(localStorage.getItem('refresh_token')).toBeNull();
     expect(localStorage.getItem('eos_tenant_id')).toBeNull();
