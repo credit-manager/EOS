@@ -12,11 +12,10 @@ def test_live_tenant_rls_with_non_owner_role():
     engine = create_engine(DATABASE_URL, future=True)
     schema = "eos_e2e_" + uuid.uuid4().hex[:10]
     role = "eos_app_" + uuid.uuid4().hex[:10]
-    password = uuid.uuid4().hex
     table = f'"{schema}".bld_customer'
     try:
         with engine.begin() as conn:
-            conn.execute(text(f'CREATE ROLE "{role}" LOGIN PASSWORD :pw'), {"pw": password})
+            conn.execute(text(f'CREATE ROLE "{role}" LOGIN PASSWORD :pw'), {"pw": uuid.uuid4().hex})
             conn.execute(text(f'CREATE SCHEMA "{schema}"'))
             conn.execute(text(f'''CREATE TABLE {table} (
                 id UUID PRIMARY KEY, tenant_id VARCHAR(100) NOT NULL,
@@ -28,7 +27,7 @@ def test_live_tenant_rls_with_non_owner_role():
                 USING (tenant_id = current_setting('app.tenant_id', true))
                 WITH CHECK (tenant_id = current_setting('app.tenant_id', true))'''))
             conn.execute(text(f'GRANT USAGE ON SCHEMA "{schema}" TO "{role}"'))
-            conn.execute(text(f'GRANT SELECT, INSERT ON {table} TO "{role}"'))
+            conn.execute(text(f'GRANT SELECT ON {table} TO "{role}"'))
             conn.execute(text(f'''INSERT INTO {table} (id, tenant_id, name, created_at)
                 VALUES (:id1,:a,'Tourism Customer',CURRENT_TIMESTAMP),
                        (:id2,:b,'Construction Customer',CURRENT_TIMESTAMP)'''),
@@ -37,12 +36,11 @@ def test_live_tenant_rls_with_non_owner_role():
         app_engine = create_engine(DATABASE_URL, future=True)
         with app_engine.connect() as conn:
             conn.execute(text(f'SET ROLE "{role}"'))
-            conn.execute(text("BEGIN"))
             conn.execute(text("SELECT set_config('app.tenant_id', 'tourism-a', true)"))
             rows = conn.execute(text(f'SELECT name FROM {table} ORDER BY name')).scalars().all()
             assert rows == ["Tourism Customer"]
-            conn.execute(text("ROLLBACK"))
             conn.execute(text("RESET ROLE"))
+            conn.rollback()
         app_engine.dispose()
     finally:
         with engine.begin() as conn:
