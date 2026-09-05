@@ -240,7 +240,7 @@ jobs:
     needs: [code-quality, automated-tests, migration-validation, live-tenant-isolation, api-tenant-isolation]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt
