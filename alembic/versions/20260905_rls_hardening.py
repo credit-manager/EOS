@@ -1,4 +1,10 @@
-"""Defense-in-depth tenant isolation for tables carrying tenant_id."""
+"""Defense-in-depth tenant isolation for tables carrying tenant_id.
+
+Legacy tenant tables use normal PostgreSQL RLS so application roles are protected
+by the tenant policy while database owners remain able to run migrations and
+maintenance. Strict FORCE RLS is reserved for the small set of enterprise
+hardening tables in ``20260905_force_tenant_rls``.
+"""
 from alembic import op
 
 revision = "20260905_rls_hardening"
@@ -25,7 +31,7 @@ def upgrade():
         LOOP
             policy_name := 'tenant_isolation_' || r.table_name;
             EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', r.table_schema, r.table_name);
-            EXECUTE format('ALTER TABLE %I.%I FORCE ROW LEVEL SECURITY', r.table_schema, r.table_name);
+            EXECUTE format('ALTER TABLE %I.%I NO FORCE ROW LEVEL SECURITY', r.table_schema, r.table_name);
             EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I', policy_name, r.table_schema, r.table_name);
             EXECUTE format(
                 'CREATE POLICY %I ON %I.%I USING (tenant_id::text = current_setting(''app.tenant_id'', true) OR tenant_id IS NULL) WITH CHECK (tenant_id::text = current_setting(''app.tenant_id'', true))',
