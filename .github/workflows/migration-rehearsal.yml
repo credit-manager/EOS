@@ -1,0 +1,106 @@
+name: EOS Production Migration Rehearsal
+
+on:
+  push:
+    branches: [main, develop, 'feature/**']
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  migration-rehearsal:
+    name: Phase 5 - Production Migration / Backup Restore Rehearsal
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: rehearsal_user
+          POSTGRES_PASSWORD: rehearsal_pass
+          POSTGRES_DB: eos_rehearsal
+        options: >-
+          --health-cmd "pg_isready -U rehearsal_user -d eos_rehearsal"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgresql://rehearsal_user:rehearsal_pass@127.0.0.1:5432/eos_rehearsal
+      SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+      EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+      ENVIRONMENT: testing
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: rehearsal_user
+      PGPASSWORD: rehearsal_pass
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install migration dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate clean database state
+        run: |
+          psql -d eos_rehearsal -v ON_ERROR_STOP=1 -c "SELECT current_database(), version();"
+          test "$(alembic current 2>/dev/null | grep -c 'head')" -eq 0
+
+      - name: Apply complete migration chain
+        run: |
+          alembic upgrade head
+          alembic current
+          test "$(alembic heads | grep -c '^20260905_force_tenant_rls')" -eq 1
+
+      - name: Seed backup and restore sentinel
+        run: |
+          psql -d eos_rehearsal -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE TABLE IF NOT EXISTS public.migration_rehearsal_sentinel (
+            id integer PRIMARY KEY,
+            marker text NOT NULL,
+            created_at timestamptz NOT NULL DEFAULT now()
+          );
+          INSERT INTO public.migration_rehearsal_sentinel (id, marker)
+          VALUES (1, 'EOS-PRODUCTION-MIGRATION-REHEARSAL')
+          ON CONFLICT (id) DO UPDATE SET marker = EXCLUDED.marker;
+          SQL
+          psql -d eos_rehearsal -Atc "SELECT marker FROM public.migration_rehearsal_sentinel WHERE id=1" | grep -Fx 'EOS-PRODUCTION-MIGRATION-REHEARSAL'
+
+      - name: Capture pre-backup schema and data fingerprints
+        run: |
+          psql -d eos_rehearsal -Atc "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname='public'" > /tmp/source_table_count
+          pg_dump --format=custom --no-owner --file=/tmp/eos_rehearsal.dump eos_rehearsal
+          test -s /tmp/eos_rehearsal.dump
+
+      - name: Restore backup into disposable production clone
+        run: |
+          createdb eos_rehearsal_restore
+          pg_restore --exit-on-error --no-owner --dbname=eos_rehearsal_restore /tmp/eos_rehearsal.dump
+          test "$(psql -d eos_rehearsal_restore -Atc "SELECT marker FROM public.migration_rehearsal_sentinel WHERE id=1")" = 'EOS-PRODUCTION-MIGRATION-REHEARSAL'
+          restored_tables="$(psql -d eos_rehearsal_restore -Atc "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname='public'")"
+          source_tables="$(cat /tmp/source_table_count)"
+          test "$restored_tables" = "$source_tables"
+
+      - name: Verify restored database is at Alembic head
+        env:
+          DATABASE_URL: postgresql://rehearsal_user:rehearsal_pass@127.0.0.1:5432/eos_rehearsal_restore
+        run: |
+          alembic current
+          test "$(alembic current | grep -c '20260905_force_tenant_rls')" -eq 1
+          psql -d eos_rehearsal_restore -Atc "SELECT marker FROM public.migration_rehearsal_sentinel WHERE id=1" | grep -Fx 'EOS-PRODUCTION-MIGRATION-REHEARSAL'
+
+      - name: Re-run migrations against restored clone
+        env:
+          DATABASE_URL: postgresql://rehearsal_user:rehearsal_pass@127.0.0.1:5432/eos_rehearsal_restore
+        run: |
+          alembic upgrade head
+          test "$(alembic current | grep -c '20260905_force_tenant_rls')" -eq 1
