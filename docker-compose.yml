@@ -1,10 +1,7 @@
 # EOS Dynamic Business Platform — Docker Compose for Production
-# Usage: docker-compose -f docker-compose.yml up -d
+# Usage: docker compose -f docker-compose.yml up -d
 
 services:
-  # ═══════════════════════════════════════════════
-  # PostgreSQL Database
-  # ═══════════════════════════════════════════════
   db:
     image: postgres:16-alpine
     container_name: eos-db
@@ -22,14 +19,9 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    networks:
-      - eos-network
-    expose:
-      - "5432"
+    networks: [eos-network]
+    expose: ["5432"]
 
-  # ═══════════════════════════════════════════════
-  # FastAPI Application
-  # ═══════════════════════════════════════════════
   api:
     build:
       context: .
@@ -54,13 +46,12 @@ services:
       EOS_FROM_NAME: ${EOS_FROM_NAME:-EOS Platform}
       EOS_PAYMENT_MODE: ${EOS_PAYMENT_MODE:-simulated}
       EOS_STRIPE_SECRET_KEY: ${EOS_STRIPE_SECRET_KEY:-}
-      EOS_FRONTEND_URL: ${EOS_FRONTEND_URL:-}
-      EOS_CORS_ORIGINS: ${EOS_CORS_ORIGINS:-["http://localhost:3000"]}
-      EOS_ALLOWED_HOSTS: ${EOS_ALLOWED_HOSTS:-*}
+      EOS_FRONTEND_URL: ${EOS_FRONTEND_URL}
+      EOS_CORS_ORIGINS: ${EOS_CORS_ORIGINS}
+      EOS_ALLOWED_HOSTS: ${EOS_ALLOWED_HOSTS}
       EOS_LOG_LEVEL: ${EOS_LOG_LEVEL:-info}
       EOS_LOG_FORMAT: ${EOS_LOG_FORMAT:-json}
-      DOMAIN: ${DOMAIN:-localhost}
-      # Prometheus metrics
+      DOMAIN: ${DOMAIN}
       PROMETHEUS_ENABLED: "true"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -68,14 +59,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    networks:
-      - eos-network
-    expose:
-      - "8000"
+    networks: [eos-network]
+    expose: ["8000"]
 
-  # ═══════════════════════════════════════════════
-  # Nginx Reverse Proxy
-  # ═══════════════════════════════════════════════
   nginx:
     image: nginx:alpine
     container_name: eos-nginx
@@ -91,12 +77,8 @@ services:
     depends_on:
       api:
         condition: service_healthy
-    networks:
-      - eos-network
+    networks: [eos-network]
 
-  # ═══════════════════════════════════════════════
-  # Certbot for Let's Encrypt
-  # ═══════════════════════════════════════════════
   certbot:
     image: certbot/certbot
     container_name: eos-certbot
@@ -105,15 +87,12 @@ services:
       - ./certbot/www:/var/www/certbot
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done'"
 
-  # ═══════════════════════════════════════════════
-  # Prometheus — Metrics Collection
-  # ═══════════════════════════════════════════════
   prometheus:
     image: prom/prometheus:v2.51.0
     container_name: eos-prometheus
     restart: unless-stopped
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
@@ -122,76 +101,55 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=30d"
       - "--web.enable-lifecycle"
-    networks:
-      - eos-network
+    networks: [eos-network]
 
-  # ═══════════════════════════════════════════════
-  # Grafana — Dashboards & Visualization
-  # ═══════════════════════════════════════════════
   grafana:
     image: grafana/grafana:10.4.0
     container_name: eos-grafana
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-eos-admin-2026}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SERVER_ROOT_URL: ${GRAFANA_URL:-http://localhost:3000}
-      GF_INSTALL_PLUGINS: grafana-clock-panel
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-    depends_on:
-      - prometheus
-    networks:
-      - eos-network
+    depends_on: [prometheus]
+    networks: [eos-network]
 
-  # ═══════════════════════════════════════════════
-  # AlertManager — Alert Routing & Notifications
-  # ═══════════════════════════════════════════════
   alertmanager:
     image: prom/alertmanager:v0.27.0
     container_name: eos-alertmanager
     restart: unless-stopped
     ports:
-      - "9093:9093"
+      - "127.0.0.1:9093:9093"
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager_data:/alertmanager
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"
-    networks:
-      - eos-network
+    networks: [eos-network]
 
-  # ═══════════════════════════════════════════════
-  # PostgreSQL Exporter — DB Metrics
-  # ═══════════════════════════════════════════════
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
     container_name: eos-postgres-exporter
     restart: unless-stopped
     environment:
       DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable"
-    ports:
-      - "9187:9187"
-    depends_on:
-      - db
-    networks:
-      - eos-network
+    expose: ["9187"]
+    depends_on: [db]
+    networks: [eos-network]
 
-  # ═══════════════════════════════════════════════
-  # Node Exporter — Host System Metrics
-  # ═══════════════════════════════════════════════
   node-exporter:
     image: prom/node-exporter:v1.7.0
     container_name: eos-node-exporter
     restart: unless-stopped
-    ports:
-      - "9100:9100"
+    expose: ["9100"]
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -200,28 +158,19 @@ services:
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
       - "--path.rootfs=/rootfs"
-    networks:
-      - eos-network
+    networks: [eos-network]
 
-  # ═══════════════════════════════════════════════
-  # Loki — Log Aggregation
-  # ═══════════════════════════════════════════════
   loki:
     image: grafana/loki:2.9.4
     container_name: eos-loki
     restart: unless-stopped
-    ports:
-      - "3100:3100"
+    expose: ["3100"]
     volumes:
       - ./monitoring/loki.yml:/etc/loki/local-config.yaml:ro
       - loki_data:/loki
     command: -config.file=/etc/loki/local-config.yaml
-    networks:
-      - eos-network
+    networks: [eos-network]
 
-  # ═══════════════════════════════════════════════
-  # Promtail — Log Shipper
-  # ═══════════════════════════════════════════════
   promtail:
     image: grafana/promtail:2.9.4
     container_name: eos-promtail
@@ -233,14 +182,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - promtail_positions:/tmp
     command: -config.file=/etc/promtail/config.yml
-    depends_on:
-      - loki
-    networks:
-      - eos-network
+    depends_on: [loki]
+    networks: [eos-network]
 
-# ═══════════════════════════════════════════════
-# Volumes
-# ═══════════════════════════════════════════════
 volumes:
   postgres_data:
   prometheus_data:
@@ -249,9 +193,6 @@ volumes:
   loki_data:
   promtail_positions:
 
-# ═══════════════════════════════════════════════
-# Networks
-# ═══════════════════════════════════════════════
 networks:
   eos-network:
     driver: bridge
