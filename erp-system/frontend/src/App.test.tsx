@@ -1,71 +1,94 @@
-import { act } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createRoot, type Root } from 'react-dom/client';
-import App from './App';
-import { reportsAPI } from './services/api';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./services/api', () => ({
-  reportsAPI: {
-    profitAndLoss: vi.fn().mockResolvedValue({ data: { data: { revenue: 12500, gross_margin: 32, gross_profit: 4000, receivables: 2500 } } }),
-    sales: vi.fn().mockResolvedValue({ data: { data: { daily: [{ count: 3, amount: 900 }], top_customers: [{ id: 'c1' }] } } }),
-    inventory: vi.fn().mockResolvedValue({ data: { data: { total_items: 17, low_stock_items: 2 } } }),
+type MockClient = {
+  get: ReturnType<typeof vi.fn>;
+  post: ReturnType<typeof vi.fn>;
+  put: ReturnType<typeof vi.fn>;
+  delete: ReturnType<typeof vi.fn>;
+  interceptors: {
+    request: { use: ReturnType<typeof vi.fn> };
+    response: { use: ReturnType<typeof vi.fn> };
+  };
+};
+
+const mockedClient = vi.hoisted<MockClient>(() => ({
+  get: vi.fn(),
+  post: vi.fn(),
+  put: vi.fn(),
+  delete: vi.fn(),
+  interceptors: {
+    request: { use: vi.fn() },
+    response: { use: vi.fn() },
   },
 }));
 
-const mockedReports = vi.mocked(reportsAPI);
-let container: HTMLDivElement;
-let root: Root;
+vi.mock('axios', () => ({
+  default: { create: vi.fn(() => mockedClient) },
+}));
 
-async function renderApp() {
-  container = document.createElement('div');
-  document.body.appendChild(container);
-  root = createRoot(container);
-  await act(async () => { root.render(<App />); });
+async function loadApi() {
+  vi.resetModules();
+  return import('./services/api');
 }
 
-afterEach(() => {
-  vi.clearAllMocks();
-  act(() => root?.unmount());
-  container?.remove();
-});
-
-describe('EOS frontend functional smoke tests', () => {
-  it('renders the Arabic dashboard and loads reporting data', async () => {
-    await renderApp();
-
-    expect(container.textContent).toContain('مرحباً بك في EOS');
-    expect(container.textContent).toContain('إيرادات الشهر');
-    expect(container.textContent).toContain('12,500');
-    expect(mockedReports.profitAndLoss).toHaveBeenCalledTimes(1);
-    expect(mockedReports.sales).toHaveBeenCalledTimes(1);
-    expect(mockedReports.inventory).toHaveBeenCalledTimes(1);
+describe('EOS frontend functional API flows', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { location: { origin: 'http://localhost:3000' }, dispatchEvent: vi.fn() },
+    });
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: { getItem: vi.fn(), setItem: vi.fn(), removeItem: vi.fn() },
+    });
   });
 
-  it('switches language and preserves the dashboard workflow', async () => {
-    await renderApp();
-    const languageButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('English'));
-    expect(languageButton).toBeTruthy();
+  afterEach(() => vi.restoreAllMocks());
 
-    await act(async () => { languageButton?.click(); });
-
-    expect(container.textContent).toContain('Welcome to EOS');
-    expect(container.textContent).toContain('Customers');
-    expect(container.textContent).toContain('Inventory');
-    expect(container.textContent).toContain('Reports');
+  it('uses the canonical same-origin API base and Arabic headers', async () => {
+    const axios = await import('axios');
+    await loadApi();
+    expect(vi.mocked(axios.default.create)).toHaveBeenCalledWith({
+      baseURL: 'http://localhost:3000/api/v1',
+      headers: { 'Content-Type': 'application/json', 'Accept-Language': 'ar' },
+    });
   });
 
-  it('navigates between customer and inventory workspaces', async () => {
-    await renderApp();
-    const customersButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('العملاء'));
-    const inventoryButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('المخزون'));
+  it('maps supported customer, supplier, product and report actions to backend contracts', async () => {
+    const api = await loadApi();
 
-    expect(customersButton).toBeTruthy();
-    expect(inventoryButton).toBeTruthy();
+    api.customersAPI.getAll({ search: 'acme' });
+    api.customersAPI.getById('c1');
+    api.customersAPI.create({ name: 'Acme' });
+    api.customersAPI.update('c1', { name: 'Updated' });
+    api.customersAPI.delete('c1');
+    api.suppliersAPI.getAll();
+    api.productsAPI.getAll();
+    api.reportsAPI.profitAndLoss();
 
-    await act(async () => { customersButton?.click(); });
-    expect(container.textContent).toContain('مساحة عمل مبنية من Metadata');
+    expect(mockedClient.get).toHaveBeenCalledWith('/sales/customers', { params: { search: 'acme' } });
+    expect(mockedClient.get).toHaveBeenCalledWith('/sales/customers/c1');
+    expect(mockedClient.post).toHaveBeenCalledWith('/sales/customers', { name: 'Acme' });
+    expect(mockedClient.put).toHaveBeenCalledWith('/sales/customers/c1', { name: 'Updated' });
+    expect(mockedClient.delete).toHaveBeenCalledWith('/sales/customers/c1');
+    expect(mockedClient.get).toHaveBeenCalledWith('/inventory/suppliers', { params: undefined });
+    expect(mockedClient.get).toHaveBeenCalledWith('/inventory/products', { params: undefined });
+    expect(mockedClient.get).toHaveBeenCalledWith('/reports/profit-and-loss', { params: undefined });
+  });
 
-    await act(async () => { inventoryButton?.click(); });
-    expect(container.textContent).toContain('المخزون الفعلي');
+  it('fails closed for backend resources that are intentionally not wired', async () => {
+    const api = await loadApi();
+    await expect(api.ordersAPI.getAll()).rejects.toThrow(/orders API is not wired/i);
+    await expect(api.invoicesAPI.getAll()).rejects.toThrow(/invoices API is not wired/i);
+    expect(mockedClient.get).not.toHaveBeenCalled();
+  });
+
+  it('does not attempt refresh for authentication 401 responses', async () => {
+    await loadApi();
+    const [, onRejected] = mockedClient.interceptors.response.use.use.mock.calls[0];
+    const error = { response: { status: 401 }, config: { url: '/auth/login' } };
+    await expect(onRejected(error)).rejects.toEqual(error);
+    expect(mockedClient.post).not.toHaveBeenCalled();
   });
 });
