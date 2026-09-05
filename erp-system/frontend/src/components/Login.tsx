@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { authAPI } from '../services/api';
+import '../styles/auth.css';
 
 interface LoginProps {
   onAuthenticated: () => void;
@@ -23,7 +24,6 @@ export default function Login({ onAuthenticated, language = 'ar' }: LoginProps) 
       const token = data?.access_token;
       const user = data?.user;
       if (!token || !user?.tenant_id) throw new Error('Invalid authentication response');
-
       localStorage.setItem('access_token', token);
       localStorage.setItem('eos_tenant_id', String(user.tenant_id));
       localStorage.setItem('eos_user', JSON.stringify(user));
@@ -45,7 +45,6 @@ export default function Login({ onAuthenticated, language = 'ar' }: LoginProps) 
         <span className="eos-eyebrow">EOS DBP</span>
         <h1 id="login-title">{ar ? 'تسجيل الدخول' : 'Sign in'}</h1>
         <p>{ar ? 'ادخل إلى مساحة عمل شركتك الآمنة.' : 'Access your secure company workspace.'}</p>
-
         <form onSubmit={submit} noValidate>
           <label>
             <span>{ar ? 'البريد الإلكتروني' : 'Email'}</span>
