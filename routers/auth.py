@@ -39,7 +39,9 @@ async def register(body: dict, request: Request, db: Session = Depends(get_db)):
             "VALUES (:id, :tid, :code, :name, :name)"
         ), {"id": str(uuid.uuid4()), "tid": tenant_id,
             "code": company_name.lower().replace(" ", "_")[:30], "name": company_name})
-        db2.commit()
+
+        # Keep company + first admin in one transaction. UserEngine.register uses
+        # flush(), so failures roll the whole transaction back on session close.
         engine = UserEngine(db2)
         result = engine.register(
             tenant_id=tenant_id, email=body["email"], password=body["password"],
@@ -47,9 +49,11 @@ async def register(body: dict, request: Request, db: Session = Depends(get_db)):
             first_name_ar=body.get("first_name_ar"), last_name_ar=body.get("last_name_ar"),
             phone=body.get("phone"), role="admin"
         )
-        db2.commit()
         if not result["success"]:
+            db2.rollback()
             raise _err(400, "REGISTER_FAILED", result["error"])
+
+        db2.commit()
         email_svc = get_email_service()
         frontend_url = os.getenv("EOS_FRONTEND_URL", "http://localhost:3000")
         verification_token = result.get("verification_token", "")
@@ -62,6 +66,11 @@ async def register(body: dict, request: Request, db: Session = Depends(get_db)):
             "verification_token": verification_token if email_svc.__class__.__name__ == "ConsoleEmailProvider" else None,
             "message": "Registration successful. Please verify your email."
         }}
+    except HTTPException:
+        raise
+    except Exception:
+        db2.rollback()
+        raise
     finally:
         db2.close()
 
@@ -218,51 +227,43 @@ async def change_role(user_id: str, body: dict, user: dict = Depends(require_adm
     if not new_role:
         raise _err(400, "MISSING", "role required")
     if user_id == user["id"]:
-        raise _err(403, "ROLE_SELF_CHANGE", "Users cannot change their own role")
-    allowed_roles = {"admin", "dynamic_manager", "dynamic_operator", "dynamic_viewer"}
+        raise _err(403, "SELF_ROLE_CHANGE", "Users cannot change their own role")
+    allowed_roles = {"admin", "user", "viewer", "dynamic_manager", "dynamic_operator"}
     if new_role not in allowed_roles:
-        raise _err(400, "ROLE_FAILED", "Invalid role")
+        raise _err(400, "INVALID_ROLE", "Unsupported role")
     engine = UserEngine(db)
     result = engine.change_role(user_id, user["tenant_id"], new_role)
     if not result["success"]:
-        raise _err(400, "ROLE_FAILED", result["error"])
+        raise _err(400, "ROLE_CHANGE_FAILED", result["error"])
     db.commit()
-    return {"status": "success", "data": {"message": result["message"]}}
+    return {"status": "success", "data": {"message": "Role changed"}}
 
 
-@router.delete("/users/{user_id}", dependencies=[Depends(require_admin_role)])
+@router.post("/users/{user_id}/deactivate", dependencies=[Depends(require_admin_role)])
 async def deactivate_user(user_id: str, user: dict = Depends(require_admin_role), db: Session = Depends(get_db)):
     if user_id == user["id"]:
-        raise _err(403, "SELF_DEACTIVATE", "Users cannot deactivate themselves")
+        raise _err(403, "SELF_DEACTIVATION", "Users cannot deactivate themselves")
     engine = UserEngine(db)
     result = engine.deactivate_user(user_id, user["tenant_id"])
     if not result["success"]:
-        raise _err(400, "DELETE_FAILED", result["error"])
+        raise _err(400, "DEACTIVATE_FAILED", result["error"])
     db.commit()
-    return {"status": "success", "data": {"message": result["message"]}}
+    return {"status": "success", "data": {"message": "User deactivated"}}
 
 
-@router.post("/users/invite", dependencies=[Depends(require_admin_role)])
+@router.post("/users/invite", dependencies=[Depends(require_admin_role), Depends(write_limiter.check)])
 async def invite_user(body: dict, user: dict = Depends(require_admin_role), db: Session = Depends(get_db)):
-    email = body.get("email")
-    role = body.get("role", "dynamic_viewer")
-    if not email:
-        raise _err(400, "MISSING", "email required")
-    allowed_roles = {"admin", "dynamic_manager", "dynamic_operator", "dynamic_viewer"}
+    required = ["email", "first_name", "last_name"]
+    for f in required:
+        if not body.get(f):
+            raise _err(400, "MISSING", f"{f} required")
+    role = body.get("role", "user")
+    allowed_roles = {"admin", "user", "viewer", "dynamic_manager", "dynamic_operator"}
     if role not in allowed_roles:
-        raise _err(400, "ROLE_FAILED", "Invalid role")
+        raise _err(400, "INVALID_ROLE", "Unsupported role")
     engine = UserEngine(db)
-    result = engine.invite_user(
-        tenant_id=user["tenant_id"], email=email, role=role,
-        first_name=body.get("first_name", ""), last_name=body.get("last_name", "")
-    )
+    result = engine.invite_user(user["tenant_id"], body["email"], body["first_name"], body["last_name"], role=role)
     if not result["success"]:
         raise _err(400, "INVITE_FAILED", result["error"])
     db.commit()
-    email_svc = get_email_service()
-    if result.get("verification_token"):
-        frontend_url = os.getenv("EOS_FRONTEND_URL", "http://localhost:3000")
-        verify_url = f"{frontend_url}/verify-email?token={result['verification_token']}"
-        tpl = EmailTemplateEngine.verification_email(verify_url, body.get("first_name", "User"))
-        email_svc.send(to_email=email, subject=tpl["subject"], html_body=tpl["html"], text_body=tpl.get("text"))
-    return {"status": "success", "data": {"message": f"Invitation sent to {email}", "user_id": result["user_id"]}}
+    return {"status": "success", "data": {"message": "Invitation sent"}}
