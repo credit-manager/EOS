@@ -21,7 +21,7 @@ def upgrade() -> None:
             f"""
             DO $$
             BEGIN
-                IF to_regclass('public.{table!r}') IS NOT NULL
+                IF to_regclass('public.{table}') IS NOT NULL
                    AND NOT EXISTS (
                        SELECT 1 FROM information_schema.columns
                        WHERE table_schema = 'public'
@@ -37,7 +37,7 @@ def upgrade() -> None:
             f"""
             DO $$
             BEGIN
-                IF to_regclass('public.{table!r}') IS NOT NULL THEN
+                IF to_regclass('public.{table}') IS NOT NULL THEN
                     CREATE INDEX IF NOT EXISTS "idx_{table}_tenant_id" ON public."{table}" (tenant_id);
                     ALTER TABLE public."{table}" ENABLE ROW LEVEL SECURITY;
                     ALTER TABLE public."{table}" FORCE ROW LEVEL SECURITY;
@@ -57,7 +57,7 @@ def downgrade() -> None:
             f"""
             DO $$
             BEGIN
-                IF to_regclass('public.{table!r}') IS NOT NULL THEN
+                IF to_regclass('public.{table}') IS NOT NULL THEN
                     DROP POLICY IF EXISTS "tenant_isolation_{table}" ON public."{table}";
                     ALTER TABLE public."{table}" NO FORCE ROW LEVEL SECURITY;
                     ALTER TABLE public."{table}" DISABLE ROW LEVEL SECURITY;
