@@ -12,11 +12,10 @@ const clearLocalSession = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('eos_tenant_id');
+    localStorage.removeItem('eos_company_id');
     localStorage.removeItem('eos_user');
   }
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new Event('eos:auth-expired'));
-  }
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('eos:auth-expired'));
 };
 
 apiClient.interceptors.request.use((config) => {
@@ -31,13 +30,15 @@ apiClient.interceptors.response.use(
     if (typeof localStorage !== 'undefined') {
       if (data?.access_token) localStorage.setItem('access_token', data.access_token);
       if (data?.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+      if (data?.user?.tenant_id) localStorage.setItem('eos_tenant_id', String(data.user.tenant_id));
+      if (data?.user?.company_id) localStorage.setItem('eos_company_id', String(data.user.company_id));
     }
     return response;
   },
   async (error: AxiosError) => {
     const original = error.config as (typeof error.config & { _retry?: boolean }) | undefined;
     const url = original?.url || '';
-    const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/refresh') || url.includes('/auth/register');
+    const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/refresh') || url.includes('/auth/register') || url.includes('/auth/verify-email');
     if (error.response?.status === 401 && original && !original._retry && !isAuthEndpoint) {
       const refreshToken = typeof localStorage !== 'undefined' ? localStorage.getItem('refresh_token') : null;
       if (refreshToken) {
@@ -55,9 +56,7 @@ apiClient.interceptors.response.use(
         } catch {
           clearLocalSession();
         }
-      } else {
-        clearLocalSession();
-      }
+      } else clearLocalSession();
     }
     return Promise.reject(error);
   },
@@ -68,6 +67,7 @@ export default apiClient;
 export const authAPI = {
   login: (email: string, password: string) => apiClient.post('/auth/login', { email, password }),
   register: (userData: unknown) => apiClient.post('/auth/register', userData),
+  verifyEmail: (token: string) => apiClient.post('/auth/verify-email', { token }),
   logout: async () => {
     const refreshToken = typeof localStorage !== 'undefined' ? localStorage.getItem('refresh_token') : null;
     try {
@@ -112,24 +112,27 @@ export const productsAPI = {
   delete: (id: string | number) => apiClient.delete(`/inventory/products/${id}`),
 };
 
-const unavailableAPI = (resource: string) => () => Promise.reject(
-  new Error(`${resource} API is not wired to a generic backend endpoint yet; see docs/FRONTEND_API_CONTRACT_MISMATCHES.md`),
-);
+const getCompanyId = () => {
+  const companyId = typeof localStorage !== 'undefined' ? localStorage.getItem('eos_company_id') : null;
+  if (!companyId) throw new Error('EOS company context is not available; complete company onboarding first.');
+  return companyId;
+};
 
 export const ordersAPI = {
-  getAll: unavailableAPI('orders'),
-  getById: (_id: string | number) => unavailableAPI('orders')(),
-  create: (_data: unknown) => unavailableAPI('orders')(),
-  update: (_id: string | number, _data: unknown) => unavailableAPI('orders')(),
-  delete: (_id: string | number) => unavailableAPI('orders')(),
+  getAll: (companyId = getCompanyId(), params?: { status?: string }) => apiClient.get(`/dynamic/companies/${companyId}/sales-orders`, { params }),
+  getById: (id: string | number) => apiClient.get(`/dynamic/sales-orders/${id}`),
+  create: (data: Record<string, unknown>, companyId = getCompanyId()) => apiClient.post(`/dynamic/companies/${companyId}/sales-orders`, data),
+  update: (_id: string | number, _data: unknown) => Promise.reject(new Error('Sales order updates require an explicit workflow endpoint and are intentionally not inferred.')),
+  delete: (_id: string | number) => Promise.reject(new Error('Sales order deletion is intentionally disabled after creation to preserve financial auditability.')),
 };
 
 export const invoicesAPI = {
-  getAll: unavailableAPI('invoices'),
-  getById: (_id: string | number) => unavailableAPI('invoices')(),
-  create: (_data: unknown) => unavailableAPI('invoices')(),
-  update: (_id: string | number, _data: unknown) => unavailableAPI('invoices')(),
-  delete: (_id: string | number) => unavailableAPI('invoices')(),
+  getAll: (companyId = getCompanyId(), params?: { status?: string }) => apiClient.get(`/dynamic/companies/${companyId}/invoices`, { params }),
+  getById: (id: string | number) => apiClient.get(`/dynamic/invoices/${id}`),
+  create: (data: Record<string, unknown>, companyId = getCompanyId()) => apiClient.post(`/dynamic/companies/${companyId}/invoices`, data),
+  recordPayment: (id: string | number, amount: number, paymentDate: string, companyId = getCompanyId()) => apiClient.post(`/dynamic/invoices/${id}/payments`, { amount, payment_date: paymentDate, company_id: companyId }),
+  update: (_id: string | number, _data: unknown) => Promise.reject(new Error('Issued invoice updates are disabled; use controlled credit/debit workflows.')),
+  delete: (_id: string | number) => Promise.reject(new Error('Issued invoice deletion is disabled to preserve financial auditability.')),
 };
 
 export const reportsAPI = {
