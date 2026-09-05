@@ -1,7 +1,7 @@
 """
 EOS Dynamic Business Platform — FastAPI Application (P13 hardened)
 """
-from fastapi import FastAPI, Request, Response, Depends
+from fastapi import FastAPI, Request, Response, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -107,12 +107,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
 
 
 async def require_sales_api_permission(request: Request, user: dict = Depends(get_current_user)):
-    """Apply explicit RBAC to the legacy/direct Sales CRM surface.
-
-    sales_api historically depended only on authentication, which allowed any
-    authenticated role to mutate CRM data. Keep the route surface compatible,
-    but enforce the same action model used by the rest of EOS.
-    """
+    """Apply explicit RBAC to the direct Sales CRM surface."""
     method = request.method.upper()
     action = {
         "GET": "read",
