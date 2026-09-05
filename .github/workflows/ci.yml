@@ -96,7 +96,7 @@ jobs:
           SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
           EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
           ENVIRONMENT: testing
-          EXPECTED_ALEMBIC_HEAD: 20260905_number_sequences
+          EXPECTED_ALEMBIC_HEAD: 20260905_restore_journal_tables
         run: |
           alembic upgrade head
           test "$(alembic heads | grep -c "^${EXPECTED_ALEMBIC_HEAD}$")" -eq 1
