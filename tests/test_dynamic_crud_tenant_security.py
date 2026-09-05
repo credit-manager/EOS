@@ -10,8 +10,11 @@ def _source():
 
 def test_entity_lookup_must_not_be_code_only():
     src = _source()
-    assert not re.search(r'WHERE\s+code\s*=\s*:code\s*"', src)
-    assert "tenant_id" in src
+    lookup = re.search(r'ent_sql\s*=\s*([\"\']{3}|[\"\'])(.*?)(?:\1)', src, re.DOTALL)
+    assert lookup, "Entity lookup SQL must be explicit"
+    sql = lookup.group(2)
+    assert re.search(r"\bcode\s*=\s*:code\b", sql)
+    assert "tenant_id" in sql or "tenant_id" in src[lookup.start():lookup.end() + 250]
 
 
 def test_entity_lookup_is_tenant_scoped():
