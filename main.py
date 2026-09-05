@@ -66,52 +66,32 @@ from routers import currency_api
 from routers import reconciliation_api
 from routers import portal_customer_api
 from routers import reporting_api
-from core.audit import set_request_id, get_request_id
+from core.audit import set_request_id
 from core.health_check import router as health_router
 from core.api_versioning import APIVersionMiddleware, SUPPORTED_VERSIONS
 import os
 import json
 import uuid
 
-
-# ──────────────────────────────────────────────────────────────
-# SECURITY MIDDLEWARE — Headers + Request ID + Body Size
-# ──────────────────────────────────────────────────────────────
-
-MAX_BODY_BYTES = int(os.getenv("EOS_MAX_BODY_BYTES", str(10 * 1024 * 1024)))  # 10 MB default
+MAX_BODY_BYTES = int(os.getenv("EOS_MAX_BODY_BYTES", str(10 * 1024 * 1024)))
 
 
 class SecurityMiddleware(BaseHTTPMiddleware):
-    """
-    P13 security middleware:
-    1. Enforces max request body size (413 if exceeded)
-    2. Generates/echoes X-Request-ID correlation
-    3. Adds security response headers
-    4. Suppresses Server header
-    """
+    """P13 security middleware for body size, correlation IDs and headers."""
 
     async def dispatch(self, request: Request, call_next):
-        print(f">>> SECURITY MIDDLEWARE: {request.url.path!r} <<<", flush=True)
-        # 1. Body size check
         content_length = request.headers.get("content-length")
         if content_length and int(content_length) > MAX_BODY_BYTES:
             return Response(
-                content='{"status":"error","error":{"code":"PAYLOAD_TOO_LARGE",'
-                        '"message":"Request body exceeds size limit"}}',
+                content='{"status":"error","error":{"code":"PAYLOAD_TOO_LARGE","message":"Request body exceeds size limit"}}',
                 status_code=413,
                 media_type="application/json",
             )
 
-        # 2. Request ID correlation
         rid = request.headers.get("x-request-id") or str(uuid.uuid4())
         set_request_id(rid)
-
-        # 3. Process request
-        print(f">>> SECURITY MIDDLEWARE CALLING NEXT: {request.url.path!r} <<<", flush=True)
         response = await call_next(request)
-        print(f">>> SECURITY MIDDLEWARE RESPONSE: {request.url.path!r} status={response.status_code} <<<", flush=True)
 
-        # 4. Security headers
         response.headers["X-Request-ID"] = rid
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
@@ -120,19 +100,11 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         response.headers["Pragma"] = "no-cache"
-
-        # Remove Server header if present
         if "server" in response.headers:
             del response.headers["server"]
-
         return response
 
 
-# ──────────────────────────────────────────────────────────────
-# APPLICATION
-# ──────────────────────────────────────────────────────────────
-
-# Initialize structured logging
 setup_logging()
 
 app = FastAPI(
@@ -142,7 +114,6 @@ app = FastAPI(
     redoc_url=None if os.getenv("EOS_DISABLE_DOCS") == "true" else "/redoc",
 )
 
-# CORS
 cors_origins = json.loads(os.getenv("EOS_CORS_ORIGINS", "[]"))
 if not cors_origins:
     cors_origins = ["http://localhost:8000", "http://127.0.0.1:8000"]
@@ -155,39 +126,26 @@ app.add_middleware(
     expose_headers=["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining"],
 )
 
-# Trusted hosts
 allowed_hosts = os.getenv("EOS_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 if os.getenv("EOS_TRUSTED_HOSTS_ENABLED", "false").lower() == "true":
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
-# Security middleware (headers, body size, request ID)
 app.add_middleware(SecurityMiddleware)
-
-# Structured logging middleware (request_id propagation + timing)
 app.add_middleware(RequestIdMiddleware)
-
-# Locale middleware (RTL/LTR, Accept-Language, X-Locale header)
 app.add_middleware(LocaleMiddleware)
-
-# API Version middleware (v1/v2 support, Accept-Version header)
 app.add_middleware(APIVersionMiddleware)
 
-# Prometheus metrics - manual endpoint
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry
-from fastapi import Response
+from prometheus_client import ProcessCollector, PlatformCollector
 
 _prometheus_registry = CollectorRegistry()
-# Add default collectors
-from prometheus_client import ProcessCollector, PlatformCollector
 ProcessCollector(registry=_prometheus_registry)
 PlatformCollector(registry=_prometheus_registry)
 
+
 @app.get("/metrics", include_in_schema=False)
 async def metrics_endpoint():
-    return Response(
-        content=generate_latest(_prometheus_registry),
-        media_type="text/plain; version=0.0.4; charset=utf-8",
-    )
+    return Response(content=generate_latest(_prometheus_registry), media_type="text/plain; version=0.0.4; charset=utf-8")
 
 
 @app.get("/api/version", tags=["System"])
@@ -198,15 +156,11 @@ async def api_version():
             "current_version": "v1",
             "supported_versions": list(SUPPORTED_VERSIONS.keys()),
             "versions": SUPPORTED_VERSIONS,
-            "versioning": {
-                "url_prefix": "/api/{version}/...",
-                "header": "Accept-Version: v1",
-                "default": "v1",
-            }
-        }
+            "versioning": {"url_prefix": "/api/{version}/...", "header": "Accept-Version: v1", "default": "v1"},
+        },
     }
 
-# Routers
+
 app.include_router(dynamic_crud.router)
 app.include_router(relationships.router)
 app.include_router(entity_management.router)
@@ -289,7 +243,6 @@ app.include_router(reporting_api.router)
 @app.on_event("startup")
 async def validate_configuration():
     errors = []
-
     if not os.getenv("DATABASE_URL"):
         errors.append("DATABASE_URL not set")
 
@@ -316,75 +269,54 @@ async def validate_configuration():
             sys.exit(1)
     else:
         print(f"Configuration OK: auth_mode={auth_mode}")
-    audit_logger.log_event(
-        event="platform_startup",
-        details={"auth_mode": auth_mode, "version": "1.0.0"}
-    )
-
-    print(f"Security: CORS={bool(cors_origins)}, "
-          f"body_limit={MAX_BODY_BYTES}, "
-          f"hosts={allowed_hosts}")
+    audit_logger.log_event(event="platform_startup", details={"auth_mode": auth_mode, "version": "1.0.0"})
+    print(f"Security: CORS={bool(cors_origins)}, body_limit={MAX_BODY_BYTES}, hosts={allowed_hosts}")
 
 
-# Include enhanced health check routes (/health, /health/full, /health/live, /health/ready)
 app.include_router(health_router)
 
 
 @app.get("/")
 def root():
-    return {
-        "message": "EOS DBP Core is running!",
-        "docs": "/docs"
-    }
+    return {"message": "EOS DBP Core is running!", "docs": "/docs"}
 
 
 @app.get("/app")
 async def serve_landing():
     from fastapi.responses import FileResponse
-    import os
     index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path, media_type="text/html")
     return {"message": "Landing page not found", "docs": "/docs"}
 
 
-# ──────────────────────────────────────────────────────────────
-# P67: React Frontend — served from eos-system/frontend/dist
-# Access at http://HOST/ui  (does NOT touch /app or any API route)
-# ──────────────────────────────────────────────────────────────
+# P67: the canonical frontend source and served artifact share one path.
 import os as _os
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse as _FileResponse
 
-_REACT_DIST = _os.path.join(_os.path.dirname(__file__), "eos-system", "frontend", "dist")
+_REACT_DIST = _os.path.join(_os.path.dirname(__file__), "erp-system", "frontend", "dist")
 
 if _os.path.isdir(_REACT_DIST):
-    # Serve JS/CSS/icons under /ui/assets/*
     _assets_dir = _os.path.join(_REACT_DIST, "assets")
     if _os.path.isdir(_assets_dir):
         app.mount("/ui/assets", StaticFiles(directory=_assets_dir), name="react-assets")
 
-    # Serve PWA icons under /ui/icons/*
     _icons_dir = _os.path.join(_REACT_DIST, "icons")
     if _os.path.isdir(_icons_dir):
         app.mount("/ui/icons", StaticFiles(directory=_icons_dir), name="react-icons")
 
-    # Serve manifest + service-worker at /ui/*
     @app.get("/ui/manifest.webmanifest")
     async def _serve_manifest():
-        return _FileResponse(_os.path.join(_REACT_DIST, "manifest.webmanifest"),
-                             media_type="application/manifest+json")
+        return _FileResponse(_os.path.join(_REACT_DIST, "manifest.webmanifest"), media_type="application/manifest+json")
 
     @app.get("/ui/sw.js")
     async def _serve_sw():
-        return _FileResponse(_os.path.join(_REACT_DIST, "sw.js"),
-                             media_type="application/javascript")
+        return _FileResponse(_os.path.join(_REACT_DIST, "sw.js"), media_type="application/javascript")
 
-    # Catch-all: any /ui/* that isn't an API or static file → index.html (SPA routing)
     @app.get("/ui/{full_path:path}")
     async def _serve_react(full_path: str):
-        return _FileResponse(_os.path.join(_REACT_DIST, "index.html"),
-                             media_type="text/html")
+        return _FileResponse(_os.path.join(_REACT_DIST, "index.html"), media_type="text/html")
 
     print(f"React frontend mounted at /ui  (dist: {_REACT_DIST})")
 else:

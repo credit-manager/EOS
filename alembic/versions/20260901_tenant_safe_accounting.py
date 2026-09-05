@@ -44,14 +44,23 @@ def upgrade():
     $$ LANGUAGE plpgsql;
     """)
 
+    # The canonical baseline can be installed on an empty database. The
+    # journal-line table is created by the baseline only when it is part of
+    # the canonical schema, so never create a trigger against a missing table.
     op.execute("""
-    DROP TRIGGER IF EXISTS trg_eos_journal_line_tenant
-    ON dbp_journal_lines;
-    CREATE TRIGGER trg_eos_journal_line_tenant
-    BEFORE INSERT OR UPDATE OF journal_entry_id, account_id
-    ON dbp_journal_lines
-    FOR EACH ROW
-    EXECUTE FUNCTION eos_validate_journal_line_tenant();
+    DO $$
+    BEGIN
+        IF to_regclass('public.dbp_journal_lines') IS NOT NULL THEN
+            DROP TRIGGER IF EXISTS trg_eos_journal_line_tenant
+            ON dbp_journal_lines;
+            CREATE TRIGGER trg_eos_journal_line_tenant
+            BEFORE INSERT OR UPDATE OF journal_entry_id, account_id
+            ON dbp_journal_lines
+            FOR EACH ROW
+            EXECUTE FUNCTION eos_validate_journal_line_tenant();
+        END IF;
+    END;
+    $$;
     """)
 
     op.execute("""
@@ -76,13 +85,19 @@ def upgrade():
     """)
 
     op.execute("""
-    DROP TRIGGER IF EXISTS trg_eos_journal_entry_tenant
-    ON dbp_journal_entries;
-    CREATE TRIGGER trg_eos_journal_entry_tenant
-    BEFORE UPDATE OF tenant_id
-    ON dbp_journal_entries
-    FOR EACH ROW
-    EXECUTE FUNCTION eos_validate_journal_entry_tenant();
+    DO $$
+    BEGIN
+        IF to_regclass('public.dbp_journal_entries') IS NOT NULL THEN
+            DROP TRIGGER IF EXISTS trg_eos_journal_entry_tenant
+            ON dbp_journal_entries;
+            CREATE TRIGGER trg_eos_journal_entry_tenant
+            BEFORE UPDATE OF tenant_id
+            ON dbp_journal_entries
+            FOR EACH ROW
+            EXECUTE FUNCTION eos_validate_journal_entry_tenant();
+        END IF;
+    END;
+    $$;
     """)
 
 

@@ -9,14 +9,22 @@ import os
 from typing import AsyncGenerator, Generator
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-# Set test environment variables BEFORE importing application modules.
-os.environ["DATABASE_URL"] = "postgresql://eos_test:test_password@localhost:5432/eos_test"
-os.environ["SECRET_KEY"] = "test_secret_key_for_testing_only_12345678901234567890"
-os.environ["ENVIRONMENT"] = "test"
-os.environ["REDIS_URL"] = "redis://localhost:6379/1"
+# Set safe local defaults without overriding CI-provided configuration.
+os.environ.setdefault(
+    "DATABASE_URL",
+    "postgresql://eos_test:test_password@localhost:5432/eos_test",
+)
+os.environ.setdefault(
+    "SECRET_KEY",
+    "test_secret_key_for_testing_only_12345678901234567890",
+)
+os.environ.setdefault("ENVIRONMENT", "test")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/1")
 
 
 @pytest.fixture(scope="session")
@@ -28,8 +36,16 @@ def event_loop():
 
 
 @pytest.fixture(scope="session")
-def test_engine():
-    """Create a test database engine."""
+def database_schema():
+    """Initialize the test database with the canonical Alembic schema."""
+    cfg = Config(os.path.join(os.path.dirname(__file__), "..", "alembic.ini"))
+    command.upgrade(cfg, "head")
+    yield
+
+
+@pytest.fixture(scope="session")
+def test_engine(database_schema):
+    """Create a test database engine after the migration schema exists."""
     database_url = os.getenv(
         "DATABASE_URL",
         "postgresql://eos_test:test_password@localhost:5432/eos_test",
@@ -47,9 +63,11 @@ def test_engine():
 
 @pytest.fixture(scope="function")
 def db_session(test_engine) -> Generator[Session, None, None]:
-    """Create a fresh database session for each test."""
+    """Create a fresh SQLAlchemy session for each test."""
     from models import Base
 
+    # Model-managed tables are recreated per test; migration-managed tables
+    # (including dbp_users) remain available for API tests.
     Base.metadata.create_all(bind=test_engine)
     TestingSessionLocal = sessionmaker(
         autocommit=False,
@@ -87,9 +105,9 @@ async def async_db_session(test_engine) -> AsyncGenerator[Session, None]:
         Base.metadata.drop_all(bind=test_engine)
 
 
-@pytest.fixture(scope="session")
-def test_client():
-    """Create a FastAPI test client."""
+@pytest.fixture(scope="function")
+def test_client(database_schema):
+    """Create a FastAPI test client against the migrated schema."""
     from fastapi.testclient import TestClient
     from main import app
 
@@ -244,7 +262,7 @@ def create_test_user(db_session, email=None, password="TestPassword123!"):
 
 
 def cleanup_all_data(db_session):
-    """Drop and recreate all test tables."""
+    """Drop and recreate all model-managed test tables."""
     from models import Base
 
     Base.metadata.drop_all(bind=db_session.get_bind())
