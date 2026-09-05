@@ -14,4 +14,13 @@ export const suppliersAPI = { getAll: (params?: unknown) => apiClient.get('/supp
 export const productsAPI = { getAll: (params?: unknown) => apiClient.get('/products', { params }), getById: (id: number) => apiClient.get(`/products/${id}`), create: (data: unknown) => apiClient.post('/products', data), update: (id: number, data: unknown) => apiClient.put(`/products/${id}`, data), delete: (id: number) => apiClient.delete(`/products/${id}`) };
 export const ordersAPI = { getAll: (params?: unknown) => apiClient.get('/orders', { params }), getById: (id: number) => apiClient.get(`/orders/${id}`), create: (data: unknown) => apiClient.post('/orders', data), update: (id: number, data: unknown) => apiClient.put(`/orders/${id}`, data), delete: (id: number) => apiClient.delete(`/orders/${id}`) };
 export const invoicesAPI = { getAll: (params?: unknown) => apiClient.get('/invoices', { params }), getById: (id: number) => apiClient.get(`/invoices/${id}`), create: (data: unknown) => apiClient.post('/invoices', data), update: (id: number, data: unknown) => apiClient.put(`/invoices/${id}`, data), delete: (id: number) => apiClient.delete(`/invoices/${id}`) };
-export const reportsAPI = { getDashboard: () => apiClient.get('/reports/dashboard'), getSalesReport: (params?: unknown) => apiClient.get('/reports/sales', { params }), getInventoryReport: (params?: unknown) => apiClient.get('/reports/inventory', { params }), getFinancialReport: (params?: unknown) => apiClient.get('/reports/financial', { params }) };
+export const reportsAPI = {
+  profitAndLoss: (params?: { start_date?: string; end_date?: string }) => apiClient.get('/reports/profit-and-loss', { params }),
+  balanceSheet: () => apiClient.get('/reports/balance-sheet'),
+  cashFlow: (days = 30) => apiClient.get('/reports/cash-flow', { params: { days } }),
+  sales: (params?: { start_date?: string; end_date?: string }) => apiClient.get('/reports/sales', { params }),
+  inventory: () => apiClient.get('/reports/inventory'),
+  customerAging: () => apiClient.get('/reports/customer-aging'),
+  industry: (industry: string) => apiClient.get(`/reports/industry/${encodeURIComponent(industry)}`),
+  export: (report_type: string, format = 'json') => apiClient.post('/reports/export', { report_type, format }),
+};
