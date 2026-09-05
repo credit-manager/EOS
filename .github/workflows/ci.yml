@@ -20,7 +20,7 @@ jobs:
           node-version: '20'
       - name: Install frontend dependencies
         working-directory: erp-system/frontend
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Lint frontend
         working-directory: erp-system/frontend
         run: npm run lint
