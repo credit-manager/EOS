@@ -126,8 +126,13 @@ app.add_middleware(
     expose_headers=["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining"],
 )
 
-allowed_hosts = os.getenv("EOS_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
-if os.getenv("EOS_TRUSTED_HOSTS_ENABLED", "false").lower() == "true":
+allowed_hosts = [host.strip() for host in os.getenv("EOS_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
+auth_mode = os.getenv("EOS_AUTH_MODE", "test").lower()
+# Trusted hosts are optional in test mode for local development, but production
+# must always enforce the explicitly configured allow-list. This prevents a
+# production deployment from accidentally disabling Host-header validation.
+trusted_hosts_enabled = os.getenv("EOS_TRUSTED_HOSTS_ENABLED", "false").lower() == "true"
+if auth_mode == "production" or trusted_hosts_enabled:
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
 app.add_middleware(SecurityMiddleware)
@@ -273,7 +278,7 @@ async def validate_configuration():
     else:
         print(f"Configuration OK: auth_mode={auth_mode}")
     audit_logger.log_event(event="platform_startup", details={"auth_mode": auth_mode, "version": "1.0.0"})
-    print(f"Security: CORS={bool(cors_origins)}, body_limit={MAX_BODY_BYTES}, hosts={allowed_hosts}")
+    print(f"Security: CORS={bool(cors_origins)}, body_limit={MAX_BODY_BYTES}, hosts={allowed_hosts}, trusted_hosts={auth_mode == 'production' or trusted_hosts_enabled}")
 
 
 app.include_router(health_router)
@@ -281,7 +286,8 @@ app.include_router(health_router)
 
 @app.get("/")
 def root():
-    return {"message": "EOS DBP Core is running!", "docs": "/docs"}
+    docs_enabled = os.getenv("EOS_DISABLE_DOCS") != "true"
+    return {"message": "EOS DBP Core is running!", "docs": "/docs" if docs_enabled else None}
 
 
 @app.get("/app")
