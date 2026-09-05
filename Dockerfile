@@ -43,10 +43,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=python-builder /root/.local /home/eos/.local
 COPY --chown=eos:eos . .
 
-# The canonical React source is erp-system/frontend; its build output is the
-# only frontend artifact served by main.py at /ui.
-RUN rm -rf /app/eos-system/frontend/dist
-COPY --from=frontend-builder --chown=eos:eos /frontend/dist /app/eos-system/frontend/dist
+# The canonical React source is erp-system/frontend and main.py serves the
+# build output from the same canonical path.
+RUN rm -rf /app/erp-system/frontend/dist
+COPY --from=frontend-builder --chown=eos:eos /frontend/dist /app/erp-system/frontend/dist
 
 USER eos
 ENV PATH=/home/eos/.local/bin:$PATH
