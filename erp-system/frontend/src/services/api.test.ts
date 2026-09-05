@@ -4,6 +4,16 @@ import apiClient, { authAPI, customersAPI, invoicesAPI, ordersAPI, productsAPI, 
 
 vi.mock('axios', async () => {
   const actual = await vi.importActual<typeof import('axios')>('axios');
+  const storage = new Map<string, string>();
+  const localStorageMock = {
+    getItem: vi.fn((key: string) => storage.get(key) ?? null),
+    setItem: vi.fn((key: string, value: string) => storage.set(key, String(value))),
+    removeItem: vi.fn((key: string) => storage.delete(key)),
+    clear: vi.fn(() => storage.clear()),
+  };
+  if (typeof globalThis.localStorage === 'undefined') {
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: localStorageMock });
+  }
   const client = {
     defaults: { headers: { common: {} } },
     interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
@@ -13,7 +23,7 @@ vi.mock('axios', async () => {
 });
 
 describe('EOS API client functional contract', () => {
-  beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
+  beforeEach(() => { globalThis.localStorage.clear(); vi.clearAllMocks(); });
 
   it('uses the configured API facade for authentication', async () => {
     vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: { access_token: 'access', refresh_token: 'refresh' } } } as never);
