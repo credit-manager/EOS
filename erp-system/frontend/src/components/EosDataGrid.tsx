@@ -2,12 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { FiChevronDown, FiChevronLeft, FiChevronRight, FiSearch, FiSettings } from 'react-icons/fi';
 import { dynamicAPI, type DynamicColumn, type DynamicListSchema } from '../services/dynamic';
 
-type Props = {
-  entityCode: string;
-  language: 'ar' | 'en';
-};
-
-type Filter = { field: string; operator: string; value: string };
+type Props = { entityCode: string; language: 'ar' | 'en' };
+type Filter = { field: string; operator: 'eq' | 'like'; value: string };
 
 const demoRows: Record<string, unknown>[] = [
   { name: 'Acme Industries', email: 'finance@acme.example', amount: '€24,500', status: 'Active' },
@@ -24,18 +20,13 @@ export default function EosDataGrid({ entityCode, language }: Props) {
   const [limit] = useState(50);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('');
-  const [filter, setFilter] = useState<Filter>({ field: '', operator: 'contains', value: '' });
+  const [filter, setFilter] = useState<Filter>({ field: '', operator: 'like', value: '' });
   const [loading, setLoading] = useState(true);
   const [remoteError, setRemoteError] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
-    dynamicAPI.listSchema(entityCode).then((response) => {
-      if (alive) setSchema(response.data.data);
-    }).catch(() => {
-      if (alive) setSchema(null);
-    });
+    dynamicAPI.listSchema(entityCode).then((response) => alive && setSchema(response.data.data)).catch(() => alive && setSchema(null));
     return () => { alive = false; };
   }, [entityCode]);
 
@@ -43,22 +34,15 @@ export default function EosDataGrid({ entityCode, language }: Props) {
     let alive = true;
     setLoading(true);
     setRemoteError(false);
-    const filters = search ? JSON.stringify([{ field: 'name', operator: 'contains', value: search }]) : undefined;
+    const activeFilter = filter.field && filter.value ? `${filter.field}:${filter.operator}:${filter.value.replaceAll(',', ' ')}` : undefined;
+    const searchFilter = search ? `name:like:${search.replaceAll(',', ' ')}` : undefined;
+    const filters = [activeFilter, searchFilter].filter(Boolean).join(',') || undefined;
     dynamicAPI.records(entityCode, { filters, sort: sort || undefined, limit, offset })
-      .then((response) => {
-        if (!alive) return;
-        setRows(response.data.data || []);
-        setTotal(response.data.pagination?.total ?? response.data.count ?? 0);
-      })
-      .catch(() => {
-        if (!alive) return;
-        setRows(demoRows);
-        setTotal(demoRows.length);
-        setRemoteError(true);
-      })
+      .then((response) => { if (alive) { setRows(response.data.data || []); setTotal(response.data.pagination?.total ?? response.data.count ?? 0); } })
+      .catch(() => { if (alive) { setRows(demoRows); setTotal(demoRows.length); setRemoteError(true); } })
       .finally(() => alive && setLoading(false));
     return () => { alive = false; };
-  }, [entityCode, limit, offset, search, sort]);
+  }, [entityCode, filter.field, filter.operator, filter.value, limit, offset, search, sort]);
 
   const columns = useMemo<DynamicColumn[]>(() => schema?.columns?.length ? schema.columns : [
     { field: 'name', label: 'Customer', label_ar: 'العميل', sortable: true },
@@ -66,13 +50,6 @@ export default function EosDataGrid({ entityCode, language }: Props) {
     { field: 'amount', label: 'Amount', label_ar: 'القيمة', sortable: true },
     { field: 'status', label: 'Status', label_ar: 'الحالة' },
   ], [schema]);
-
-  const visibleRows = rows.filter((row) => {
-    if (!filter.field || !filter.value) return true;
-    const value = String(row[filter.field] ?? '').toLowerCase();
-    const expected = filter.value.toLowerCase();
-    return filter.operator === 'eq' ? value === expected : value.includes(expected);
-  });
 
   const toggleSort = (column: DynamicColumn) => {
     if (!column.sortable) return;
@@ -82,29 +59,20 @@ export default function EosDataGrid({ entityCode, language }: Props) {
 
   return <div className="eos-card eos-table-card">
     <div className="eos-table-toolbar">
-      <div className="eos-search eos-table-search">
-        <FiSearch />
-        <input value={search} onChange={(event) => { setOffset(0); setSearch(event.target.value); }} placeholder={language === 'ar' ? 'بحث في السجلات' : 'Search records'} />
-      </div>
+      <div className="eos-search eos-table-search"><FiSearch /><input value={search} onChange={(event) => { setOffset(0); setSearch(event.target.value); }} placeholder={language === 'ar' ? 'بحث في السجلات' : 'Search records'} /></div>
       <div className="eos-grid-filter">
-        <select aria-label={language === 'ar' ? 'الحقل' : 'Field'} value={filter.field} onChange={(e) => setFilter({ ...filter, field: e.target.value })}>
+        <select aria-label={language === 'ar' ? 'الحقل' : 'Field'} value={filter.field} onChange={(e) => { setOffset(0); setFilter({ ...filter, field: e.target.value }); }}>
           <option value="">{language === 'ar' ? 'تصفية' : 'Filter'}</option>
           {columns.map((column) => <option key={column.field} value={column.field}>{language === 'ar' ? column.label_ar || column.label : column.label || column.field}</option>)}
         </select>
-        <input value={filter.value} onChange={(e) => setFilter({ ...filter, value: e.target.value })} placeholder={language === 'ar' ? 'القيمة' : 'Value'} />
+        <input value={filter.value} onChange={(e) => { setOffset(0); setFilter({ ...filter, value: e.target.value }); }} placeholder={language === 'ar' ? 'القيمة' : 'Value'} />
       </div>
       <button className="eos-ghost-button" type="button"><FiSettings /> {language === 'ar' ? 'الأعمدة' : 'Columns'}</button>
     </div>
     {remoteError && <div className="eos-grid-demo-note">{language === 'ar' ? 'وضع العرض التجريبي — سجّل الدخول لتحميل بيانات شركتك.' : 'Demo mode — sign in to load your tenant data.'}</div>}
-    <div className="eos-table-wrap">
-      <table>
-        <thead><tr><th className="eos-select-cell"><input type="checkbox" aria-label="Select all" /></th>{columns.map((column) => <th key={column.field}><button className="eos-sort-button" type="button" onClick={() => toggleSort(column)}>{language === 'ar' ? column.label_ar || column.label : column.label || column.field}{column.sortable && <FiChevronDown />}</button></th>)}</tr></thead>
-        <tbody>{loading ? <tr><td colSpan={columns.length + 1} className="eos-grid-state">{language === 'ar' ? 'جاري التحميل…' : 'Loading…'}</td></tr> : visibleRows.length === 0 ? <tr><td colSpan={columns.length + 1} className="eos-grid-state">{language === 'ar' ? 'لا توجد سجلات' : 'No records found'}</td></tr> : visibleRows.map((row, index) => <tr key={String(row.id ?? index)}><td className="eos-select-cell"><input type="checkbox" aria-label={`Select row ${index + 1}`} /></td>{columns.map((column) => <td key={column.field}>{column.maskable ? '••••••' : String(row[column.field] ?? '—')}</td>)}</tr>)}</tbody>
-      </table>
-    </div>
-    <div className="eos-table-footer">
-      <span>{language === 'ar' ? `عرض ${total ? offset + 1 : 0}–${Math.min(offset + limit, total)} من ${total}` : `Showing ${total ? offset + 1 : 0}–${Math.min(offset + limit, total)} of ${total}`}</span>
-      <div className="eos-pagination"><button type="button" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}><FiChevronLeft /></button><button type="button" disabled={offset + limit >= total} onClick={() => setOffset(offset + limit)}><FiChevronRight /></button></div>
-    </div>
+    <div className="eos-table-wrap"><table><thead><tr><th className="eos-select-cell"><input type="checkbox" aria-label={language === 'ar' ? 'تحديد الكل' : 'Select all'} /></th>{columns.map((column) => <th key={column.field}><button className="eos-sort-button" type="button" onClick={() => toggleSort(column)}>{language === 'ar' ? column.label_ar || column.label : column.label || column.field}{column.sortable && <FiChevronDown />}</button></th>)}</tr></thead>
+      <tbody>{loading ? <tr><td colSpan={columns.length + 1} className="eos-grid-state">{language === 'ar' ? 'جاري التحميل…' : 'Loading…'}</td></tr> : rows.length === 0 ? <tr><td colSpan={columns.length + 1} className="eos-grid-state">{language === 'ar' ? 'لا توجد سجلات' : 'No records found'}</td></tr> : rows.map((row, index) => <tr key={String(row.id ?? index)}><td className="eos-select-cell"><input type="checkbox" aria-label={`Select row ${index + 1}`} /></td>{columns.map((column) => <td key={column.field}>{column.maskable ? '••••••' : String(row[column.field] ?? '—')}</td>)}</tr>)}</tbody>
+    </table></div>
+    <div className="eos-table-footer"><span>{language === 'ar' ? `عرض ${total ? offset + 1 : 0}–${Math.min(offset + limit, total)} من ${total}` : `Showing ${total ? offset + 1 : 0}–${Math.min(offset + limit, total)} of ${total}`}</span><div className="eos-pagination"><button type="button" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}><FiChevronLeft /></button><button type="button" disabled={offset + limit >= total} onClick={() => setOffset(offset + limit)}><FiChevronRight /></button></div></div>
   </div>;
 }
