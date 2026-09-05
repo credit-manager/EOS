@@ -20,11 +20,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: npm
-          cache-dependency-path: erp-system/frontend/package-lock.json
       - name: Install frontend dependencies
         working-directory: erp-system/frontend
-        run: npm ci --no-audit --no-fund
+        run: npm install --no-audit --no-fund
       - name: Lint frontend
         working-directory: erp-system/frontend
         run: npm run lint
@@ -120,10 +118,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
-      - run: python -m pip install --upgrade pip && pip install -r requirements.txt
+      - run: pip install -r requirements.txt && pip install bandit pip-audit
       - run: |
           bandit -r . -ll -ii -f json -o deep-security-report.json
-          grep -rn "execute.*%" --include="*.py" core/ routers/ && exit 1 || true
+          if grep -rn "execute.*%" --include="*.py" core/ routers/; then exit 1; fi
       - run: |
           python - <<'PY'
           import ast
