@@ -8,7 +8,7 @@ from database import get_db
 from core.auth import get_current_user, require_permission, require_admin_role, TEST_SECRET_KEY, TEST_ALGORITHM
 from core.user_engine import UserEngine
 from core.email_adapter import get_email_service, EmailTemplateEngine
-from core.rate_limit import write_limiter
+from core.rate_limit import write_limiter, auth_limiter
 from datetime import datetime, timedelta, timezone
 import jwt
 import os
@@ -22,7 +22,7 @@ def _err(sc, code, msg):
     return HTTPException(sc, detail={"status": "error", "error": {"code": code, "message": msg}})
 
 
-@router.post("/register", dependencies=[Depends(write_limiter.check)])
+@router.post("/register", dependencies=[Depends(auth_limiter.check)])
 async def register(body: dict, request: Request, db: Session = Depends(get_db)):
     required = ["email", "password", "first_name", "last_name", "company_name"]
     for f in required:
@@ -75,7 +75,7 @@ async def register(body: dict, request: Request, db: Session = Depends(get_db)):
         db2.close()
 
 
-@router.post("/verify-email")
+@router.post("/verify-email", dependencies=[Depends(auth_limiter.check)])
 async def verify_email(body: dict, db: Session = Depends(get_db)):
     token = body.get("token")
     if not token:
@@ -95,7 +95,7 @@ async def verify_email(body: dict, db: Session = Depends(get_db)):
     return {"status": "success", "data": {"message": "Email verified"}}
 
 
-@router.post("/login", dependencies=[Depends(write_limiter.check)])
+@router.post("/login", dependencies=[Depends(auth_limiter.check)])
 async def login(body: dict, db: Session = Depends(get_db)):
     email = body.get("email")
     password = body.get("password")
@@ -136,7 +136,7 @@ async def login(body: dict, db: Session = Depends(get_db)):
     }}
 
 
-@router.post("/forgot-password", dependencies=[Depends(write_limiter.check)])
+@router.post("/forgot-password", dependencies=[Depends(auth_limiter.check)])
 async def forgot_password(body: dict, request: Request, db: Session = Depends(get_db)):
     email = body.get("email")
     if not email:
@@ -158,7 +158,7 @@ async def forgot_password(body: dict, request: Request, db: Session = Depends(ge
     }}
 
 
-@router.post("/reset-password")
+@router.post("/reset-password", dependencies=[Depends(auth_limiter.check)])
 async def reset_password(body: dict, db: Session = Depends(get_db)):
     token = body.get("token")
     new_password = body.get("new_password")
