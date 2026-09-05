@@ -1,21 +1,26 @@
 import axios, { AxiosError } from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || `${window.location.origin}/api/v1`;
+const runtimeOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+const API_BASE_URL = import.meta.env.VITE_API_URL || `${runtimeOrigin}/api/v1`;
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json', 'Accept-Language': 'ar' },
 });
 
 const clearLocalSession = () => {
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('refresh_token');
-  localStorage.removeItem('eos_tenant_id');
-  localStorage.removeItem('eos_user');
-  window.dispatchEvent(new Event('eos:auth-expired'));
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('eos_tenant_id');
+    localStorage.removeItem('eos_user');
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('eos:auth-expired'));
+  }
 };
 
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('access_token') : null;
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -23,8 +28,10 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => {
     const data = response.data?.data;
-    if (data?.access_token) localStorage.setItem('access_token', data.access_token);
-    if (data?.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+    if (typeof localStorage !== 'undefined') {
+      if (data?.access_token) localStorage.setItem('access_token', data.access_token);
+      if (data?.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+    }
     return response;
   },
   async (error: AxiosError) => {
@@ -32,7 +39,7 @@ apiClient.interceptors.response.use(
     const url = original?.url || '';
     const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/refresh') || url.includes('/auth/register');
     if (error.response?.status === 401 && original && !original._retry && !isAuthEndpoint) {
-      const refreshToken = localStorage.getItem('refresh_token');
+      const refreshToken = typeof localStorage !== 'undefined' ? localStorage.getItem('refresh_token') : null;
       if (refreshToken) {
         original._retry = true;
         try {
@@ -62,7 +69,7 @@ export const authAPI = {
   login: (email: string, password: string) => apiClient.post('/auth/login', { email, password }),
   register: (userData: unknown) => apiClient.post('/auth/register', userData),
   logout: async () => {
-    const refreshToken = localStorage.getItem('refresh_token');
+    const refreshToken = typeof localStorage !== 'undefined' ? localStorage.getItem('refresh_token') : null;
     try {
       if (refreshToken) await apiClient.post('/auth/logout', { refresh_token: refreshToken });
     } finally {
