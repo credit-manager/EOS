@@ -36,6 +36,18 @@ def test_production_jwt_requires_trust_claims(monkeypatch):
     assert payload["jti"]
 
 
+def test_production_jwt_reserves_trust_claims(monkeypatch):
+    monkeypatch.setenv("EOS_SECRET_KEY", "x" * 64)
+    monkeypatch.setenv("EOS_JWT_ISSUER", "eos-test")
+    monkeypatch.setenv("EOS_JWT_AUDIENCE", "eos-api-test")
+    token = create_access_token("u1", extra_data={"iss": "attacker", "aud": "attacker", "type": "refresh", "jti": "attacker"})
+    payload = verify_token(token)
+    assert payload["iss"] == "eos-test"
+    assert payload["aud"] == "eos-api-test"
+    assert payload["type"] == "access"
+    assert payload["jti"] != "attacker"
+
+
 def test_production_jwt_rejects_wrong_audience(monkeypatch):
     monkeypatch.setenv("EOS_SECRET_KEY", "x" * 64)
     monkeypatch.setenv("EOS_JWT_ISSUER", "eos-test")
