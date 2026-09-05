@@ -29,6 +29,25 @@ def _register_and_login(client, label: str) -> tuple[str, str]:
     registration = response.json()
     tenant_id = registration["data"]["tenant_id"]
 
+    # This is an API isolation test, not an email-delivery test.  Explicitly
+    # verify the freshly-created test user so the real login endpoint can be
+    # exercised without depending on an external mail provider.
+    database_url = os.environ["DATABASE_URL"]
+    engine = create_engine(database_url, future=True)
+    try:
+        with engine.begin() as conn:
+            updated = conn.execute(
+                text(
+                    "UPDATE dbp_users "
+                    "SET email_verified = TRUE, updated_at = CURRENT_TIMESTAMP "
+                    "WHERE email = :email"
+                ),
+                {"email": email},
+            ).rowcount
+        assert updated == 1
+    finally:
+        engine.dispose()
+
     response = client.post(
         "/api/v1/auth/login",
         json={"email": email, "password": PASSWORD},

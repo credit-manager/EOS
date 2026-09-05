@@ -16,26 +16,34 @@ from fastapi.security import HTTPBearer
 
 load_dotenv()
 
+# Kept for backwards compatibility with callers importing this symbol. JWT
+# signing/verification below resolves the environment value at call time so
+# test application imports cannot retain a stale secret from an earlier env.
 TEST_SECRET_KEY = os.getenv("EOS_TEST_SECRET_KEY", "")
 TEST_ALGORITHM = "HS256"
 TEST_TOKEN_EXPIRE_MINUTES = 60
 security = HTTPBearer()
 
 
-def create_test_token(tenant_id: str, user_id: str = "test-user", email: str = "test@example.com", roles: Optional[list] = None, expires_delta: Optional[timedelta] = None) -> str:
-    if not TEST_SECRET_KEY:
+def _get_test_secret_key() -> str:
+    secret = os.getenv("EOS_TEST_SECRET_KEY", "").strip()
+    if not secret:
         raise HTTPException(status_code=500, detail="EOS_TEST_SECRET_KEY is not configured")
+    return secret
+
+
+def create_test_token(tenant_id: str, user_id: str = "test-user", email: str = "test@example.com", roles: Optional[list] = None, expires_delta: Optional[timedelta] = None) -> str:
+    secret_key = _get_test_secret_key()
     now = datetime.now(timezone.utc)
     expire = now + (expires_delta or timedelta(minutes=TEST_TOKEN_EXPIRE_MINUTES))
     payload = {"sub": user_id, "exp": expire, "iat": now, "type": "access", "tenant_id": tenant_id.lower(), "email": email, "roles": roles or ["user"]}
-    return jwt.encode(payload, TEST_SECRET_KEY, algorithm=TEST_ALGORITHM)
+    return jwt.encode(payload, secret_key, algorithm=TEST_ALGORITHM)
 
 
 def verify_test_token(token: str) -> dict:
-    if not TEST_SECRET_KEY:
-        raise HTTPException(status_code=500, detail="EOS_TEST_SECRET_KEY is not configured")
+    secret_key = _get_test_secret_key()
     try:
-        return jwt.decode(token, TEST_SECRET_KEY, algorithms=[TEST_ALGORITHM])
+        return jwt.decode(token, secret_key, algorithms=[TEST_ALGORITHM])
     except InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid or expired token", headers={"WWW-Authenticate": "Bearer"})
 

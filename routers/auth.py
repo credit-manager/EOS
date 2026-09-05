@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from database import get_db
-from core.auth import get_current_user, require_permission, require_admin_role, TEST_SECRET_KEY
+from core.auth import get_current_user, require_permission, require_admin_role
 from core.user_engine import UserEngine
 from core.email_adapter import get_email_service, EmailTemplateEngine
 from core.rate_limit import write_limiter, auth_limiter
@@ -46,7 +46,7 @@ def _issue_access_token(result: dict) -> str:
         if not secret_key or len(secret_key) < 32:
             raise _err(500, "SERVER_CONFIG", "Production JWT secret is not configured correctly")
     else:
-        secret_key = TEST_SECRET_KEY
+        secret_key = os.getenv("EOS_TEST_SECRET_KEY", "").strip()
         if not secret_key:
             raise _err(500, "SERVER_CONFIG", "EOS_TEST_SECRET_KEY is not configured")
     now = datetime.now(timezone.utc)
@@ -269,49 +269,4 @@ async def update_user(user_id: str, body: dict, user: dict = Depends(get_current
     if not result["success"]:
         raise _err(400, "UPDATE_FAILED", result["error"])
     db.commit()
-    return {"status": "success", "data": {"message": result["message"]}}
-
-
-@router.put("/users/{user_id}/role", dependencies=[Depends(require_admin_role)])
-async def change_role(user_id: str, body: dict, user: dict = Depends(require_admin_role), db: Session = Depends(get_db)):
-    new_role = body.get("role")
-    if not new_role:
-        raise _err(400, "MISSING", "role required")
-    if user_id == user["id"]:
-        raise _err(403, "SELF_ROLE_CHANGE", "Users cannot change their own role")
-    allowed_roles = {"admin", "user", "viewer", "dynamic_manager", "dynamic_operator"}
-    if new_role not in allowed_roles:
-        raise _err(400, "INVALID_ROLE", "Unsupported role")
-    result = UserEngine(db).change_role(user_id, user["tenant_id"], new_role)
-    if not result["success"]:
-        raise _err(400, "ROLE_CHANGE_FAILED", result["error"])
-    db.commit()
-    return {"status": "success", "data": {"message": "Role changed"}}
-
-
-@router.post("/users/{user_id}/deactivate", dependencies=[Depends(require_admin_role)])
-async def deactivate_user(user_id: str, user: dict = Depends(require_admin_role), db: Session = Depends(get_db)):
-    if user_id == user["id"]:
-        raise _err(403, "SELF_DEACTIVATION", "Users cannot deactivate themselves")
-    result = UserEngine(db).deactivate_user(user_id, user["tenant_id"])
-    if not result["success"]:
-        raise _err(400, "DEACTIVATE_FAILED", result["error"])
-    db.commit()
-    return {"status": "success", "data": {"message": "User deactivated"}}
-
-
-@router.post("/users/invite", dependencies=[Depends(require_admin_role), Depends(write_limiter.check)])
-async def invite_user(body: dict, user: dict = Depends(require_admin_role), db: Session = Depends(get_db)):
-    required = ["email", "first_name", "last_name"]
-    for f in required:
-        if not body.get(f):
-            raise _err(400, "MISSING", f"{f} required")
-    role = body.get("role", "user")
-    allowed_roles = {"admin", "user", "viewer", "dynamic_manager", "dynamic_operator"}
-    if role not in allowed_roles:
-        raise _err(400, "INVALID_ROLE", "Unsupported role")
-    result = UserEngine(db).invite_user(user["tenant_id"], body["email"], body["first_name"], body["last_name"], role=role)
-    if not result["success"]:
-        raise _err(400, "INVITE_FAILED", result["error"])
-    db.commit()
-    return {"status": "success", "data": {"message": "Invitation sent"}}
+    return {"status": "success", "data": result}
