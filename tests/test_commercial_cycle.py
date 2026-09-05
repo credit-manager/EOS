@@ -1,4 +1,4 @@
-"""Real commercial-cycle integration test: registration -> customer -> invoice -> issue -> payment -> GL."""
+"""Real commercial-cycle integration test: registration -> verification -> login -> customer -> invoice -> issue -> payment -> GL."""
 from uuid import uuid4
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -15,6 +15,11 @@ def test_real_commercial_cycle_posts_to_general_ledger():
     registration_data = registration.json()["data"]
     tenant_id = registration_data["tenant_id"]
     company_id = registration_data["company_id"]
+    verification_token = registration_data.get("verification_token")
+    assert verification_token, registration.text
+    verification = test_client.post("/api/v1/auth/verify-email", json={"token": verification_token})
+    assert verification.status_code == 200, verification.text
+
     db = SessionLocal()
     try:
         user = db.execute(text("SELECT id, tenant_id FROM dbp_users WHERE email = :email"), {"email": email}).fetchone()
