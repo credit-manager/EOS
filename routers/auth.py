@@ -225,7 +225,7 @@ async def reset_password(body: dict, db: Session = Depends(get_db)):
     if not result["success"]:
         raise _err(400, "RESET_FAILED", result["error"])
     db.commit()
-    return {"status": "success", "data": {"message": "Password reset successful"}
+    return {"status": "success", "data": {"message": "Password reset successful"}}
 
 
 @router.post("/change-password", dependencies=[Depends(require_permission("dynamic", "update"))])
