@@ -1,59 +1,61 @@
 # EOS Dynamic Business Platform — Production Dockerfile
-# Multi-stage build for smaller production image
+# Multi-stage build: React frontend + Python runtime
 
 # ═══════════════════════════════════════════════
-# Stage 1: Build dependencies
+# Stage 1: Build canonical EOS React frontend
 # ═══════════════════════════════════════════════
-FROM python:3.14-slim AS builder
+FROM node:20-bookworm-slim AS frontend-builder
+
+WORKDIR /frontend
+COPY erp-system/frontend/package.json ./package.json
+RUN npm install --no-audit --no-fund
+COPY erp-system/frontend/ ./
+RUN npm run build
+
+# ═══════════════════════════════════════════════
+# Stage 2: Build Python dependencies
+# ═══════════════════════════════════════════════
+FROM python:3.14-slim AS python-builder
 
 WORKDIR /app
-
-# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # ═══════════════════════════════════════════════
-# Stage 2: Production runtime
+# Stage 3: Production runtime
 # ═══════════════════════════════════════════════
 FROM python:3.14-slim
 
 WORKDIR /app
 
-# Create non-root user
 RUN groupadd -r eos && useradd -r -g eos eos
 
-# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Python packages from builder
-COPY --from=builder /root/.local /home/eos/.local
-
-# Copy application code
+COPY --from=python-builder /root/.local /home/eos/.local
 COPY --chown=eos:eos . .
 
-# Switch to non-root user
-USER eos
+# The canonical React source is erp-system/frontend; its build output is the
+# only frontend artifact served by main.py at /ui.
+RUN rm -rf /app/eos-system/frontend/dist
+COPY --from=frontend-builder --chown=eos:eos /frontend/dist /app/eos-system/frontend/dist
 
-# Add local packages to PATH
+USER eos
 ENV PATH=/home/eos/.local/bin:$PATH
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Expose port
 EXPOSE 8000
 
-# Run with gunicorn for production
 CMD ["gunicorn", "main:app", \
      "--workers", "4", \
      "--worker-class", "uvicorn.workers.UvicornWorker", \
