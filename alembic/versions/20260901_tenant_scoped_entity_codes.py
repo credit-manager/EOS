@@ -45,21 +45,30 @@ def upgrade():
     END $$;
     """)
     op.execute("""
-      CREATE UNIQUE INDEX IF NOT EXISTS uq_dbp_entities_tenant_code
-      ON public.dbp_entities (tenant_id, code)
-      WHERE tenant_id IS NOT NULL
-    """)
-    op.execute("""
-      CREATE UNIQUE INDEX IF NOT EXISTS uq_dbp_entities_global_code
-      ON public.dbp_entities (code)
-      WHERE tenant_id IS NULL
+    DO $$
+    BEGIN
+      IF to_regclass('public.dbp_entities') IS NOT NULL THEN
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_dbp_entities_tenant_code
+        ON public.dbp_entities (tenant_id, code)
+        WHERE tenant_id IS NOT NULL;
+
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_dbp_entities_global_code
+        ON public.dbp_entities (code)
+        WHERE tenant_id IS NULL;
+      END IF;
+    END $$;
     """)
 
 
 def downgrade():
-    op.execute("DROP INDEX IF EXISTS public.uq_dbp_entities_tenant_code")
-    op.execute("DROP INDEX IF EXISTS public.uq_dbp_entities_global_code")
     op.execute("""
-      CREATE UNIQUE INDEX IF NOT EXISTS uq_dbp_entities_code_legacy
-      ON public.dbp_entities (code)
+    DO $$
+    BEGIN
+      IF to_regclass('public.dbp_entities') IS NOT NULL THEN
+        DROP INDEX IF EXISTS public.uq_dbp_entities_tenant_code;
+        DROP INDEX IF EXISTS public.uq_dbp_entities_global_code;
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_dbp_entities_code_legacy
+        ON public.dbp_entities (code);
+      END IF;
+    END $$;
     """)
