@@ -8,7 +8,9 @@ export default function AuthGate({ children }: { children: ReactNode }) {
 
   const clearSession = () => {
     localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
     localStorage.removeItem('eos_tenant_id');
+    localStorage.removeItem('eos_company_id');
     localStorage.removeItem('eos_user');
     setAuthenticated(false);
   };
@@ -25,6 +27,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
         const user = response.data?.data;
         if (!user?.tenant_id) throw new Error('Invalid session');
         localStorage.setItem('eos_tenant_id', String(user.tenant_id));
+        if (user.company_id) localStorage.setItem('eos_company_id', String(user.company_id));
         localStorage.setItem('eos_user', JSON.stringify(user));
         setAuthenticated(true);
       })
