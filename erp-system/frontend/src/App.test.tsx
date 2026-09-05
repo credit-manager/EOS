@@ -11,7 +11,7 @@ describe('EOS frontend functional API flows', () => {
     Object.defineProperty(globalThis, 'window', { configurable: true, value: { location: { origin: 'http://localhost:3000' }, dispatchEvent: vi.fn() } });
     Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: vi.fn((key: string) => key === 'eos_company_id' ? 'company-1' : null), setItem: vi.fn(), removeItem: vi.fn() } });
   });
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => { vi.restoreAllMocks(); });
 
   it('uses the canonical same-origin API base and Arabic headers', async () => {
     const axios = await import('axios'); await loadApi();
