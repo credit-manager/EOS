@@ -44,7 +44,9 @@ describe('EOS frontend functional API flows', () => {
     });
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('uses the canonical same-origin API base and Arabic headers', async () => {
     const axios = await import('axios');
