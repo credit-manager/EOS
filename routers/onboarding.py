@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
-from core.auth import require_permission, get_current_user
+from core.auth import require_permission, require_platform_owner, get_current_user
 from core.rate_limit import read_limiter, write_limiter
 from core.onboarding_engine import OnboardingEngine
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/v1/dynamic/onboarding", tags=["Onboarding"])
 
 
 @router.get("/industries", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_industries(is_active: Optional[bool] = None, db: Session = Depends(get_db)):
+async def list_industries(is_active: Optional[bool] = True, db: Session = Depends(get_db)):
     return {"status": "success", "data": OnboardingEngine(db).list_industry_templates(is_active=is_active)}
 
 
@@ -42,17 +42,16 @@ async def get_module(module_id: str, db: Session = Depends(get_db)):
 @router.post("/start", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
 async def start_onboarding(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     tenant_id = user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(401, detail={"status": "error", "error": {"code": "TENANT_REQUIRED", "message": "Tenant context required"}})
     engine = OnboardingEngine(db)
     existing = engine.get_onboarding(tenant_id)
     if existing and existing["status"] == "completed":
         raise HTTPException(400, detail={"status": "error", "error": {"code": "ALREADY_COMPLETED", "message": "Onboarding already completed"}})
-    oid = engine.create_onboarding(
-        tenant_id,
-        admin_user_id=user.get("id") or body.get("admin_user_id"),
-        admin_email=body.get("admin_email"),
-    )
+    oid = engine.create_onboarding(tenant_id, admin_user_id=user.get("id"), admin_email=body.get("admin_email") or user.get("email"))
     db.commit()
-    return {"status": "success", "data": {"id": oid, "current_step": "industry_selection", "status": "in_progress"}}
+    current = engine.get_onboarding(tenant_id)
+    return {"status": "success", "data": {"id": oid, "current_step": current["current_step"], "status": current["status"]}}
 
 
 @router.get("/status", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
@@ -74,13 +73,16 @@ async def complete_step(body: dict, user: dict = Depends(get_current_user), db: 
     data = body.get("data")
     if not step:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": "step required"}})
-    result = OnboardingEngine(db).complete_step(user.get("tenant_id"), step, data)
+    if not user.get("tenant_id"):
+        raise HTTPException(401, detail={"status": "error", "error": {"code": "TENANT_REQUIRED", "message": "Tenant context required"}})
+    result = OnboardingEngine(db).complete_step(user["tenant_id"], step, data)
     if not result["success"]:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "STEP_FAILED", "message": result["error"]}})
     db.commit()
     return {"status": "success", "data": result}
 
 
-@router.get("/list", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
+@router.get("/list", dependencies=[Depends(require_platform_owner), Depends(read_limiter.check)])
 async def list_onboardings(status: Optional[str] = None, db: Session = Depends(get_db)):
+    """Control-plane listing; tenant admins must never receive cross-tenant onboarding records."""
     return {"status": "success", "data": OnboardingEngine(db).list_onboardings(status=status)}
