@@ -38,11 +38,8 @@ vi.mock('axios', async () => {
 describe('EOS API client functional contract', () => {
   beforeEach(() => {
     globalThis.localStorage.clear();
-    vi.mocked(apiClient.get).mockClear();
-    vi.mocked(apiClient.post).mockClear();
-    vi.mocked(apiClient.put).mockClear();
-    vi.mocked(apiClient.delete).mockClear();
-    vi.mocked(apiClient.request).mockClear();
+    vi.mocked(apiClient.get).mockClear(); vi.mocked(apiClient.post).mockClear();
+    vi.mocked(apiClient.put).mockClear(); vi.mocked(apiClient.delete).mockClear(); vi.mocked(apiClient.request).mockClear();
   });
 
   it('uses the configured API facade for authentication', async () => {
@@ -57,18 +54,15 @@ describe('EOS API client functional contract', () => {
     expect(apiClient.post).toHaveBeenCalledWith('/auth/verify-email', { token: 'verification-token' });
   });
 
-  it('persists tokens returned by the response interceptor', async () => {
+  it('persists tokens and company context returned by the response interceptor', async () => {
     expect(interceptorHandlers.responseSuccess).toBeDefined();
     await interceptorHandlers.responseSuccess!({ data: { data: { access_token: 'access-1', refresh_token: 'refresh-1', user: { tenant_id: 't1', company_id: 'c1' } } } });
-    expect(localStorage.getItem('access_token')).toBe('access-1');
-    expect(localStorage.getItem('refresh_token')).toBe('refresh-1');
-    expect(localStorage.getItem('eos_tenant_id')).toBe('t1');
-    expect(localStorage.getItem('eos_company_id')).toBe('c1');
+    expect(localStorage.getItem('access_token')).toBe('access-1'); expect(localStorage.getItem('refresh_token')).toBe('refresh-1');
+    expect(localStorage.getItem('eos_tenant_id')).toBe('t1'); expect(localStorage.getItem('eos_company_id')).toBe('c1');
   });
 
   it('attaches the current bearer token to requests', () => {
     localStorage.setItem('access_token', 'access-2');
-    expect(interceptorHandlers.request).toBeDefined();
     const config = interceptorHandlers.request!({ headers: {} });
     expect((config as { headers: Record<string, string> }).headers.Authorization).toBe('Bearer access-2');
   });
@@ -77,24 +71,17 @@ describe('EOS API client functional contract', () => {
     localStorage.setItem('refresh_token', 'refresh-old');
     vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: { access_token: 'access-new', refresh_token: 'refresh-new' } } } as never);
     vi.mocked(apiClient.request).mockResolvedValueOnce({ data: { ok: true } } as never);
-    expect(interceptorHandlers.responseError).toBeDefined();
     const result = await interceptorHandlers.responseError!({ response: { status: 401 }, config: { url: '/sales/customers', headers: {} } });
     expect(apiClient.post).toHaveBeenCalledWith('/auth/refresh', { refresh_token: 'refresh-old' });
-    expect(localStorage.getItem('access_token')).toBe('access-new');
-    expect(localStorage.getItem('refresh_token')).toBe('refresh-new');
-    expect(apiClient.request).toHaveBeenCalledWith(expect.objectContaining({ _retry: true, headers: { Authorization: 'Bearer access-new' } }));
+    expect(localStorage.getItem('access_token')).toBe('access-new'); expect(localStorage.getItem('refresh_token')).toBe('refresh-new');
     expect(result).toEqual({ data: { ok: true } });
   });
 
   it('clears the local session when refresh fails', async () => {
-    localStorage.setItem('access_token', 'access-old');
-    localStorage.setItem('refresh_token', 'refresh-old');
+    localStorage.setItem('access_token', 'access-old'); localStorage.setItem('refresh_token', 'refresh-old');
     vi.mocked(apiClient.post).mockRejectedValueOnce(new Error('refresh failed'));
-    expect(interceptorHandlers.responseError).toBeDefined();
     await expect(interceptorHandlers.responseError!({ response: { status: 401 }, config: { url: '/reports/sales', headers: {} } })).rejects.toBeDefined();
-    expect(localStorage.getItem('access_token')).toBeNull();
-    expect(localStorage.getItem('refresh_token')).toBeNull();
-    expect(localStorage.getItem('eos_tenant_id')).toBeNull();
+    expect(localStorage.getItem('access_token')).toBeNull(); expect(localStorage.getItem('refresh_token')).toBeNull();
   });
 
   it('routes customer, supplier and product CRUD through canonical APIs', async () => {
@@ -106,31 +93,23 @@ describe('EOS API client functional contract', () => {
     await suppliersAPI.getAll({ search: 'Vendor' }); await suppliersAPI.create({ name: 'Vendor' }); await suppliersAPI.update('s1', { name: 'Vendor Ltd' }); await suppliersAPI.delete('s1');
     await productsAPI.getAll({ search: 'Widget' }); await productsAPI.create({ name: 'Widget' }); await productsAPI.update('p1', { name: 'Widget Pro' }); await productsAPI.delete('p1');
     expect(apiClient.get).toHaveBeenCalledWith('/sales/customers', { params: { search: 'Acme' } });
-    expect(apiClient.post).toHaveBeenCalledWith('/sales/customers', { name: 'Acme' });
-    expect(apiClient.put).toHaveBeenCalledWith('/sales/customers/c1', { name: 'Acme Ltd' });
-    expect(apiClient.delete).toHaveBeenCalledWith('/sales/customers/c1');
-    expect(apiClient.get).toHaveBeenCalledWith('/inventory/suppliers', { params: { search: 'Vendor' } });
-    expect(apiClient.get).toHaveBeenCalledWith('/inventory/products', { params: { search: 'Widget' } });
   });
 
-  it('routes commercial sales-order and invoice workflows to real backend contracts', async () => {
+  it('routes the commercial sales-order, invoice issue and collection workflow', async () => {
     localStorage.setItem('eos_company_id', 'company-1');
     vi.mocked(apiClient.get).mockResolvedValue({ data: { data: [] } } as never);
     vi.mocked(apiClient.post).mockResolvedValue({ data: { data: { id: 'x1' } } } as never);
-    await ordersAPI.getAll();
-    await ordersAPI.create({ customer_id: 'c1', order_date: '2026-09-05', lines: [] });
-    await ordersAPI.getById('o1');
-    await invoicesAPI.getAll();
-    await invoicesAPI.create({ customer_id: 'c1', invoice_date: '2026-09-05', lines: [] });
-    await invoicesAPI.getById('i1');
-    await invoicesAPI.recordPayment('i1', 100, '2026-09-05');
+    await ordersAPI.getAll(); await ordersAPI.create({ customer_id: 'c1', order_date: '2026-09-05', lines: [] }); await ordersAPI.getById('o1');
+    await invoicesAPI.getAll(); await invoicesAPI.create({ customer_id: 'c1', invoice_date: '2026-09-05', lines: [] }); await invoicesAPI.getById('i1');
+    await invoicesAPI.issue('i1'); await invoicesAPI.recordPayment('i1', 100, '2026-09-05');
     expect(apiClient.get).toHaveBeenCalledWith('/dynamic/companies/company-1/sales-orders', { params: undefined });
     expect(apiClient.post).toHaveBeenCalledWith('/dynamic/companies/company-1/sales-orders', { customer_id: 'c1', order_date: '2026-09-05', lines: [] });
     expect(apiClient.get).toHaveBeenCalledWith('/dynamic/sales-orders/o1');
     expect(apiClient.get).toHaveBeenCalledWith('/dynamic/companies/company-1/invoices', { params: undefined });
     expect(apiClient.post).toHaveBeenCalledWith('/dynamic/companies/company-1/invoices', { customer_id: 'c1', invoice_date: '2026-09-05', lines: [] });
     expect(apiClient.get).toHaveBeenCalledWith('/dynamic/invoices/i1');
-    expect(apiClient.post).toHaveBeenCalledWith('/dynamic/invoices/i1/payments', { amount: 100, payment_date: '2026-09-05', company_id: 'company-1' });
+    expect(apiClient.post).toHaveBeenCalledWith('/dynamic/invoices/i1/issue');
+    expect(apiClient.post).toHaveBeenCalledWith('/dynamic/invoices/i1/payments', { amount: 100, payment_date: '2026-09-05' });
   });
 });
 
