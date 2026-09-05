@@ -1,25 +1,66 @@
 """
 Production authentication endpoints: registration, login, verification,
-password reset and tenant user administration.
+password reset, rotating refresh sessions and tenant user administration.
 """
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from database import get_db
-from core.auth import get_current_user, require_permission, require_admin_role, TEST_SECRET_KEY, TEST_ALGORITHM
+from core.auth import get_current_user, require_permission, require_admin_role, TEST_SECRET_KEY
 from core.user_engine import UserEngine
 from core.email_adapter import get_email_service, EmailTemplateEngine
 from core.rate_limit import write_limiter, auth_limiter
 from datetime import datetime, timedelta, timezone
+import hashlib
 import jwt
 import os
-import uuid
 import secrets
+import uuid
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
+_REFRESH_DAYS = 30
 
 
 def _err(sc, code, msg):
     return HTTPException(sc, detail={"status": "error", "error": {"code": code, "message": msg}})
+
+
+def _refresh_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _issue_refresh_token(db: Session, user_id: str, tenant_id: str, family_id: str | None = None) -> str:
+    raw = secrets.token_urlsafe(64)
+    db.execute(text(
+        "INSERT INTO dbp_refresh_tokens "
+        "(id, token_hash, user_id, tenant_id, family_id, expires_at) "
+        "VALUES (:id, :hash, :user_id, :tenant_id, :family_id, :expires_at)"
+    ), {
+        "id": str(uuid.uuid4()), "hash": _refresh_hash(raw), "user_id": user_id,
+        "tenant_id": tenant_id, "family_id": family_id or str(uuid.uuid4()),
+        "expires_at": datetime.now(timezone.utc) + timedelta(days=_REFRESH_DAYS),
+    })
+    return raw
+
+
+def _issue_access_token(result: dict) -> str:
+    mode = os.getenv("EOS_AUTH_MODE", "test").lower()
+    if mode == "production":
+        secret_key = os.getenv("EOS_SECRET_KEY")
+        if not secret_key or len(secret_key) < 32:
+            raise _err(500, "SERVER_CONFIG", "Production JWT secret is not configured correctly")
+    else:
+        secret_key = TEST_SECRET_KEY
+        if not secret_key:
+            raise _err(500, "SERVER_CONFIG", "EOS_TEST_SECRET_KEY is not configured")
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": result["user_id"], "exp": now + timedelta(minutes=30), "iat": now,
+        "type": "access", "tenant_id": result["tenant_id"], "email": result["email"],
+        "roles": [result["role"]], "iss": os.getenv("EOS_JWT_ISSUER", "eos-dbp"),
+        "aud": os.getenv("EOS_JWT_AUDIENCE", "eos-api"), "jti": str(uuid.uuid4()),
+    }
+    return jwt.encode(payload, secret_key, algorithm="HS256")
 
 
 @router.post("/register", dependencies=[Depends(auth_limiter.check)])
@@ -29,7 +70,6 @@ async def register(body: dict, request: Request, db: Session = Depends(get_db)):
         if not body.get(f):
             raise _err(400, "MISSING", f"{f} required")
     from database import SessionLocal
-    from sqlalchemy import text
     db2 = SessionLocal()
     try:
         tenant_id = f"tenant_{secrets.token_hex(8)}"
@@ -39,9 +79,6 @@ async def register(body: dict, request: Request, db: Session = Depends(get_db)):
             "VALUES (:id, :tid, :code, :name, :name)"
         ), {"id": str(uuid.uuid4()), "tid": tenant_id,
             "code": company_name.lower().replace(" ", "_")[:30], "name": company_name})
-
-        # Keep company + first admin in one transaction. UserEngine.register uses
-        # flush(), so failures roll the whole transaction back on session close.
         engine = UserEngine(db2)
         result = engine.register(
             tenant_id=tenant_id, email=body["email"], password=body["password"],
@@ -52,7 +89,6 @@ async def register(body: dict, request: Request, db: Session = Depends(get_db)):
         if not result["success"]:
             db2.rollback()
             raise _err(400, "REGISTER_FAILED", result["error"])
-
         db2.commit()
         email_svc = get_email_service()
         frontend_url = os.getenv("EOS_FRONTEND_URL", "http://localhost:3000")
@@ -106,34 +142,92 @@ async def login(body: dict, db: Session = Depends(get_db)):
     if not result["success"]:
         sc = 403 if result.get("requires_verification") else 401
         raise _err(sc, "LOGIN_FAILED", result["error"])
-    mode = os.getenv("EOS_AUTH_MODE", "test").lower()
-    secret_key = os.getenv("EOS_SECRET_KEY")
-    if mode == "production":
-        if not secret_key:
-            raise _err(500, "SERVER_CONFIG", "EOS_SECRET_KEY is not configured")
-    else:
-        secret_key = TEST_SECRET_KEY
-        if not secret_key:
-            raise _err(500, "SERVER_CONFIG", "EOS_TEST_SECRET_KEY is not configured")
-    algorithm = "HS256"
-    now = datetime.now(timezone.utc)
-    expire = now + timedelta(minutes=60)
-    payload = {
-        "sub": result["user_id"], "exp": expire, "iat": now, "type": "access",
-        "tenant_id": result["tenant_id"], "email": result["email"], "roles": [result["role"]],
-        "iss": os.getenv("EOS_JWT_ISSUER", "eos-dbp"),
-        "aud": os.getenv("EOS_JWT_AUDIENCE", "eos-api"),
-        "jti": str(uuid.uuid4()),
-    }
-    token = jwt.encode(payload, secret_key, algorithm=algorithm)
+    try:
+        token = _issue_access_token(result)
+        refresh_token = _issue_refresh_token(db, result["user_id"], result["tenant_id"])
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise _err(500, "SESSION_FAILED", "Unable to create authenticated session")
     return {"status": "success", "data": {
-        "access_token": token, "token_type": "bearer",
+        "access_token": token, "refresh_token": refresh_token, "token_type": "bearer",
+        "expires_in": 1800,
         "user": {
             "id": result["user_id"], "email": result["email"],
             "first_name": result.get("first_name"), "last_name": result.get("last_name"),
             "tenant_id": result["tenant_id"], "role": result["role"]
         }
     }}
+
+
+@router.post("/refresh", dependencies=[Depends(auth_limiter.check)])
+async def refresh_token(body: dict, db: Session = Depends(get_db)):
+    raw = str(body.get("refresh_token") or "").strip()
+    if not raw or len(raw) < 40:
+        raise _err(401, "INVALID_REFRESH_TOKEN", "Invalid refresh token")
+    now = datetime.now(timezone.utc)
+    token_hash = _refresh_hash(raw)
+    row = db.execute(text(
+        "SELECT id, user_id, tenant_id, family_id, expires_at, rotated_at, revoked_at "
+        "FROM dbp_refresh_tokens WHERE token_hash = :hash"
+    ), {"hash": token_hash}).mappings().first()
+    if not row:
+        raise _err(401, "INVALID_REFRESH_TOKEN", "Invalid refresh token")
+    if row["revoked_at"] is not None or row["rotated_at"] is not None:
+        db.execute(text(
+            "UPDATE dbp_refresh_tokens SET revoked_at = COALESCE(revoked_at, :now) "
+            "WHERE family_id = :family_id AND revoked_at IS NULL"
+        ), {"now": now, "family_id": row["family_id"]})
+        db.commit()
+        raise _err(401, "REFRESH_REUSE_DETECTED", "Refresh session has been revoked")
+    if row["expires_at"] <= now:
+        db.execute(text("UPDATE dbp_refresh_tokens SET revoked_at = :now WHERE id = :id"), {"now": now, "id": row["id"]})
+        db.commit()
+        raise _err(401, "REFRESH_EXPIRED", "Refresh token expired")
+
+    engine = UserEngine(db)
+    user = engine.get_user_by_id_tenant(row["user_id"], row["tenant_id"])
+    if not user or not user.get("is_active", True):
+        db.execute(text("UPDATE dbp_refresh_tokens SET revoked_at = :now WHERE family_id = :family_id AND revoked_at IS NULL"),
+                   {"now": now, "family_id": row["family_id"]})
+        db.commit()
+        raise _err(401, "SESSION_REVOKED", "User session is no longer active")
+    result = {"user_id": row["user_id"], "tenant_id": row["tenant_id"], "email": user["email"], "role": user["role"]}
+    new_raw = secrets.token_urlsafe(64)
+    new_hash = _refresh_hash(new_raw)
+    db.execute(text(
+        "INSERT INTO dbp_refresh_tokens "
+        "(id, token_hash, user_id, tenant_id, family_id, expires_at) "
+        "VALUES (:id, :hash, :user_id, :tenant_id, :family_id, :expires_at)"
+    ), {"id": str(uuid.uuid4()), "hash": new_hash, "user_id": row["user_id"], "tenant_id": row["tenant_id"],
+        "family_id": row["family_id"], "expires_at": now + timedelta(days=_REFRESH_DAYS)})
+    db.execute(text(
+        "UPDATE dbp_refresh_tokens SET rotated_at = :now, last_used_at = :now, replaced_by_hash = :new_hash "
+        "WHERE id = :id AND rotated_at IS NULL AND revoked_at IS NULL"
+    ), {"now": now, "new_hash": new_hash, "id": row["id"]})
+    try:
+        access = _issue_access_token(result)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise _err(500, "SESSION_FAILED", "Unable to refresh authenticated session")
+    return {"status": "success", "data": {"access_token": access, "refresh_token": new_raw, "token_type": "bearer", "expires_in": 1800}}
+
+
+@router.post("/logout", dependencies=[Depends(auth_limiter.check)])
+async def logout(body: dict | None = None, db: Session = Depends(get_db)):
+    raw = str((body or {}).get("refresh_token") or "").strip()
+    if raw:
+        db.execute(text("UPDATE dbp_refresh_tokens SET revoked_at = :now WHERE token_hash = :hash AND revoked_at IS NULL"),
+                   {"now": datetime.now(timezone.utc), "hash": _refresh_hash(raw)})
+        db.commit()
+    return {"status": "success", "data": {"message": "Logged out"}}
 
 
 @router.post("/forgot-password", dependencies=[Depends(auth_limiter.check)])
