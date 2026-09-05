@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { authAPI } from '../services/api';
+import Register from './Register';
 import '../styles/auth.css';
 
 interface LoginProps {
@@ -8,11 +9,14 @@ interface LoginProps {
 }
 
 export default function Login({ onAuthenticated, language = 'ar' }: LoginProps) {
+  const [registering, setRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const ar = language === 'ar';
+
+  if (registering) return <Register onAuthenticated={onAuthenticated} onBack={() => setRegistering(false)} language={language} />;
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -25,6 +29,7 @@ export default function Login({ onAuthenticated, language = 'ar' }: LoginProps) 
       const user = data?.user;
       if (!token || !user?.tenant_id) throw new Error('Invalid authentication response');
       localStorage.setItem('access_token', token);
+      localStorage.setItem('refresh_token', data?.refresh_token || '');
       localStorage.setItem('eos_tenant_id', String(user.tenant_id));
       localStorage.setItem('eos_user', JSON.stringify(user));
       onAuthenticated();
@@ -57,6 +62,9 @@ export default function Login({ onAuthenticated, language = 'ar' }: LoginProps) 
           {error && <div className="eos-login-error" role="alert">{error}</div>}
           <button className="eos-primary-button eos-login-submit" type="submit" disabled={loading}>
             {loading ? (ar ? 'جارٍ الدخول…' : 'Signing in…') : (ar ? 'دخول' : 'Sign in')}
+          </button>
+          <button className="eos-ghost-button" type="button" onClick={() => setRegistering(true)} disabled={loading}>
+            {ar ? 'إنشاء حساب شركة جديد' : 'Create a new company account'}
           </button>
         </form>
       </section>
