@@ -2,12 +2,7 @@
 AUTH MODULE
 ============
 
-This module provides:
-1. Test authentication functions (for verification/testing)
-2. Delegation to auth_adapter for get_current_user
-
-The auth_adapter switches between test and production auth
-based on EOS_AUTH_MODE environment variable.
+Authentication helpers and authorization dependencies.
 """
 
 import os
@@ -17,11 +12,10 @@ from dotenv import load_dotenv
 import jwt
 from jwt import InvalidTokenError
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPBearer
 
 load_dotenv()
 
-# Test-only secret key — MUST be set explicitly via env.
 TEST_SECRET_KEY = os.getenv("EOS_TEST_SECRET_KEY", "")
 TEST_ALGORITHM = "HS256"
 TEST_TOKEN_EXPIRE_MINUTES = 60
@@ -34,21 +28,17 @@ def create_test_token(
     user_id: str = "test-user",
     email: str = "test@example.com",
     roles: Optional[list] = None,
-    expires_delta: Optional[timedelta] = None
+    expires_delta: Optional[timedelta] = None,
 ) -> str:
     """Create a test JWT token."""
     if not TEST_SECRET_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="EOS_TEST_SECRET_KEY is not configured",
-        )
-    expire = datetime.now(timezone.utc) + (
-        expires_delta if expires_delta else timedelta(minutes=TEST_TOKEN_EXPIRE_MINUTES)
-    )
+        raise HTTPException(status_code=500, detail="EOS_TEST_SECRET_KEY is not configured")
+    now = datetime.now(timezone.utc)
+    expire = now + (expires_delta or timedelta(minutes=TEST_TOKEN_EXPIRE_MINUTES))
     payload = {
         "sub": user_id,
         "exp": expire,
-        "iat": datetime.now(timezone.utc),
+        "iat": now,
         "type": "access",
         "tenant_id": tenant_id.lower(),
         "email": email,
@@ -60,10 +50,7 @@ def create_test_token(
 def verify_test_token(token: str) -> dict:
     """Verify and decode a test JWT token."""
     if not TEST_SECRET_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="EOS_TEST_SECRET_KEY is not configured",
-        )
+        raise HTTPException(status_code=500, detail="EOS_TEST_SECRET_KEY is not configured")
     try:
         return jwt.decode(token, TEST_SECRET_KEY, algorithms=[TEST_ALGORITHM])
     except InvalidTokenError:
@@ -82,57 +69,64 @@ __all__ = [
     "get_current_user",
     "optional_get_current_user",
     "require_permission",
+    "require_admin_role",
     "require_platform_owner",
     "TEST_SECRET_KEY",
     "TEST_ALGORITHM",
 ]
 
 
+def _roles(user: Optional[dict]) -> set[str]:
+    if not user:
+        return set()
+    return {
+        r.get("permission") if isinstance(r, dict) else r
+        for r in user.get("roles", [])
+    } | set(user.get("roles", []))
+
+
 def require_permission(module: str, action: str):
-    """Dependency factory: require a specific permission."""
+    """Dependency factory: require a module/action permission."""
     async def _check(current_user: Optional[dict] = Depends(optional_get_current_user)):
         if current_user is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication required",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+            raise HTTPException(status_code=401, detail="Authentication required", headers={"WWW-Authenticate": "Bearer"})
         required = f"{module}:{action}"
-        if "*:*" in current_user.get("permissions", []):
-            return
-        if required in current_user.get("permissions", []):
-            return
-        roles = current_user.get("roles", [])
-        for role in roles:
-            if role == "admin":
-                return
-            if role == "dynamic_manager":
-                return
-            if role == "dynamic_operator" and action in ("read", "create", "update"):
-                return
-            if role == "dynamic_viewer" and action == "read":
-                return
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions",
-        )
+        permissions = current_user.get("permissions", [])
+        roles = _roles(current_user)
+        if "*:*" in permissions or required in permissions:
+            return current_user
+        if "admin" in roles or "dynamic_manager" in roles:
+            return current_user
+        if "dynamic_operator" in roles and action in ("read", "create", "update"):
+            return current_user
+        if "dynamic_viewer" in roles and action == "read":
+            return current_user
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
     return _check
 
 
+async def require_admin_role(user: dict = Depends(get_current_user)) -> dict:
+    """Require tenant administrator privileges for security-sensitive user management."""
+    roles = _roles(user)
+    if "admin" not in roles and "platform_owner" not in roles:
+        raise HTTPException(status_code=403, detail="Administrator privileges required")
+    return user
+
+
 def _designated_platform_owners() -> set:
-    """Resolve designated platform-owner email addresses."""
-    raw = os.getenv("EOS_PLATFORM_OWNER_EMAILS", "admin@demo.com")
+    """Resolve explicitly configured platform-owner email addresses.
+
+    There is deliberately no built-in/default owner account or email.
+    """
+    raw = os.getenv("EOS_PLATFORM_OWNER_EMAILS", "")
     return {e.strip().lower() for e in raw.split(",") if e.strip()}
 
 
 async def require_platform_owner(user: dict = Depends(get_current_user)) -> dict:
     """Allow only explicit platform owners to access the control plane."""
-    if "platform_owner" in user.get("roles", []):
+    if "platform_owner" in _roles(user):
         return user
     email = (user.get("email") or "").strip().lower()
     if email and email in _designated_platform_owners():
         return user
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Platform owner privileges required",
-    )
+    raise HTTPException(status_code=403, detail="Platform owner privileges required")
