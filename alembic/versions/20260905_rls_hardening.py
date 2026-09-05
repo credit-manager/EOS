@@ -25,6 +25,7 @@ def upgrade():
         LOOP
             policy_name := 'tenant_isolation_' || r.table_name;
             EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', r.table_schema, r.table_name);
+            EXECUTE format('ALTER TABLE %I.%I FORCE ROW LEVEL SECURITY', r.table_schema, r.table_name);
             EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I', policy_name, r.table_schema, r.table_name);
             EXECUTE format(
                 'CREATE POLICY %I ON %I.%I USING (tenant_id::text = current_setting(''app.tenant_id'', true) OR tenant_id IS NULL) WITH CHECK (tenant_id::text = current_setting(''app.tenant_id'', true))',
@@ -54,6 +55,7 @@ def downgrade():
             policy_name := 'tenant_isolation_' || r.table_name;
             EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I', policy_name, r.table_schema, r.table_name);
             EXECUTE format('ALTER TABLE %I.%I DISABLE ROW LEVEL SECURITY', r.table_schema, r.table_name);
+            EXECUTE format('ALTER TABLE %I.%I NO FORCE ROW LEVEL SECURITY', r.table_schema, r.table_name);
         END LOOP;
     END $$;
     """)
