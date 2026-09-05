@@ -23,7 +23,14 @@ vi.mock('axios', async () => {
 });
 
 describe('EOS API client functional contract', () => {
-  beforeEach(() => { globalThis.localStorage.clear(); vi.clearAllMocks(); });
+  beforeEach(() => {
+    globalThis.localStorage.clear();
+    vi.mocked(apiClient.get).mockClear();
+    vi.mocked(apiClient.post).mockClear();
+    vi.mocked(apiClient.put).mockClear();
+    vi.mocked(apiClient.delete).mockClear();
+    vi.mocked(apiClient.request).mockClear();
+  });
 
   it('uses the configured API facade for authentication', async () => {
     vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: { access_token: 'access', refresh_token: 'refresh' } } } as never);
