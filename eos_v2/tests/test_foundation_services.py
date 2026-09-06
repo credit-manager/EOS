@@ -5,7 +5,6 @@ import pytest
 
 from eos_v2.app.tenant_context import TenantContext, reset_tenant_context, set_tenant_context
 from eos_v2.application.foundation.services import FoundationService
-from eos_v2.modules.inventory import StockBalance
 from eos_v2.modules.purchasing import PurchaseOrderStatus
 from eos_v2.modules.sales import SalesOrderLine, SalesOrderStatus
 
@@ -22,14 +21,13 @@ def test_sales_lifecycle_is_forward_only():
         reset_tenant_context(token)
 
 
-def test_inventory_cannot_go_negative():
+def test_inventory_cannot_go_negative_and_receipts_increase_stock():
     token = set_tenant_context(TenantContext(uuid4(), uuid4()))
     try:
-        with pytest.raises(ValueError, match="Insufficient stock"):
-            FoundationService.apply_inventory_movement(uuid4(), Decimal("-1"), "issue", None)
         item = uuid4()
-        balance = StockBalance(tenant_id=TenantContext, item_id=item, quantity=Decimal("1")) if False else None
-        _, updated = FoundationService.apply_inventory_movement(item, Decimal("5"), "receipt", balance)
+        with pytest.raises(ValueError, match="Insufficient stock"):
+            FoundationService.apply_inventory_movement(item, Decimal("-1"), "issue", None)
+        _, updated = FoundationService.apply_inventory_movement(item, Decimal("5"), "receipt", None)
         assert updated.quantity == Decimal("5")
     finally:
         reset_tenant_context(token)
