@@ -7,6 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from eos_v2.app.tenant_context import TenantContext, reset_tenant_context, set_tenant_context
 from eos_v2.application.identity.service import authenticate_access_token
+from eos_v2.domain.permissions.policy import Permission, authorize
 from eos_v2.infrastructure.db.identity_repository import SqlAlchemyIdentityRepository
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -47,8 +48,15 @@ def get_current_identity(
         reset_tenant_context(token)
 
 
+def require_permission(identity, permission: Permission) -> None:
+    decision = authorize(identity.actor, identity.tenant.id, permission, identity.permissions)
+    if not decision.allowed:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=decision.reason)
+
+
 @router.get("/me")
 def current_identity(identity=Depends(get_current_identity)) -> dict[str, object]:
+    require_permission(identity, Permission.READ)
     return {
         "actor_id": str(identity.actor.id),
         "tenant_id": str(identity.tenant.id),
