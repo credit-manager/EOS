@@ -58,3 +58,14 @@ def test_tenant_context_is_explicit_and_scoped():
         reset_tenant_context(token)
     with pytest.raises(RuntimeError, match="Tenant context is required"):
         get_tenant_context()
+
+
+def test_rejected_request_is_audited_without_sensitive_headers(caplog):
+    app = create_app(Settings(environment="test"))
+    client = TestClient(app)
+    with caplog.at_level("WARNING", logger="eos.security"):
+        response = client.get("/api/v1/auth/me", headers={"X-Request-ID": "audit-test-id"})
+    assert response.status_code == 401
+    assert "security_event event=request_rejected" in caplog.text
+    assert "audit-test-id" in caplog.text
+    assert "Authorization" not in caplog.text
