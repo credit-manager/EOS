@@ -62,6 +62,8 @@ class Settings:
             raise ValueError("EOS_AI_TIMEOUT_SECONDS must be between 0 and 120")
         if self.environment in {"staging", "production"} and not self.database_url:
             raise ValueError("DATABASE_URL is required outside development/test")
+        if self.environment == "production" and self.auth_mode != "oidc":
+            raise ValueError("EOS_AUTH_MODE must be oidc in production")
         if self.environment == "production" and len(self.secret_key) < 32 and self.auth_mode == "hs256":
             raise ValueError("EOS_SECRET_KEY must contain at least 32 characters in production")
         if any((self.ai_base_url, self.ai_api_key, self.ai_model)) and not all((self.ai_base_url, self.ai_api_key, self.ai_model)):
