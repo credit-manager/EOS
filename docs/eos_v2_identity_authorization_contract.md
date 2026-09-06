@@ -10,16 +10,18 @@
 6. Domain code remains independent of FastAPI, SQLAlchemy, JWT libraries, and HTTP headers.
 7. Identity credentials are infrastructure concerns and must never be stored in domain entities.
 
-## Delivery contract
+## Implemented persistence slice
 
-The next persistence slice will introduce versioned identity/tenant tables and repositories behind these domain contracts. It must include:
+- `0004_identity_authorization.sql` creates isolated v2 tenant, actor, role and permission-assignment tables.
+- Actor subjects are unique within a tenant; role names are unique within a tenant.
+- Permissions are explicit values (`read`, `write`, `admin`) and remain deny-by-default.
+- JWT access tokens require `sub`, `tenant_id`, `actor_id` and `exp` and are verified with HS256.
+- The authenticated tenant claim establishes `TenantContext`; the persisted actor must belong to that tenant and have the same subject.
+- The API exposes `/api/v1/auth/me` through a bearer-token dependency that keeps the tenant context active for the request and resets it afterward.
+- Persisted role permissions are loaded only for the authenticated actor and current tenant.
 
-- clean-database migration tests;
-- upgrade-path migration tests;
-- unique tenant and actor identifiers;
-- inactive-state handling;
-- role/permission assignment with deny-by-default behavior;
-- API authentication verification;
-- cross-tenant negative tests using real persisted records.
+## Test contract
 
-No legacy authentication tables are modified by the v2 migration until an explicit data-migration plan is approved and rehearsed.
+SQLite integration tests cover clean model creation, JWT claim requirements, persisted permission loading and cross-tenant actor rejection. PostgreSQL migration execution and upgrade rehearsal remain release-gate responsibilities before staging promotion.
+
+No legacy authentication tables are modified by v2 migrations.
