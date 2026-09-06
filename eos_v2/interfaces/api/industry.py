@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 
+from eos_v2.app.tenant_context import get_tenant_context
 from eos_v2.application.industry.pack_catalog import CATALOG, get_pack
 from eos_v2.application.industry.pack_service import IndustryPackService
 from eos_v2.domain.permissions.policy import Permission
@@ -15,9 +16,10 @@ router = APIRouter(prefix="/api/v1/industry", tags=["industry"])
 @router.get("/packs")
 def list_packs(identity=Depends(get_current_identity)) -> dict[str, object]:
     require_permission(identity, Permission.READ)
+    tenant_id = get_tenant_context().tenant_id
     return {
         "packs": [
-            {"key": pack.key, "version": pack.version, "display_name": pack.build(identity.tenant_id).display_name}
+            {"key": pack.key, "version": pack.version, "display_name": pack.build(tenant_id).display_name}
             for pack in CATALOG.values()
         ]
     }
