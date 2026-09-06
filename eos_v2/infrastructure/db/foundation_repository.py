@@ -63,9 +63,11 @@ class FoundationRepository:
         self._check(movement.tenant_id)
         self._check(balance.tenant_id)
         row = self.session.scalar(select(StockBalanceModel).where(StockBalanceModel.item_id == balance.item_id, StockBalanceModel.tenant_id == _tenant()))
-        if row is None: self.session.add(StockBalanceModel(id=balance.id, tenant_id=balance.tenant_id, item_id=balance.item_id, quantity=balance.quantity))
-        else: row.quantity = balance.quantity
-        self.session.add(InventoryMovementModel(id=movement.id, tenant_id=movement.tenant_id, item_id=movement.item_id, quantity=movement.quantity, source=movement.source))
+        if row is None:
+            self.session.add(StockBalanceModel(id=balance.id, tenant_id=balance.tenant_id, item_id=balance.item_id, quantity=balance.quantity))
+        else:
+            row.quantity = balance.quantity
+        self.session.add(InventoryMovementModel(id=movement.id, tenant_id=movement.tenant_id, item_id=movement.item_id, quantity=movement.quantity, source=movement.reference_type))
 
     def get_stock(self, item_id: UUID) -> StockBalance:
         row = self.session.scalar(select(StockBalanceModel).where(StockBalanceModel.item_id == item_id, StockBalanceModel.tenant_id == _tenant()))
