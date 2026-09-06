@@ -5,7 +5,7 @@ from typing import Iterator
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from eos_v2.app.tenant_context import TenantContext, reset_tenant_context, set_tenant_context
+from eos_v2.app.tenant_context import TenantContext, clear_tenant_context, set_tenant_context
 from eos_v2.application.identity.service import authenticate_access_token
 from eos_v2.domain.permissions.policy import Permission, authorize
 from eos_v2.infrastructure.db.identity_repository import SqlAlchemyIdentityRepository
@@ -32,7 +32,7 @@ def get_current_identity(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access token") from exc
 
-    token = set_tenant_context(TenantContext(tenant_id, actor_id))
+    set_tenant_context(TenantContext(tenant_id, actor_id))
     try:
         with database.session() as session:
             try:
@@ -45,7 +45,8 @@ def get_current_identity(
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authenticated identity") from exc
             yield identity
     finally:
-        reset_tenant_context(token)
+        # FastAPI may resume generator dependencies in a different AnyIO context.
+        clear_tenant_context()
 
 
 def require_permission(identity, permission: Permission) -> None:
