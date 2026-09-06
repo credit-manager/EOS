@@ -15,11 +15,12 @@
 - `0002_dynamic_records.sql` — tenant-scoped dynamic records with optimistic row versions.
 - `0003_dynamic_record_unique_values.sql` — transactional registry enforcing metadata-defined unique fields and cascading cleanup for deleted records.
 - `0004_identity_authorization.sql` — tenants, actors, roles and explicit permission assignments.
-- `0005_outbox_events.sql` — durable tenant-scoped event outbox for reliable asynchronous delivery.
+- `0005_outbox_events.sql` — durable tenant-scoped event outbox for reliable asynchronous event delivery.
 - `0006_accounting.sql` — tenant-scoped chart of accounts and double-entry journal storage.
 - `0007_foundation_modules.sql` — tenant-scoped Sales, Purchasing, Inventory, HR and Projects operational storage.
 - `0008_industry_pack_installations.sql` — tenant-scoped industry pack installation registry for idempotent retries and version tracking.
-- `0009_ai_composer_proposals.sql` — tenant-scoped AI metadata proposals with draft/approved/rejected lifecycle and decision audit timestamps.
+- `0009_ai_composer_proposals.sql` — tenant-scoped AI metadata proposals with draft/approved/rejected lifecycle and decision timestamps.
+- `0010_ai_composer_decision_actor.sql` — records the authenticated administrator responsible for proposal approval/rejection.
 
 ## Record invariants
 
@@ -70,6 +71,7 @@
 - Proposal changes are tenant-bound by the authenticated context; provider-supplied tenant IDs are ignored.
 - Only an authenticated administrator can approve or reject a draft.
 - Approval publishes through the existing immutable metadata versioning service inside the same database transaction.
+- Every decision records both timestamp and authenticated decision actor.
 - The provider contract accepts structured metadata only; arbitrary code, SQL, or executable actions are not accepted.
 - AI credentials are runtime configuration and are never persisted with proposals.
 
