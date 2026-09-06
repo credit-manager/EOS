@@ -1,6 +1,5 @@
 """Database-enforced integrity controls for the canonical EOS v2 ledger."""
 from alembic import op
-import sqlalchemy as sa
 
 revision = "20260906_accounting_integrity"
 down_revision = "20260906_harden_inventory_tenant_scope"
@@ -36,8 +35,8 @@ def upgrade() -> None:
         "eos_v2_journal_lines",
         "NOT (debit > 0 AND credit > 0)",
     )
-    # A deferred constraint trigger makes the database the final authority for
-    # double-entry balance, while allowing all lines to be inserted in one tx.
+    # The deferred trigger validates the complete entry at transaction commit,
+    # after the application has inserted all of its lines.
     op.execute("""
         CREATE OR REPLACE FUNCTION eos_v2_assert_journal_balanced()
         RETURNS trigger
@@ -51,20 +50,19 @@ def upgrade() -> None:
             SELECT COUNT(*), COALESCE(SUM(debit), 0), COALESCE(SUM(credit), 0)
               INTO line_count, debit_total, credit_total
               FROM eos_v2_journal_lines
-             WHERE journal_entry_id = COALESCE(NEW.journal_entry_id, OLD.journal_entry_id)
-               AND tenant_id = COALESCE(NEW.tenant_id, OLD.tenant_id);
+             WHERE journal_entry_id = NEW.journal_entry_id
+               AND tenant_id = NEW.tenant_id;
             IF line_count < 2 OR debit_total <> credit_total THEN
                 RAISE EXCEPTION 'Journal entry % is invalid: lines=% debit=% credit=%',
-                    COALESCE(NEW.journal_entry_id, OLD.journal_entry_id),
-                    line_count, debit_total, credit_total;
+                    NEW.journal_entry_id, line_count, debit_total, credit_total;
             END IF;
-            RETURN COALESCE(NEW, OLD);
+            RETURN NEW;
         END;
         $$;
     """)
     op.execute("""
         CREATE CONSTRAINT TRIGGER eos_v2_journal_lines_balanced
-        AFTER INSERT OR UPDATE OR DELETE ON eos_v2_journal_lines
+        AFTER INSERT OR UPDATE ON eos_v2_journal_lines
         DEFERRABLE INITIALLY DEFERRED
         FOR EACH ROW EXECUTE FUNCTION eos_v2_assert_journal_balanced()
     """)
