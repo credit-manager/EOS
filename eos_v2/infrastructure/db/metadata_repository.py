@@ -84,18 +84,11 @@ class SqlAlchemyMetadataRepository:
         ))
         if installation is None:
             return None
-        rows = self.session.scalars(select(MetadataEntityModel).where(
-            MetadataEntityModel.tenant_id == tenant_id,
-            MetadataEntityModel.id.in_(
-                select(MetadataEntityModel.id).where(
-                    MetadataEntityModel.tenant_id == tenant_id,
-                    MetadataEntityModel.name.in_(select(MetadataEntityModel.name).where(MetadataEntityModel.tenant_id == tenant_id)),
-                )
-            ),
-        )).all()
-        return tuple(row.id for row in rows if row.published)
+        return tuple(UUID(value) for value in installation.entity_ids)
 
-    def record_pack_installation(self, pack_key: str, pack_version: str) -> None:
+    def record_pack_installation(
+        self, pack_key: str, pack_version: str, entity_ids: tuple[UUID, ...]
+    ) -> None:
         tenant_id = get_tenant_context().tenant_id
         existing = self.session.scalar(select(IndustryPackInstallationModel).where(
             IndustryPackInstallationModel.tenant_id == tenant_id,
@@ -104,5 +97,8 @@ class SqlAlchemyMetadataRepository:
         ))
         if existing is None:
             self.session.add(IndustryPackInstallationModel(
-                tenant_id=tenant_id, pack_key=pack_key, pack_version=pack_version,
+                tenant_id=tenant_id,
+                pack_key=pack_key,
+                pack_version=pack_version,
+                entity_ids=[str(item) for item in entity_ids],
             ))
