@@ -57,7 +57,7 @@ jobs:
           alembic upgrade head
           alembic current
           test "$(alembic heads | grep -c "^${EXPECTED_ALEMBIC_HEAD}")" -eq 1
-          test "$(alembic current | grep -c "${EXPECTED_ALEMBIC_HEAD}")" -eq 1
+          test "$(psql -d eos_rehearsal -Atc "SELECT version_num FROM alembic_version")" = "${EXPECTED_ALEMBIC_HEAD}"
       - name: Seed backup and restore sentinel
         run: |
           psql -d eos_rehearsal -v ON_ERROR_STOP=1 <<'SQL'
@@ -89,11 +89,11 @@ jobs:
           DATABASE_URL: postgresql://rehearsal_user:rehearsal_pass@127.0.0.1:5432/eos_rehearsal_restore
         run: |
           alembic current
-          test "$(alembic current | grep -c "${EXPECTED_ALEMBIC_HEAD}")" -eq 1
+          test "$(psql -d eos_rehearsal_restore -Atc "SELECT version_num FROM alembic_version")" = "${EXPECTED_ALEMBIC_HEAD}"
           psql -d eos_rehearsal_restore -Atc "SELECT marker FROM public.migration_rehearsal_sentinel WHERE id=1" | grep -Fx 'EOS-PRODUCTION-MIGRATION-REHEARSAL'
       - name: Re-run migrations against restored clone
         env:
           DATABASE_URL: postgresql://rehearsal_user:rehearsal_pass@127.0.0.1:5432/eos_rehearsal_restore
         run: |
           alembic upgrade head
-          test "$(alembic current | grep -c "${EXPECTED_ALEMBIC_HEAD}")" -eq 1
+          test "$(psql -d eos_rehearsal_restore -Atc "SELECT version_num FROM alembic_version")" = "${EXPECTED_ALEMBIC_HEAD}"
