@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from eos_v2.infrastructure.db.session import Database, DatabaseConfig
 from eos_v2.interfaces.api.accounting import router as accounting_router
@@ -31,13 +34,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.database = Database(DatabaseConfig(settings.database_url)) if settings.database_url else None
 
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts) or ["*"])
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[],
+        allow_origins=list(settings.cors_origins),
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "DELETE"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
     )
+
+    @app.middleware("http")
+    async def request_hardening(request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID", "").strip() or str(uuid4())
+        content_length = request.headers.get("content-length")
+        if content_length and content_length.isdigit() and int(content_length) > settings.max_body_bytes:
+            from fastapi.responses import JSONResponse
+            response = JSONResponse(status_code=413, content={"detail": "Request body too large"})
+        else:
+            response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if settings.environment == "production":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
 
     @app.middleware("http")
     async def authenticated_tenant_context(request: Request, call_next):
