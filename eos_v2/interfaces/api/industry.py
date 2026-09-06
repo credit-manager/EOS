@@ -15,7 +15,12 @@ router = APIRouter(prefix="/api/v1/industry", tags=["industry"])
 @router.get("/packs")
 def list_packs(identity=Depends(get_current_identity)) -> dict[str, object]:
     require_permission(identity, Permission.READ)
-    return {"packs": [{"key": p.key, "version": p.version, "display_name": p.display_name} for p in CATALOG]}
+    return {
+        "packs": [
+            {"key": pack.key, "version": pack.version, "display_name": pack.build(identity.tenant_id).display_name}
+            for pack in CATALOG.values()
+        ]
+    }
 
 
 @router.post("/packs/{pack_key}/install")
@@ -30,9 +35,7 @@ def install_pack(pack_key: str, request: Request, identity=Depends(get_current_i
         raise HTTPException(status_code=404, detail="Industry pack not found") from exc
     with database.session() as session:
         try:
-            ids = IndustryPackService(SqlAlchemyMetadataRepository(session)).install(
-                type("CatalogPack", (), {"build": staticmethod(pack.builder), "key": pack.key, "version": pack.version})()
-            )
+            ids = IndustryPackService(SqlAlchemyMetadataRepository(session)).install(pack)
             session.commit()
         except (IntegrityError, ValueError) as exc:
             session.rollback()
