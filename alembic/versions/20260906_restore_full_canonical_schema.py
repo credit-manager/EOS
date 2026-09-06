@@ -71,6 +71,7 @@ def upgrade() -> None:
     baseline = _load_baseline()
     deferred: list[ForeignKeyConstraint] = []
     inspector = sa_inspect(op.get_bind())
+    existing_tables = set(inspector.get_table_names())
 
     original_create_table = op.create_table
     original_create_index = op.create_index
@@ -78,18 +79,21 @@ def upgrade() -> None:
     def create_table_without_fks(*args, **kwargs):
         table_name = args[0]
         schema = kwargs.get("schema")
-        existing_tables = inspector.get_table_names(schema=schema)
-        if table_name in existing_tables:
-            # Compatibility migrations may have already restored this table.
-            # Keep the existing definition and let the baseline continue.
-            return None
-
         foreign_keys = [item for item in args if isinstance(item, ForeignKeyConstraint)]
         deferred.extend(foreign_keys)
+
+        if table_name in existing_tables:
+            # Compatibility migrations may have already restored this table.
+            # Keep the existing definition and only reconcile missing FKs.
+            return None
+
         filtered_args = tuple(
             item for item in args if not isinstance(item, ForeignKeyConstraint)
         )
-        return original_create_table(*filtered_args, **kwargs)
+        result = original_create_table(*filtered_args, **kwargs)
+        if schema is None:
+            existing_tables.add(table_name)
+        return result
 
     def create_index_if_missing(index, *args, **kwargs):
         index_name = index if isinstance(index, str) else getattr(index, "name", None)
@@ -109,9 +113,9 @@ def upgrade() -> None:
         op.create_table = original_create_table
         op.create_index = original_create_index
 
-    # All newly-created tables now exist, so the foreign-key graph can be
-    # restored safely even though the historical baseline emitted CREATE TABLE
-    # statements in reverse dependency order. Existing FKs are skipped.
+    # All tables now exist, so the foreign-key graph can be restored safely
+    # even though the historical baseline emitted CREATE TABLE statements in
+    # reverse dependency order. Existing FKs are skipped.
     for constraint in deferred:
         _create_deferred_foreign_key(constraint)
 
