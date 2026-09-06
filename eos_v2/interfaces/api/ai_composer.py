@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -48,13 +49,23 @@ def _response(proposal) -> ProposalResponse:
     )
 
 
+def _require_database(request: Request):
+    database = getattr(request.app.state, "database", None)
+    if database is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    return database
+
+
 @router.post("/proposals", response_model=ProposalResponse, status_code=status.HTTP_201_CREATED)
 def create_proposal(request: Request, payload: ProposalRequest, identity=Depends(get_current_identity)) -> ProposalResponse:
     require_permission(identity, Permission.ADMIN)
-    with request.app.state.database.session() as session:
+    with _require_database(request).session() as session:
         try:
             proposal = _service(request, session).propose(payload.prompt)
             session.commit()
+        except httpx.HTTPError as exc:
+            session.rollback()
+            raise HTTPException(status_code=502, detail="AI provider unavailable") from exc
         except RuntimeError as exc:
             session.rollback()
             raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -67,7 +78,7 @@ def create_proposal(request: Request, payload: ProposalRequest, identity=Depends
 @router.get("/proposals/{proposal_id}", response_model=ProposalResponse)
 def get_proposal(request: Request, proposal_id: UUID, identity=Depends(get_current_identity)) -> ProposalResponse:
     require_permission(identity, Permission.READ)
-    with request.app.state.database.session() as session:
+    with _require_database(request).session() as session:
         try:
             proposal = _service(request, session).get(proposal_id)
         except KeyError as exc:
@@ -80,7 +91,7 @@ def get_proposal(request: Request, proposal_id: UUID, identity=Depends(get_curre
 @router.post("/proposals/{proposal_id}/approve", response_model=ProposalResponse)
 def approve_proposal(request: Request, proposal_id: UUID, identity=Depends(get_current_identity)) -> ProposalResponse:
     require_permission(identity, Permission.ADMIN)
-    with request.app.state.database.session() as session:
+    with _require_database(request).session() as session:
         try:
             proposal = _service(request, session).approve(proposal_id)
             session.commit()
@@ -99,7 +110,7 @@ def approve_proposal(request: Request, proposal_id: UUID, identity=Depends(get_c
 @router.post("/proposals/{proposal_id}/reject", response_model=ProposalResponse)
 def reject_proposal(request: Request, proposal_id: UUID, identity=Depends(get_current_identity)) -> ProposalResponse:
     require_permission(identity, Permission.ADMIN)
-    with request.app.state.database.session() as session:
+    with _require_database(request).session() as session:
         try:
             proposal = _service(request, session).reject(proposal_id)
             session.commit()
