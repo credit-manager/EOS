@@ -35,6 +35,7 @@ class ComposerProposal:
     status: ProposalStatus = ProposalStatus.DRAFT
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     decided_at: datetime | None = None
+    decided_by: UUID | None = None
 
     def __post_init__(self) -> None:
         if not self.prompt.strip() or len(self.prompt) > 12000:
@@ -43,7 +44,7 @@ class ComposerProposal:
             raise ValueError("AI Composer proposal must contain at least one change")
         if not self.provider.strip() or len(self.provider) > 100:
             raise ValueError("Provider is required")
-        if self.status is not ProposalStatus.DRAFT and self.decided_at is None:
-            raise ValueError("A decided proposal must have a decision timestamp")
-        if self.status is ProposalStatus.DRAFT and self.decided_at is not None:
-            raise ValueError("Draft proposal cannot have a decision timestamp")
+        if self.status is ProposalStatus.DRAFT and (self.decided_at is not None or self.decided_by is not None):
+            raise ValueError("Draft proposal cannot have decision metadata")
+        if self.status is not ProposalStatus.DRAFT and (self.decided_at is None or self.decided_by is None):
+            raise ValueError("A decided proposal must have decision timestamp and actor")
