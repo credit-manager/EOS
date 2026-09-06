@@ -10,8 +10,8 @@ from sqlalchemy.exc import IntegrityError
 
 from eos_v2.application.foundation.services import FoundationService
 from eos_v2.domain.permissions.policy import Permission
-from eos_v2.interfaces.api.auth import get_current_identity, require_permission
 from eos_v2.infrastructure.db.foundation_repository import FoundationRepository
+from eos_v2.interfaces.api.auth import get_current_identity, require_permission
 from eos_v2.modules.purchasing import PurchaseOrderLine, PurchaseOrderStatus
 from eos_v2.modules.sales import SalesOrderLine, SalesOrderStatus
 
@@ -60,6 +60,7 @@ class EmployeeCreateRequest(BaseModel):
 
 class ProjectCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    code: str = Field(min_length=1, max_length=50)
     name: str = Field(min_length=1, max_length=200)
     start_date: date
     end_date: date | None = None
@@ -83,16 +84,22 @@ def _order_response(order) -> dict[str, object]:
     return {"id": str(order.id), "tenant_id": str(order.tenant_id), "status": order.status.value, "currency": order.currency, "total": str(sum((line.total for line in order.lines), Decimal("0")))}
 
 
+def _purchase_response(order) -> dict[str, object]:
+    return {"id": str(order.id), "tenant_id": str(order.tenant_id), "status": order.status.value, "currency": order.currency, "total": str(sum((line.total for line in order.lines), Decimal("0")))}
+
+
 @router.post("/sales-orders", status_code=status.HTTP_201_CREATED)
 def create_sales(payload: SalesCreateRequest, request: Request, identity=Depends(get_current_identity)):
     require_permission(identity, Permission.WRITE)
-    order = FoundationService.create_sales_order(payload.customer_id, payload.currency, tuple(SalesOrderLine(x.item_id, x.quantity, x.unit_price) for x in payload.lines))
     try:
+        order = FoundationService.create_sales_order(payload.customer_id, payload.currency, tuple(SalesOrderLine(x.item_id, x.quantity, x.unit_price) for x in payload.lines))
         with _db(request).session() as session:
             FoundationRepository(session).save_sales(order)
             session.commit()
     except IntegrityError as exc:
         raise HTTPException(status_code=409, detail="Sales order already exists") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _order_response(order)
 
 
@@ -100,10 +107,8 @@ def create_sales(payload: SalesCreateRequest, request: Request, identity=Depends
 def get_sales(order_id: UUID, request: Request, identity=Depends(get_current_identity)):
     require_permission(identity, Permission.READ)
     try:
-        with _db(request).session() as session:
-            return _order_response(FoundationRepository(session).get_sales(order_id))
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Sales order not found") from exc
+        with _db(request).session() as session: return _order_response(FoundationRepository(session).get_sales(order_id))
+    except KeyError as exc: raise HTTPException(status_code=404, detail="Sales order not found") from exc
 
 
 @router.post("/sales-orders/{order_id}/transition")
@@ -111,36 +116,52 @@ def transition_sales(order_id: UUID, payload: TransitionRequest, request: Reques
     require_permission(identity, Permission.WRITE)
     try: target = SalesOrderStatus(payload.status)
     except ValueError as exc: raise HTTPException(status_code=422, detail="Invalid sales status") from exc
-    with _db(request).session() as session:
-        repository = FoundationRepository(session)
-        try: updated = FoundationService.transition_sales_order(repository.get_sales(order_id), target)
-        except KeyError as exc: raise HTTPException(status_code=404, detail="Sales order not found") from exc
-        repository.save_sales(updated)
-        session.commit()
+    try:
+        with _db(request).session() as session:
+            repository = FoundationRepository(session)
+            updated = FoundationService.transition_sales_order(repository.get_sales(order_id), target)
+            repository.save_sales(updated)
+            session.commit()
+    except KeyError as exc: raise HTTPException(status_code=404, detail="Sales order not found") from exc
+    except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _order_response(updated)
 
 
 @router.post("/purchase-orders", status_code=status.HTTP_201_CREATED)
 def create_purchase(payload: PurchaseCreateRequest, request: Request, identity=Depends(get_current_identity)):
     require_permission(identity, Permission.WRITE)
-    order = FoundationService.create_purchase_order(payload.supplier_id, payload.currency, tuple(PurchaseOrderLine(x.item_id, x.quantity, x.unit_cost) for x in payload.lines))
     try:
+        order = FoundationService.create_purchase_order(payload.supplier_id, payload.currency, tuple(PurchaseOrderLine(x.item_id, x.quantity, x.unit_cost) for x in payload.lines))
         with _db(request).session() as session:
             FoundationRepository(session).save_purchase(order)
             session.commit()
-    except IntegrityError as exc:
-        raise HTTPException(status_code=409, detail="Purchase order already exists") from exc
-    return {"id": str(order.id), "tenant_id": str(order.tenant_id), "status": order.status.value, "currency": order.currency, "total": str(sum((line.total for line in order.lines), Decimal("0")))}
+    except IntegrityError as exc: raise HTTPException(status_code=409, detail="Purchase order already exists") from exc
+    except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _purchase_response(order)
 
 
 @router.get("/purchase-orders/{order_id}")
 def get_purchase(order_id: UUID, request: Request, identity=Depends(get_current_identity)):
     require_permission(identity, Permission.READ)
     try:
-        with _db(request).session() as session:
-            order = FoundationRepository(session).get_purchase(order_id)
+        with _db(request).session() as session: return _purchase_response(FoundationRepository(session).get_purchase(order_id))
     except KeyError as exc: raise HTTPException(status_code=404, detail="Purchase order not found") from exc
-    return {"id": str(order.id), "tenant_id": str(order.tenant_id), "status": order.status.value, "currency": order.currency, "total": str(sum((line.total for line in order.lines), Decimal("0")))}
+
+
+@router.post("/purchase-orders/{order_id}/transition")
+def transition_purchase(order_id: UUID, payload: TransitionRequest, request: Request, identity=Depends(get_current_identity)):
+    require_permission(identity, Permission.WRITE)
+    try: target = PurchaseOrderStatus(payload.status)
+    except ValueError as exc: raise HTTPException(status_code=422, detail="Invalid purchase status") from exc
+    try:
+        with _db(request).session() as session:
+            repository = FoundationRepository(session)
+            updated = FoundationService.transition_purchase_order(repository.get_purchase(order_id), target)
+            repository.save_purchase(updated)
+            session.commit()
+    except KeyError as exc: raise HTTPException(status_code=404, detail="Purchase order not found") from exc
+    except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _purchase_response(updated)
 
 
 @router.post("/employees", status_code=status.HTTP_201_CREATED)
@@ -148,8 +169,7 @@ def create_employee(payload: EmployeeCreateRequest, request: Request, identity=D
     require_permission(identity, Permission.WRITE)
     employee = FoundationService.create_employee(payload.employee_number, payload.name, payload.hire_date)
     try:
-        with _db(request).session() as session:
-            FoundationRepository(session).save_employee(employee); session.commit()
+        with _db(request).session() as session: FoundationRepository(session).save_employee(employee); session.commit()
     except IntegrityError as exc: raise HTTPException(status_code=409, detail="Employee number already exists") from exc
     return {"id": str(employee.id), "tenant_id": str(employee.tenant_id), "employee_number": employee.employee_number, "name": employee.name, "hire_date": employee.hire_date.isoformat(), "active": employee.active}
 
@@ -166,11 +186,12 @@ def get_employee(employee_id: UUID, request: Request, identity=Depends(get_curre
 @router.post("/projects", status_code=status.HTTP_201_CREATED)
 def create_project(payload: ProjectCreateRequest, request: Request, identity=Depends(get_current_identity)):
     require_permission(identity, Permission.WRITE)
-    try: project = FoundationService.create_project(payload.name, payload.start_date, payload.end_date)
+    try: project = FoundationService.create_project(payload.code, payload.name, payload.start_date, payload.end_date)
     except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
-    with _db(request).session() as session:
-        FoundationRepository(session).save_project(project); session.commit()
-    return {"id": str(project.id), "tenant_id": str(project.tenant_id), "name": project.name, "status": project.status.value, "start_date": project.start_date.isoformat(), "end_date": project.end_date.isoformat() if project.end_date else None}
+    try:
+        with _db(request).session() as session: FoundationRepository(session).save_project(project); session.commit()
+    except IntegrityError as exc: raise HTTPException(status_code=409, detail="Project code already exists") from exc
+    return {"id": str(project.id), "tenant_id": str(project.tenant_id), "code": project.code, "name": project.name, "status": project.status.value, "start_date": project.start_date.isoformat(), "end_date": project.end_date.isoformat() if project.end_date else None}
 
 
 @router.get("/projects/{project_id}")
@@ -179,17 +200,19 @@ def get_project(project_id: UUID, request: Request, identity=Depends(get_current
     try:
         with _db(request).session() as session: project = FoundationRepository(session).get_project(project_id)
     except KeyError as exc: raise HTTPException(status_code=404, detail="Project not found") from exc
-    return {"id": str(project.id), "tenant_id": str(project.tenant_id), "name": project.name, "status": project.status.value, "start_date": project.start_date.isoformat(), "end_date": project.end_date.isoformat() if project.end_date else None}
+    return {"id": str(project.id), "tenant_id": str(project.tenant_id), "code": project.code, "name": project.name, "status": project.status.value, "start_date": project.start_date.isoformat(), "end_date": project.end_date.isoformat() if project.end_date else None}
 
 
 @router.post("/inventory/movements", status_code=status.HTTP_201_CREATED)
 def inventory(payload: InventoryRequest, request: Request, identity=Depends(get_current_identity)):
     require_permission(identity, Permission.WRITE)
-    with _db(request).session() as session:
-        repository = FoundationRepository(session)
-        try: movement, balance = FoundationService.apply_inventory_movement(payload.item_id, payload.quantity, payload.source, repository.get_stock(payload.item_id))
-        except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
-        repository.save_inventory(movement, balance); session.commit()
+    try:
+        with _db(request).session() as session:
+            repository = FoundationRepository(session)
+            movement, balance = FoundationService.apply_inventory_movement(payload.item_id, payload.quantity, payload.source, repository.get_stock(payload.item_id))
+            repository.save_inventory(movement, balance)
+            session.commit()
+    except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"movement_id": str(movement.id), "tenant_id": str(movement.tenant_id), "item_id": str(movement.item_id), "quantity": str(balance.quantity)}
 
 
