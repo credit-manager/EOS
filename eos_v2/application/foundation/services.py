@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from eos_v2.app.tenant_context import get_tenant_context
 from eos_v2.modules.hr import Employee
@@ -56,7 +56,14 @@ class FoundationService:
 
     @staticmethod
     def apply_inventory_movement(item_id: UUID, quantity: Decimal, source: str, balance: StockBalance | None) -> tuple[InventoryMovement, StockBalance]:
-        movement = InventoryMovement(tenant_id=FoundationService.tenant(), item_id=item_id, quantity=quantity, source=source)
+        movement = InventoryMovement(
+            tenant_id=FoundationService.tenant(),
+            item_id=item_id,
+            warehouse_id=uuid4(),
+            quantity=quantity,
+            reference_type=source,
+            reference_id=uuid4(),
+        )
         current = balance or StockBalance(tenant_id=FoundationService.tenant(), item_id=item_id, quantity=Decimal("0"))
         if current.tenant_id != FoundationService.tenant():
             raise PermissionError("Cross-tenant inventory operation denied")
