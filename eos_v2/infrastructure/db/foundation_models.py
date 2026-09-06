@@ -4,11 +4,10 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import Date, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, Numeric, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy.types import Uuid
-from sqlalchemy.types import JSON
+from sqlalchemy.types import JSON, Uuid
 
 
 class FoundationBase(DeclarativeBase):
@@ -64,13 +63,15 @@ class EmployeeModel(FoundationBase):
     employee_number: Mapped[str] = mapped_column(String(50), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     hire_date: Mapped[date] = mapped_column(Date, nullable=False)
-    active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
 class ProjectModel(FoundationBase):
     __tablename__ = "eos_v2_projects"
+    __table_args__ = (UniqueConstraint("tenant_id", "code", name="uq_eos_v2_project_code"),)
     id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
     tenant_id: Mapped[UUID] = mapped_column(Uuid(), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(50), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
