@@ -3,6 +3,9 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from eos_v2.infrastructure.db.session import Database, DatabaseConfig
+from eos_v2.interfaces.api.auth import router as auth_router
+
 from .config import Settings
 from .health import router as health_router
 
@@ -17,6 +20,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url="/docs" if settings.environment != "production" else None,
         redoc_url="/redoc" if settings.environment != "production" else None,
     )
+    app.state.settings = settings
+    app.state.database = Database(DatabaseConfig(settings.database_url)) if settings.database_url else None
 
     app.add_middleware(
         CORSMiddleware,
@@ -26,6 +31,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=[],
     )
     app.include_router(health_router)
+    app.include_router(auth_router)
 
     @app.get("/", tags=["system"])
     def root() -> dict[str, str]:
