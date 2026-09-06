@@ -75,7 +75,7 @@ def test_relationship_requires_target_in_same_tenant_and_entity() -> None:
 
     token = context(tenant_b)
     try:
-        with pytest.raises(ValueError, match="Relationship target not found"):
+        with pytest.raises(PermissionError, match="Metadata tenant"):
             service.create(source, {"customer": customer.id})
     finally:
         reset_tenant_context(token)
