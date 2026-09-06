@@ -70,4 +70,4 @@ jobs:
       - name: Load-test tooling smoke check
         run: python -c "import locust; print('locust', locust.__version__)"
       - name: Validate Locust scenario
-        run: python -c "from locust import env; import loadtests.locustfile; print('loadtest scenario: PASS')"
+        run: python -c "import loadtests.locustfile; print('loadtest scenario: PASS')"
