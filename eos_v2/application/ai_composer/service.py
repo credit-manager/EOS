@@ -32,6 +32,8 @@ class AIComposerService:
 
     def propose(self, prompt: str) -> ComposerProposal:
         context = get_tenant_context()
+        if context.actor_id is None:
+            raise PermissionError("An authenticated actor is required for AI Composer")
         changes = self.provider.propose(prompt, context.tenant_id)
         proposal = ComposerProposal(
             tenant_id=context.tenant_id,
@@ -53,6 +55,8 @@ class AIComposerService:
         if proposal.status is not ProposalStatus.DRAFT:
             raise ValueError("Only draft proposals can be approved")
         context = get_tenant_context()
+        if context.actor_id is None:
+            raise PermissionError("An authenticated actor is required for approval")
         seen_names: set[str] = set()
         for change in proposal.changes:
             if change.entity.tenant_id != context.tenant_id:
@@ -72,7 +76,12 @@ class AIComposerService:
         versioning = MetadataVersioningService(self.metadata_repository)
         for change in proposal.changes:
             versioning.publish_new_version(change.entity)
-        approved = replace(proposal, status=ProposalStatus.APPROVED, decided_at=datetime.now(timezone.utc))
+        approved = replace(
+            proposal,
+            status=ProposalStatus.APPROVED,
+            decided_at=datetime.now(timezone.utc),
+            decided_by=context.actor_id,
+        )
         self.repository.update(approved)
         return approved
 
@@ -80,7 +89,15 @@ class AIComposerService:
         proposal = self.get(proposal_id)
         if proposal.status is not ProposalStatus.DRAFT:
             raise ValueError("Only draft proposals can be rejected")
-        rejected = replace(proposal, status=ProposalStatus.REJECTED, decided_at=datetime.now(timezone.utc))
+        context = get_tenant_context()
+        if context.actor_id is None:
+            raise PermissionError("An authenticated actor is required for rejection")
+        rejected = replace(
+            proposal,
+            status=ProposalStatus.REJECTED,
+            decided_at=datetime.now(timezone.utc),
+            decided_by=context.actor_id,
+        )
         self.repository.update(rejected)
         return rejected
 
