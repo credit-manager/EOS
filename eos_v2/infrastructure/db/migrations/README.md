@@ -14,6 +14,8 @@
 - `0001_metadata_entities.sql` — tenant-scoped immutable metadata definitions.
 - `0002_dynamic_records.sql` — tenant-scoped dynamic records with optimistic row versions.
 - `0003_dynamic_record_unique_values.sql` — transactional registry enforcing metadata-defined unique fields and cascading cleanup for deleted records.
+- `0004_identity_authorization.sql` — tenants, actors, roles and explicit permission assignments.
+- `0005_outbox_events.sql` — durable tenant-scoped event outbox for reliable asynchronous delivery.
 
 ## Record invariants
 
@@ -22,6 +24,19 @@
 - Unique field values are scoped by tenant + entity + field and are enforced by a database uniqueness constraint, not only an application pre-check.
 - Dynamic values use deterministic tagged JSON serialization for UUID, date, datetime and Decimal domain values.
 
+## Identity invariants
+
+- Access tokens must contain `sub`, `tenant_id`, `actor_id` and `exp`.
+- Persisted actor membership is checked against the authenticated tenant and subject.
+- Permissions are explicit and deny-by-default.
+- Legacy identity/authentication tables are never modified by v2 migrations.
+
+## Event invariants
+
+- Domain events always carry a tenant ID and namespaced event type.
+- Outbox writes are transactional with the business transaction; delivery is asynchronous and retryable.
+- Event handlers execute under the event's tenant context and cannot inherit another tenant's context.
+
 ## Test contract
 
-Repository integration tests use an isolated SQLite database for fast deterministic coverage. PostgreSQL migration execution remains a release-gate responsibility and must be exercised against a clean and upgraded PostgreSQL database before staging promotion.
+Repository integration tests use isolated SQLite databases for fast deterministic coverage. PostgreSQL migration execution and upgrade rehearsal remain release-gate responsibilities and must be exercised against clean and representative upgraded PostgreSQL databases before staging promotion.
