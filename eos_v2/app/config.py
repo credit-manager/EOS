@@ -4,6 +4,10 @@ import os
 from dataclasses import dataclass
 
 
+def _csv_env(name: str) -> tuple[str, ...]:
+    return tuple(item.strip() for item in os.getenv(name, "").split(",") if item.strip())
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     """Validated runtime settings for the v2 application boundary."""
@@ -18,6 +22,8 @@ class Settings:
     ai_api_key: str = ""
     ai_model: str = ""
     ai_timeout_seconds: float = 30.0
+    allowed_hosts: tuple[str, ...] = ()
+    cors_origins: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -30,6 +36,8 @@ class Settings:
             ai_api_key=os.getenv("EOS_AI_API_KEY", "").strip(),
             ai_model=os.getenv("EOS_AI_MODEL", "").strip(),
             ai_timeout_seconds=float(os.getenv("EOS_AI_TIMEOUT_SECONDS", "30")),
+            allowed_hosts=_csv_env("EOS_ALLOWED_HOSTS"),
+            cors_origins=_csv_env("EOS_CORS_ORIGINS"),
         )
 
     def validate(self) -> None:
@@ -45,3 +53,7 @@ class Settings:
             raise ValueError("EOS_SECRET_KEY must contain at least 32 characters in production")
         if any((self.ai_base_url, self.ai_api_key, self.ai_model)) and not all((self.ai_base_url, self.ai_api_key, self.ai_model)):
             raise ValueError("AI Composer configuration requires EOS_AI_BASE_URL, EOS_AI_API_KEY, and EOS_AI_MODEL together")
+        if self.environment == "production" and not self.allowed_hosts:
+            raise ValueError("EOS_ALLOWED_HOSTS is required in production")
+        if self.environment == "production" and not self.cors_origins:
+            raise ValueError("EOS_CORS_ORIGINS is required in production")
