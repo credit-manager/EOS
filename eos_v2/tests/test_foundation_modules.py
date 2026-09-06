@@ -25,9 +25,9 @@ def test_purchase_order_requires_positive_lines() -> None:
 
 def test_inventory_rejects_zero_movement_and_negative_balance() -> None:
     with pytest.raises(ValueError):
-        InventoryMovement(uuid4(), uuid4(), uuid4(), Decimal("0"), "sale", uuid4())
+        InventoryMovement(uuid4(), uuid4(), Decimal("0"), "sale", uuid4())
     with pytest.raises(ValueError):
-        StockBalance(uuid4(), uuid4(), uuid4(), Decimal("-1"))
+        StockBalance(uuid4(), uuid4(), Decimal("-1"))
 
 
 def test_employee_and_project_dates() -> None:
