@@ -14,7 +14,9 @@ class TenantContext:
 _current: ContextVar[TenantContext | None] = ContextVar("eos_tenant_context", default=None)
 
 
-def set_tenant_context(context: TenantContext):
+def set_tenant_context(context: TenantContext | UUID):
+    if isinstance(context, UUID):
+        context = TenantContext(context)
     return _current.set(context)
 
 
