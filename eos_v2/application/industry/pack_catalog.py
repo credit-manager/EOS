@@ -13,11 +13,11 @@ class RegisteredIndustryPack:
     key: str
     version: str
     display_name: str
-    _builder: Callable[[UUID], IndustryPack]
+    builder: Callable[[UUID], IndustryPack]
 
     def build(self, tenant_id: UUID) -> IndustryPack:
         """Build the registered pack for the explicitly supplied tenant."""
-        return self._builder(tenant_id)
+        return self.builder(tenant_id)
 
 
 CATALOG: tuple[RegisteredIndustryPack, ...] = (
@@ -25,7 +25,7 @@ CATALOG: tuple[RegisteredIndustryPack, ...] = (
         key="construction-real-estate",
         version="1.0.0",
         display_name="Construction & Real Estate",
-        _builder=build_construction_real_estate,
+        builder=build_construction_real_estate,
     ),
 )
 
