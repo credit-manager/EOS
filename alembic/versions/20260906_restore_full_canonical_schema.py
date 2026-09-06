@@ -1,9 +1,9 @@
 """Restore missing canonical schema objects without rewriting newer tables.
 
-The historical baseline is known to contain a reversed migration body.  Its
+The historical baseline is known to contain a reversed migration body. Its
 ``downgrade`` contains the canonical CREATE sequence, but that sequence can
 also contain indexes/foreign keys for columns whose tables were later given a
-newer shape.  This repair migration therefore treats the baseline as a source
+newer shape. This repair migration therefore treats the baseline as a source
 of *optional* missing objects only: existing tables are never replaced and
 DDL is emitted only when its referenced columns/objects actually exist.
 """
@@ -37,45 +37,70 @@ def _existing_columns(inspector, table_name: str, schema: str | None) -> set[str
     return {item["name"] for item in inspector.get_columns(table_name, schema=schema)}
 
 
-def _create_deferred_foreign_key(constraint: ForeignKeyConstraint) -> None:
+def _create_deferred_foreign_key(original_create_foreign_key, metadata: tuple) -> None:
+    (
+        constraint_name,
+        source_table,
+        source_schema,
+        referent_table,
+        referent_schema,
+        local_columns,
+        remote_columns,
+        onupdate,
+        ondelete,
+        deferrable,
+        initially,
+    ) = metadata
     bind = op.get_bind()
     inspector = sa_inspect(bind)
-    source_table = constraint.table.name
-    source_schema = constraint.table.schema
-    referent_table = constraint.referred_table.name
-    referent_schema = constraint.referred_table.schema
+    tables = set(inspector.get_table_names(schema=source_schema))
+    referent_tables = set(inspector.get_table_names(schema=referent_schema))
 
-    if source_table not in set(inspector.get_table_names(schema=source_schema)):
-        return
-    if referent_table not in set(inspector.get_table_names(schema=referent_schema)):
+    if source_table not in tables or referent_table not in referent_tables:
         return
 
     source_columns = _existing_columns(inspector, source_table, source_schema)
     referent_columns = _existing_columns(inspector, referent_table, referent_schema)
-    local_columns = [element.parent.name for element in constraint.elements]
-    remote_columns = [element.column.name for element in constraint.elements]
     if not set(local_columns).issubset(source_columns):
         return
     if not set(remote_columns).issubset(referent_columns):
         return
 
     existing = inspector.get_foreign_keys(source_table, schema=source_schema)
-    if any(item.get("name") == constraint.name for item in existing):
+    if any(item.get("name") == constraint_name for item in existing):
         return
 
-    op.create_foreign_key(
-        constraint.name,
+    original_create_foreign_key(
+        constraint_name,
         source_table,
         referent_table,
-        local_columns,
-        remote_columns,
+        list(local_columns),
+        list(remote_columns),
         source_schema=source_schema,
         referent_schema=referent_schema,
-        onupdate=constraint.onupdate,
-        ondelete=constraint.ondelete,
-        deferrable=constraint.deferrable,
-        initially=constraint.initially,
-        use_alter=constraint.use_alter,
+        onupdate=onupdate,
+        ondelete=ondelete,
+        deferrable=deferrable,
+        initially=initially,
+    )
+
+
+def _capture_foreign_key(constraint: ForeignKeyConstraint) -> tuple:
+    """Capture all DDL metadata while the SQLAlchemy constraint is bound."""
+    local_columns = tuple(element.parent.name for element in constraint.elements)
+    remote_columns = tuple(element.column.name for element in constraint.elements)
+    return (
+        constraint.name,
+        constraint.table.name,
+        constraint.table.schema,
+        constraint.referred_table.name,
+        constraint.referred_table.schema,
+        local_columns,
+        remote_columns,
+        constraint.onupdate,
+        constraint.ondelete,
+        constraint.deferrable,
+        constraint.initially,
     )
 
 
@@ -87,9 +112,6 @@ def _index_columns(index, args: tuple, kwargs: dict) -> set[str]:
         except (AttributeError, TypeError):
             pass
 
-    # Alembic's generated calls normally use:
-    #   op.create_index(name, table_name, ["column", ...], ...)
-    # so the column list is args[1] when the index name is a string.
     if len(args) > 1 and isinstance(args[1], (list, tuple)):
         return {getattr(column, "name", str(column)) for column in args[1]}
     if "columns" in kwargs and isinstance(kwargs["columns"], (list, tuple)):
@@ -119,8 +141,6 @@ def _safe_create_index(original_create_index, index, args: tuple, kwargs: dict, 
 
     required = _index_columns(index, args, kwargs)
     if required and not required.issubset(_existing_columns(inspector, table_name, schema)):
-        # The table exists but its newer canonical shape intentionally does
-        # not expose this historical index's columns. Do not mutate it here.
         return
 
     original_create_index(index, *args, **kwargs)
@@ -129,10 +149,11 @@ def _safe_create_index(original_create_index, index, args: tuple, kwargs: dict, 
 def upgrade() -> None:
     baseline = _load_baseline()
     deferred_indexes: list[tuple[object, tuple, dict]] = []
-    deferred_fks: list[ForeignKeyConstraint] = []
+    deferred_fks: list[tuple] = []
 
     original_create_table = op.create_table
     original_create_index = op.create_index
+    original_create_foreign_key = op.create_foreign_key
     original_drop_index = op.drop_index
     original_drop_table = op.drop_table
     original_alter_column = op.alter_column
@@ -146,7 +167,7 @@ def upgrade() -> None:
 
         for item in args:
             if isinstance(item, ForeignKeyConstraint):
-                deferred_fks.append(item)
+                deferred_fks.append(_capture_foreign_key(item))
         filtered_args = tuple(item for item in args if not isinstance(item, ForeignKeyConstraint))
         return original_create_table(*filtered_args, **kwargs)
 
@@ -158,6 +179,7 @@ def upgrade() -> None:
 
     op.create_table = create_table_without_fks
     op.create_index = create_index_if_safe
+    op.create_foreign_key = lambda *args, **kwargs: None
     op.drop_index = ignore_destructive_operation
     op.drop_table = ignore_destructive_operation
     op.alter_column = ignore_destructive_operation
@@ -166,6 +188,7 @@ def upgrade() -> None:
     finally:
         op.create_table = original_create_table
         op.create_index = original_create_index
+        op.create_foreign_key = original_create_foreign_key
         op.drop_index = original_drop_index
         op.drop_table = original_drop_table
         op.alter_column = original_alter_column
@@ -173,8 +196,8 @@ def upgrade() -> None:
     for index, args, kwargs in deferred_indexes:
         _safe_create_index(original_create_index, index, args, kwargs, [])
 
-    for constraint in deferred_fks:
-        _create_deferred_foreign_key(constraint)
+    for metadata in deferred_fks:
+        _create_deferred_foreign_key(original_create_foreign_key, metadata)
 
 
 def downgrade() -> None:
