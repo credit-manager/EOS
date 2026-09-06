@@ -53,9 +53,12 @@ CREATE INDEX IF NOT EXISTS ix_eos_v2_employees_tenant ON eos_v2_employees(tenant
 CREATE TABLE IF NOT EXISTS eos_v2_projects (
     id UUID PRIMARY KEY,
     tenant_id UUID NOT NULL,
+    code VARCHAR(50) NOT NULL,
     name VARCHAR(200) NOT NULL,
     status VARCHAR(20) NOT NULL,
     start_date DATE NOT NULL,
-    end_date DATE NULL
+    end_date DATE NULL,
+    CONSTRAINT uq_eos_v2_project_code UNIQUE (tenant_id, code),
+    CONSTRAINT ck_eos_v2_project_dates CHECK (end_date IS NULL OR end_date >= start_date)
 );
 CREATE INDEX IF NOT EXISTS ix_eos_v2_projects_tenant ON eos_v2_projects(tenant_id);
