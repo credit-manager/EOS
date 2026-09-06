@@ -140,6 +140,22 @@ def _safe_create_fk(*args, **kw):
 
 op.create_foreign_key = _safe_create_fk
 
+
+def _ensure_alembic_version_table(connection):
+    """Keep Alembic's version column wide enough for EOS revision IDs."""
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE IF NOT EXISTS alembic_version (
+            version_num VARCHAR(255) NOT NULL,
+            CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        "ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(255)"
+    )
+
+
 db_url = os.environ.get("DATABASE_URL")
 if db_url:
     config.set_main_option("sqlalchemy.url", db_url)
@@ -181,6 +197,7 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
+        _ensure_alembic_version_table(connection)
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
