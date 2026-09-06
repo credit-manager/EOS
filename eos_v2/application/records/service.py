@@ -4,6 +4,7 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from eos_v2.app.tenant_context import get_tenant_context
+from eos_v2.domain.metadata.coercion import coerce_record_data
 from eos_v2.domain.metadata.entities import EntityDefinition
 from eos_v2.domain.metadata.record_validation import validate_record
 from eos_v2.domain.metadata.records import DynamicRecord
@@ -88,6 +89,7 @@ class DynamicRecordService:
             raise PermissionError("Metadata tenant does not match current tenant")
         if not definition.published:
             raise ValueError("Only published metadata can accept records")
+        data = coerce_record_data(definition, data)
         validate_record(definition, data)
         self._validate_relationships(definition, data)
         record = DynamicRecord(
@@ -109,6 +111,7 @@ class DynamicRecordService:
         record = self.get(record_id)
         if record.entity_id != definition.id:
             raise ValueError("Record does not belong to metadata entity")
+        data = coerce_record_data(definition, data)
         validate_record(definition, data)
         self._validate_relationships(definition, data)
         updated = DynamicRecord(
