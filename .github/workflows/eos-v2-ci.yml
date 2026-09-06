@@ -40,31 +40,39 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Compile v2
-        run: python -m compileall -q eos_v2
+        run: python -m compileall -q eos_v2 scripts
       - name: Run v2 tests
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: pytest -q eos_v2/tests --tb=short
       - name: Validate v2 PostgreSQL migrations
         env:
-          PGPASSWORD: eos_v2
-        run: |
-          for migration in eos_v2/infrastructure/db/migrations/*.sql; do
-            echo "Applying ${migration}"
-            psql -h 127.0.0.1 -U eos_v2 -d eos_v2_ci -v ON_ERROR_STOP=1 -f "${migration}"
-          done
+          DATABASE_URL: postgresql://eos_v2:eos_v2@127.0.0.1:5432/eos_v2_ci
+        run: python scripts/migrate_v2.py
       - name: Validate migration idempotency
         env:
-          PGPASSWORD: eos_v2
-        run: |
-          for migration in eos_v2/infrastructure/db/migrations/*.sql; do
-            psql -h 127.0.0.1 -U eos_v2 -d eos_v2_ci -v ON_ERROR_STOP=1 -f "${migration}"
-          done
-      - name: Verify v2 schema objects
+          DATABASE_URL: postgresql://eos_v2:eos_v2@127.0.0.1:5432/eos_v2_ci
+        run: python scripts/migrate_v2.py
+      - name: Verify migration ledger and schema objects
         env:
           PGPASSWORD: eos_v2
         run: |
           psql -h 127.0.0.1 -U eos_v2 -d eos_v2_ci -v ON_ERROR_STOP=1 -c "
+            DO \$\$
+            DECLARE applied_count INTEGER;
+            BEGIN
+              SELECT count(*) INTO applied_count FROM eos_v2_schema_migrations;
+              IF applied_count <> 9 THEN
+                RAISE EXCEPTION 'Expected 9 applied v2 migrations, got %', applied_count;
+              END IF;
+              IF EXISTS (
+                SELECT 1 FROM eos_v2_schema_migrations a
+                WHERE a.version IN ('0001_metadata_entities','0002_dynamic_records','0003_dynamic_record_unique_values','0004_identity_authorization','0005_outbox_events','0006_accounting','0007_foundation_modules','0008_industry_pack_installations','0009_ai_composer_proposals')
+                AND length(a.checksum) <> 64
+              ) THEN
+                RAISE EXCEPTION 'Invalid migration checksum';
+              END IF;
+            END \$\$;
             SELECT to_regclass('eos_v2_metadata_entities'),
                    to_regclass('eos_v2_dynamic_records'),
                    to_regclass('eos_v2_dynamic_record_unique_values'),
