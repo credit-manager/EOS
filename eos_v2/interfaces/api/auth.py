@@ -28,11 +28,11 @@ def get_current_identity(
     from eos_v2.application.identity.authentication import decode_access_token
 
     try:
-        tenant_id, _, _ = decode_access_token(credentials.credentials, settings.secret_key)
+        tenant_id, actor_id, _ = decode_access_token(credentials.credentials, settings.secret_key)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access token") from exc
 
-    token = set_tenant_context(TenantContext(tenant_id))
+    token = set_tenant_context(TenantContext(tenant_id, actor_id))
     try:
         with database.session() as session:
             try:
