@@ -1,25 +1,15 @@
-"""restore the complete canonical baseline schema
+"""Restore the complete canonical schema from the historical baseline.
 
-Revision ID: 20260906_restore_full_canonical_schema
-Revises: 20260906_restore_metadata_core
-
-The historical 87aba7990b4d baseline was generated from an already-populated
-production database and its upgrade/downgrade bodies were reversed.  Its
-upgrade therefore contains cleanup operations while its downgrade contains
-the canonical CREATE TABLE sequence.
-
-Until that historical revision can be safely rewritten without changing the
-identity of an already-published migration, this migration executes the
-canonical create sequence from that baseline on a clean database.  The
-Alembic environment makes CREATE TABLE and related operations idempotent so
-this also repairs databases that already contain a subset of the schema.
+The published 87aba7990b4d revision has its upgrade/downgrade bodies reversed.
+Its downgrade body is therefore the canonical CREATE TABLE sequence. This
+compatibility migration executes that sequence without changing the identity
+of the already-published revision.
 """
 
 from __future__ import annotations
 
-import importlib
-
-from alembic import op
+import importlib.util
+from pathlib import Path
 
 revision = "20260906_restore_full_canonical_schema"
 down_revision = "20260906_restore_metadata_core"
@@ -27,15 +17,23 @@ branch_labels = None
 depends_on = None
 
 
+def _load_baseline():
+    path = Path(__file__).with_name("87aba7990b4d_initial_schema.py")
+    spec = importlib.util.spec_from_file_location("eos_initial_schema_baseline", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load canonical baseline: {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def upgrade() -> None:
-    baseline = importlib.import_module(
-        "alembic.versions.87aba7990b4d_initial_schema"
-    )
+    baseline = _load_baseline()
     baseline.downgrade()
 
 
 def downgrade() -> None:
-    # The historical baseline's upgrade body is destructive cleanup for a
-    # populated database.  This compatibility revision is intentionally
-    # irreversible rather than risking destructive rollback of a live schema.
+    # Intentionally irreversible: the historical baseline upgrade body is
+    # destructive cleanup for a populated database and must never be used as
+    # an automatic rollback of the repaired canonical schema.
     pass
