@@ -1,14 +1,9 @@
-"""Restore the complete canonical schema from the historical baseline.
+"""Restore the canonical baseline schema without destructive compatibility work.
 
-The historical 87aba7990b4d revision has its schema creation and teardown
-bodies reversed.  Its ``downgrade`` body contains the canonical create
-sequence, but also contains destructive drop/alter operations intended for a
-previously populated schema.  This repair migration reuses only its create
-operations and turns all destructive compatibility operations into no-ops.
-
-The migration is additive and idempotent: compatibility migrations may have
-already restored a subset of the canonical tables and indexes. Existing
-objects are preserved and only missing objects are added.
+The historical ``87aba7990b4d`` revision contains its canonical create body in
+``downgrade``.  This repair migration replays that body while making creation
+idempotent and refusing to mutate existing tables.  Existing compatibility
+migrations can therefore coexist with the historical baseline.
 """
 
 from __future__ import annotations
@@ -37,24 +32,29 @@ def _load_baseline():
 
 
 def _create_deferred_foreign_key(constraint: ForeignKeyConstraint) -> None:
-    bind = op.get_bind()
-    inspector = sa_inspect(bind)
+    inspector = sa_inspect(op.get_bind())
     source_table = constraint.table.name
     source_schema = constraint.table.schema
     referent_table = constraint.referred_table.name
     referent_schema = constraint.referred_table.schema
 
-    table_names = set(inspector.get_table_names(schema=source_schema))
-    referent_names = set(inspector.get_table_names(schema=referent_schema))
-    if source_table not in table_names or referent_table not in referent_names:
+    if source_table not in inspector.get_table_names(schema=source_schema):
+        return
+    if referent_table not in inspector.get_table_names(schema=referent_schema):
+        return
+
+    source_columns = {c["name"] for c in inspector.get_columns(source_table, schema=source_schema)}
+    referent_columns = {c["name"] for c in inspector.get_columns(referent_table, schema=referent_schema)}
+    local_columns = [element.parent.name for element in constraint.elements]
+    remote_columns = [element.column.name for element in constraint.elements]
+    if not set(local_columns).issubset(source_columns):
+        return
+    if not set(remote_columns).issubset(referent_columns):
         return
 
     existing = inspector.get_foreign_keys(source_table, schema=source_schema)
-    if any(item.get("name") == constraint.name for item in existing):
+    if constraint.name and any(item.get("name") == constraint.name for item in existing):
         return
-
-    local_columns = [element.parent.name for element in constraint.elements]
-    remote_columns = [element.column.name for element in constraint.elements]
 
     op.create_foreign_key(
         constraint.name,
@@ -74,10 +74,7 @@ def _create_deferred_foreign_key(constraint: ForeignKeyConstraint) -> None:
 
 def upgrade() -> None:
     baseline = _load_baseline()
-    deferred: list[ForeignKeyConstraint] = []
-    bind = op.get_bind()
-    inspector = sa_inspect(bind)
-    existing_tables = set(inspector.get_table_names())
+    deferred_fks: list[ForeignKeyConstraint] = []
     deferred_indexes: list[tuple[object, tuple, dict]] = []
 
     original_create_table = op.create_table
@@ -88,46 +85,49 @@ def upgrade() -> None:
 
     def create_table_without_fks(*args, **kwargs):
         table_name = args[0]
-        schema = kwargs.get("schema")
         foreign_keys = [item for item in args if isinstance(item, ForeignKeyConstraint)]
-        deferred.extend(foreign_keys)
+        deferred_fks.extend(foreign_keys)
 
-        if table_name in existing_tables:
+        inspector = sa_inspect(op.get_bind())
+        if table_name in inspector.get_table_names(schema=kwargs.get("schema")):
             return None
 
-        filtered_args = tuple(
-            item for item in args if not isinstance(item, ForeignKeyConstraint)
-        )
-        result = original_create_table(*filtered_args, **kwargs)
-        if schema is None:
-            existing_tables.add(table_name)
-        return result
+        filtered_args = tuple(item for item in args if not isinstance(item, ForeignKeyConstraint))
+        return original_create_table(*filtered_args, **kwargs)
 
-    def create_index_if_missing(index, *args, **kwargs):
-        index_name = index if isinstance(index, str) else getattr(index, "name", None)
+    def create_index_if_safe(index, *args, **kwargs):
         table_name = args[0] if args else kwargs.get("table_name")
         schema = kwargs.get("schema")
         if not table_name:
             return original_create_index(index, *args, **kwargs)
 
-        current_tables = set(sa_inspect(op.get_bind()).get_table_names(schema=schema))
-        if table_name not in current_tables:
+        inspector = sa_inspect(op.get_bind())
+        if table_name not in inspector.get_table_names(schema=schema):
             deferred_indexes.append((index, args, kwargs))
             return None
 
-        existing_indexes = sa_inspect(op.get_bind()).get_indexes(table_name, schema=schema)
-        if index_name and any(item.get("name") == index_name for item in existing_indexes):
+        index_name = index if isinstance(index, str) else getattr(index, "name", None)
+        existing = inspector.get_indexes(table_name, schema=schema)
+        if index_name and any(item.get("name") == index_name for item in existing):
             return None
+
+        # A historical index can target a column that a prior compatibility
+        # migration intentionally created under a different canonical shape.
+        # Never issue DDL against such a table: preserve the existing contract
+        # and let the dedicated compatibility migration own its evolution.
+        index_columns = getattr(index, "columns", None)
+        if index_columns is not None:
+            required = {column.name for column in index_columns}
+            actual = {column["name"] for column in inspector.get_columns(table_name, schema=schema)}
+            if not required.issubset(actual):
+                return None
         return original_create_index(index, *args, **kwargs)
 
-    # The historical body contains DROP/ALTER operations because the original
-    # migration was generated with its direction inverted. Never allow those
-    # operations to mutate an existing production-compatible schema here.
     def ignore_destructive_operation(*args, **kwargs):
         return None
 
     op.create_table = create_table_without_fks
-    op.create_index = create_index_if_missing
+    op.create_index = create_index_if_safe
     op.drop_index = ignore_destructive_operation
     op.drop_table = ignore_destructive_operation
     op.alter_column = ignore_destructive_operation
@@ -140,24 +140,30 @@ def upgrade() -> None:
         op.drop_table = original_drop_table
         op.alter_column = original_alter_column
 
-    # Some canonical indexes are emitted before their tables by the historical
-    # reversed body. Replay those indexes now that the full table set exists.
+    # Revisit indexes that were emitted before their tables existed.  The same
+    # safety checks apply, including the actual-column check above.
     for index, args, kwargs in deferred_indexes:
         table_name = args[0] if args else kwargs.get("table_name")
         schema = kwargs.get("schema")
-        current_tables = set(sa_inspect(op.get_bind()).get_table_names(schema=schema))
-        if table_name not in current_tables:
+        inspector = sa_inspect(op.get_bind())
+        if table_name not in inspector.get_table_names(schema=schema):
             continue
         index_name = index if isinstance(index, str) else getattr(index, "name", None)
-        existing_indexes = sa_inspect(op.get_bind()).get_indexes(table_name, schema=schema)
-        if index_name and any(item.get("name") == index_name for item in existing_indexes):
+        if index_name and any(item.get("name") == index_name for item in inspector.get_indexes(table_name, schema=schema)):
             continue
+        index_columns = getattr(index, "columns", None)
+        if index_columns is not None:
+            required = {column.name for column in index_columns}
+            actual = {column["name"] for column in inspector.get_columns(table_name, schema=schema)}
+            if not required.issubset(actual):
+                continue
         original_create_index(index, *args, **kwargs)
 
-    for constraint in deferred:
+    for constraint in deferred_fks:
         _create_deferred_foreign_key(constraint)
 
 
 def downgrade() -> None:
-    # The historical baseline is not safe to use as an automatic rollback.
+    # Automatic downgrade is intentionally disabled: the historical baseline
+    # contains destructive operations that are unsafe for production rollback.
     pass
