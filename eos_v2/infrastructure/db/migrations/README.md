@@ -19,6 +19,7 @@
 - `0006_accounting.sql` — tenant-scoped chart of accounts and double-entry journal storage.
 - `0007_foundation_modules.sql` — tenant-scoped Sales, Purchasing, Inventory, HR and Projects operational storage.
 - `0008_industry_pack_installations.sql` — tenant-scoped industry pack installation registry for idempotent retries and version tracking.
+- `0009_ai_composer_proposals.sql` — tenant-scoped AI metadata proposals with draft/approved/rejected lifecycle and decision audit timestamps.
 
 ## Record invariants
 
@@ -62,6 +63,15 @@
 - Reinstalling an already installed pack version returns the exact previously installed metadata entity IDs instead of creating duplicate metadata versions.
 - Pack installation is tenant-bound and requires administrative authorization at the API boundary.
 - A builder cannot publish a pack whose built manifest differs from its declared key/version.
+
+## AI Composer invariants
+
+- AI output is an untrusted proposal, never an authorization decision or direct production mutation.
+- Proposal changes are tenant-bound by the authenticated context; provider-supplied tenant IDs are ignored.
+- Only an authenticated administrator can approve or reject a draft.
+- Approval publishes through the existing immutable metadata versioning service inside the same database transaction.
+- The provider contract accepts structured metadata only; arbitrary code, SQL, or executable actions are not accepted.
+- AI credentials are runtime configuration and are never persisted with proposals.
 
 ## Test contract
 
