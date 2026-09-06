@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from eos_v2.infrastructure.db.session import Database, DatabaseConfig
+from eos_v2.interfaces.api.accounting import router as accounting_router
 from eos_v2.interfaces.api.auth import router as auth_router
 from eos_v2.interfaces.api.metadata import router as metadata_router
 from eos_v2.interfaces.api.records import router as records_router
@@ -36,6 +37,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(metadata_router)
     app.include_router(records_router)
+    app.include_router(accounting_router)
 
     @app.get("/", tags=["system"])
     def root() -> dict[str, str]:
