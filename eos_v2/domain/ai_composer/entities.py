@@ -40,8 +40,8 @@ class ComposerProposal:
     def __post_init__(self) -> None:
         if not self.prompt.strip() or len(self.prompt) > 12000:
             raise ValueError("Prompt must contain 1-12000 characters")
-        if not self.changes:
-            raise ValueError("AI Composer proposal must contain at least one change")
+        if not self.changes or len(self.changes) > 20:
+            raise ValueError("AI Composer proposal must contain 1-20 changes")
         if not self.provider.strip() or len(self.provider) > 100:
             raise ValueError("Provider is required")
         if self.status is ProposalStatus.DRAFT and (self.decided_at is not None or self.decided_by is not None):
