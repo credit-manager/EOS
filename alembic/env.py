@@ -113,11 +113,12 @@ _original_create_table = _original_ops["create_table"]
 
 
 def _safe_create_table(*args, **kw):
+    table_name, schema = _table_name_from_args(args, kw, 0)
+    if table_name and _table_exists(table_name, schema):
+        return None
     result = _original_create_table(*args, **kw)
-    if args:
-        _mark_created(args[0])
-    elif kw.get("table_name"):
-        _mark_created(kw["table_name"])
+    if table_name:
+        _mark_created(table_name)
     return result
 
 
