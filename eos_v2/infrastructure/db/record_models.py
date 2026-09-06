@@ -41,5 +41,5 @@ class DynamicRecordUniqueValueModel(RecordBase):
     tenant_id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
     entity_id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
     field_name: Mapped[str] = mapped_column(String(100), primary_key=True)
-    value_key: Mapped[str] = mapped_column(String(2048), primary_key=True)
+    value_key: Mapped[str] = mapped_column(String(64), primary_key=True)
     record_id: Mapped[UUID] = mapped_column(Uuid(), nullable=False, index=True)
