@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Iterator
 
@@ -34,6 +35,7 @@ class Database:
         )
         self._session_factory = sessionmaker(bind=self.engine, expire_on_commit=False)
 
+    @contextmanager
     def session(self) -> Iterator[Session]:
         session = self._session_factory()
         try:
