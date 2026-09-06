@@ -2,10 +2,17 @@ from uuid import uuid4
 
 import pytest
 
-from eos_v2.app.tenant_context import TenantContext, set_tenant_context
+from eos_v2.app.tenant_context import TenantContext, clear_tenant_context, set_tenant_context
 from eos_v2.application.ai_composer.service import AIComposerService
 from eos_v2.domain.ai_composer.entities import ProposalChange, ProposalStatus
 from eos_v2.domain.metadata.entities import EntityDefinition
+
+
+@pytest.fixture(autouse=True)
+def clean_tenant_context():
+    clear_tenant_context()
+    yield
+    clear_tenant_context()
 
 
 class Provider:
