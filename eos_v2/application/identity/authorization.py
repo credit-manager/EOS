@@ -7,10 +7,14 @@ from eos_v2.domain.identity.entities import Actor
 from eos_v2.domain.permissions.policy import AuthorizationDecision, Permission, authorize
 
 
-def authorize_current_actor(actor: Actor | None, permission: Permission) -> AuthorizationDecision:
+def authorize_current_actor(
+    actor: Actor | None,
+    permission: Permission,
+    granted_permissions: frozenset[Permission] = frozenset(),
+) -> AuthorizationDecision:
     """Authorize against the request-scoped tenant, never a caller-supplied tenant value."""
     context = get_tenant_context()
-    return authorize(actor, context.tenant_id, permission)
+    return authorize(actor, context.tenant_id, permission, granted_permissions)
 
 
 def require_tenant_match(actor: Actor, resource_tenant_id: UUID) -> None:
