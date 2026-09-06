@@ -13,19 +13,28 @@ def test_catalog_contains_construction_real_estate() -> None:
     assert pack.builder(uuid4()).key == "construction-real-estate"
 
 
+def test_catalog_rejects_unknown_pack() -> None:
+    with pytest.raises(KeyError, match="unknown-industry-pack"):
+        get_pack("unknown-industry-pack")
+
+
 def test_construction_pack_is_tenant_bound() -> None:
     tenant = uuid4()
     pack = build_pack(tenant)
     assert pack.tenant_id == tenant
     assert len(pack.entities) == 5
     assert {entity.name for entity in pack.entities} == {
-        "land_parcel", "development_project", "property_unit", "property_contract", "construction_work_package"
+        "land_parcel",
+        "development_project",
+        "property_unit",
+        "property_contract",
+        "construction_work_package",
     }
     for entity in pack.entities:
         assert entity.tenant_id == tenant
 
 
-def test_pack_builder_cannot_publish_for_another_tenant() -> None:
+def test_pack_builder_cannot_change_tenant_context() -> None:
     tenant_a = uuid4()
     tenant_b = uuid4()
     with tenant_context(TenantContext(tenant_id=tenant_a, actor_id=uuid4())):

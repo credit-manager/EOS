@@ -9,7 +9,7 @@ from decimal import Decimal
 
 
 class AccountingEngine:
-    """Double-entry accounting engine."""
+    """Double-entry accounting engine with strict tenant/company ownership."""
 
     ACCOUNT_TYPES = {
         "asset", "liability", "equity", "revenue", "expense",
@@ -23,17 +23,22 @@ class AccountingEngine:
         self.db = db
 
     def _verify_company_tenant(self, company_id: str, tenant_id: str):
-        """Raise 403 unless the company belongs to the calling tenant.
-
-        P80.5D FIX: prevents a tenant from creating accounts/journal entries
-        under a company owned by another tenant.
-        """
+        """Raise 403 unless the company belongs to the calling tenant."""
         row = self.db.execute(text(
             "SELECT tenant_id FROM dbp_companies WHERE id = :cid"
         ), {"cid": company_id}).fetchone()
         if not row or row[0] != tenant_id:
             from fastapi import HTTPException
             raise HTTPException(403, detail="Company does not belong to your tenant")
+
+    def _verify_account_tenant(self, account_id: str, tenant_id: str, company_id: str):
+        """Raise 403 unless an account belongs to the same tenant and company."""
+        row = self.db.execute(text(
+            "SELECT tenant_id, company_id FROM dbp_accounts WHERE id = :aid"
+        ), {"aid": account_id}).fetchone()
+        if not row or row[0] != tenant_id or str(row[1]) != str(company_id):
+            from fastapi import HTTPException
+            raise HTTPException(404, detail="Account not found")
 
     # ── CHART OF ACCOUNTS ──
 
@@ -113,14 +118,17 @@ class AccountingEngine:
         if debit < 0 or credit < 0 or (debit == 0 and credit == 0):
             return None
 
-        # P80.5D FIX: only allow adding lines to a journal entry owned by the
-        # caller's tenant (prevents cross-tenant journal tampering).
+        # Resolve both ownership dimensions from the parent entry before the
+        # insert.  The tenant_id is explicitly persisted because journal lines
+        # are independently RLS-protected and their tenant_id is NOT NULL.
         parent = self.db.execute(text(
-            "SELECT tenant_id FROM dbp_journal_entries WHERE id = :jid"
+            "SELECT tenant_id, company_id FROM dbp_journal_entries WHERE id = :jid"
         ), {"jid": journal_entry_id}).fetchone()
         if not parent or parent[0] != tenant_id:
             from fastapi import HTTPException
             raise HTTPException(404, detail="Journal entry not found")
+        company_id = parent[1]
+        self._verify_account_tenant(account_id, tenant_id, company_id)
 
         lid = str(uuid.uuid4())
         max_order = self.db.execute(text(
@@ -128,10 +136,10 @@ class AccountingEngine:
         ), {"jid": journal_entry_id}).scalar() or 0
 
         self.db.execute(text(
-            "INSERT INTO dbp_journal_lines (id, journal_entry_id, account_id, "
-            "debit, credit, description, cost_center_id, line_order) "
-            "VALUES (:id, :jid, :aid, :dr, :cr, :desc, :ccid, :lo)"
-        ), {"id": lid, "jid": journal_entry_id, "aid": account_id,
+            "INSERT INTO dbp_journal_lines "
+            "(id, tenant_id, journal_entry_id, account_id, debit, credit, description, cost_center_id, line_order) "
+            "VALUES (:id, :tid, :jid, :aid, :dr, :cr, :desc, :ccid, :lo)"
+        ), {"id": lid, "tid": tenant_id, "jid": journal_entry_id, "aid": account_id,
             "dr": debit, "cr": credit, "desc": description,
             "ccid": cost_center_id, "lo": max_order + 1})
         self.db.flush()
@@ -151,8 +159,8 @@ class AccountingEngine:
 
         lines = self.db.execute(text(
             "SELECT id, account_id, debit, credit FROM dbp_journal_lines "
-            "WHERE journal_entry_id = :jid ORDER BY line_order"
-        ), {"jid": je_id}).fetchall()
+            "WHERE journal_entry_id = :jid AND tenant_id = :t ORDER BY line_order"
+        ), {"jid": je_id, "t": tenant_id}).fetchall()
 
         if not lines:
             return {"success": False, "error": "No lines in journal entry"}
@@ -163,15 +171,16 @@ class AccountingEngine:
         if abs(total_debit - total_credit) > Decimal("0.001"):
             return {"success": False, "error": f"Entry not balanced: debit={total_debit}, credit={total_credit}"}
 
-        # Update GL balances
+        # Update GL balances only for accounts owned by the same tenant and
+        # company as the journal entry.
         for line in lines:
             aid = line[1]
             dr = float(line[2])
             cr = float(line[3])
             self.db.execute(text(
                 "UPDATE dbp_accounts SET current_balance = current_balance + :dr - :cr "
-                "WHERE id = :aid AND tenant_id = :t"
-            ), {"aid": aid, "dr": dr, "cr": cr, "t": tenant_id})
+                "WHERE id = :aid AND tenant_id = :t AND company_id = :cid"
+            ), {"aid": aid, "dr": dr, "cr": cr, "t": tenant_id, "cid": entry[2]})
 
         # Mark posted
         self.db.execute(text(
@@ -197,8 +206,8 @@ class AccountingEngine:
             "l.description, l.cost_center_id "
             "FROM dbp_journal_lines l "
             "LEFT JOIN dbp_accounts a ON l.account_id = a.id "
-            "WHERE l.journal_entry_id = :jid ORDER BY l.line_order"
-        ), {"jid": je_id}).fetchall()
+            "WHERE l.journal_entry_id = :jid AND l.tenant_id = :t ORDER BY l.line_order"
+        ), {"jid": je_id, "t": tenant_id}).fetchall()
 
         return {
             "id": r[0], "entry_number": r[1],
@@ -278,10 +287,7 @@ class AccountingEngine:
     # ── HELPERS ──
 
     def _next_entry_number(self, tenant_id: str, company_id: str) -> str:
-        # Fixed H8: Previously used MAX+1 via ORDER BY created_at LIMIT 1,
-        # which is racy under concurrency. Now uses an atomic per-tenant
-        # counter in the number_sequences table so concurrent callers
-        # never receive the same entry number.
+        # Atomic per-tenant/company counter prevents duplicate entry numbers.
         from core.industry_security import uid
         seq_name = f"JE-{company_id}"
         row = self.db.execute(text(
