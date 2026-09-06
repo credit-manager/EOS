@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime, timezone
 from typing import Protocol
 from uuid import UUID
 
 from eos_v2.app.tenant_context import get_tenant_context
-from eos_v2.domain.ai_composer.entities import ComposerProposal, ProposalChange, ProposalStatus
-from eos_v2.domain.metadata.entities import EntityDefinition
 from eos_v2.application.metadata.versioning import MetadataVersioningService
+from eos_v2.domain.ai_composer.entities import ComposerProposal, ProposalChange, ProposalStatus
 
 
 class ComposerProvider(Protocol):
@@ -23,7 +23,7 @@ class ProposalRepository(Protocol):
 
 
 class AIComposerService:
-    """AI proposes metadata only; policy and a human approval perform publication."""
+    """AI proposes metadata only; policy and an administrator perform publication."""
 
     def __init__(self, repository: ProposalRepository, provider: ComposerProvider, metadata_repository) -> None:
         self.repository = repository
@@ -53,13 +53,26 @@ class AIComposerService:
         if proposal.status is not ProposalStatus.DRAFT:
             raise ValueError("Only draft proposals can be approved")
         context = get_tenant_context()
+        seen_names: set[str] = set()
         for change in proposal.changes:
             if change.entity.tenant_id != context.tenant_id:
                 raise PermissionError("Proposal contains a cross-tenant metadata change")
+            if change.entity.published:
+                raise ValueError("Proposal contains already-published metadata")
+            if change.entity.name in seen_names:
+                raise ValueError("Proposal contains duplicate entity names")
+            seen_names.add(change.entity.name)
+            for relationship in change.entity.relationships:
+                try:
+                    target = self.metadata_repository.get(relationship.target_entity_id)
+                except KeyError as exc:
+                    raise ValueError("Proposal contains a relationship to unknown metadata") from exc
+                if target.tenant_id != context.tenant_id:
+                    raise PermissionError("Proposal relationship crosses tenant boundary")
         versioning = MetadataVersioningService(self.metadata_repository)
         for change in proposal.changes:
             versioning.publish_new_version(change.entity)
-        approved = replace(proposal, status=ProposalStatus.APPROVED, decided_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc))
+        approved = replace(proposal, status=ProposalStatus.APPROVED, decided_at=datetime.now(timezone.utc))
         self.repository.update(approved)
         return approved
 
@@ -67,7 +80,7 @@ class AIComposerService:
         proposal = self.get(proposal_id)
         if proposal.status is not ProposalStatus.DRAFT:
             raise ValueError("Only draft proposals can be rejected")
-        rejected = replace(proposal, status=ProposalStatus.REJECTED, decided_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc))
+        rejected = replace(proposal, status=ProposalStatus.REJECTED, decided_at=datetime.now(timezone.utc))
         self.repository.update(rejected)
         return rejected
 
