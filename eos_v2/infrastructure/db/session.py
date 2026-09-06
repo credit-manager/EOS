@@ -8,6 +8,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from eos_v2.app.tenant_context import get_tenant_context
+
 
 @dataclass(frozen=True, slots=True)
 class DatabaseConfig:
@@ -39,6 +41,16 @@ class Database:
     def session(self) -> Iterator[Session]:
         session = self._session_factory()
         try:
+            tenant_context = None
+            try:
+                tenant_context = get_tenant_context()
+            except RuntimeError:
+                pass
+            if tenant_context is not None and self.engine.dialect.name == "postgresql":
+                session.execute(
+                    text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+                    {"tenant_id": str(tenant_context.tenant_id)},
+                )
             yield session
         except Exception:
             session.rollback()
