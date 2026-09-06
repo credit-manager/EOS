@@ -11,24 +11,21 @@ DESCRIPTOR = ModuleDescriptor("inventory", "1.0.0", "Inventory")
 class InventoryMovement:
     tenant_id: UUID
     item_id: UUID
-    warehouse_id: UUID
     quantity: Decimal
-    reference_type: str
-    reference_id: UUID
+    source: str
     id: UUID = field(default_factory=uuid4)
 
     def __post_init__(self) -> None:
         if self.quantity == 0:
             raise ValueError("Inventory movement quantity cannot be zero")
-        if not self.reference_type.strip():
-            raise ValueError("Inventory movement reference type is required")
+        if not self.source.strip():
+            raise ValueError("Inventory movement source is required")
 
 
 @dataclass(frozen=True, slots=True)
 class StockBalance:
     tenant_id: UUID
     item_id: UUID
-    warehouse_id: UUID
     quantity: Decimal
 
     def __post_init__(self) -> None:
