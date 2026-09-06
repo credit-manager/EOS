@@ -3,7 +3,6 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 
-from eos_v2.app.tenant_context import get_tenant_context
 from eos_v2.application.audit.service import record_event
 from eos_v2.application.industry.pack_catalog import CATALOG, get_pack
 from eos_v2.application.industry.pack_service import IndustryPackService
