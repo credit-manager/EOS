@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 
 from eos_v2.app.tenant_context import get_tenant_context
+from eos_v2.application.audit.service import record_event
 from eos_v2.application.industry.pack_catalog import CATALOG, get_pack
 from eos_v2.application.industry.pack_service import IndustryPackService
 from eos_v2.domain.permissions.policy import Permission
@@ -16,10 +17,9 @@ router = APIRouter(prefix="/api/v1/industry", tags=["industry"])
 @router.get("/packs")
 def list_packs(identity=Depends(get_current_identity)) -> dict[str, object]:
     require_permission(identity, Permission.READ)
-    tenant_id = get_tenant_context().tenant_id
     return {
         "packs": [
-            {"key": pack.key, "version": pack.version, "display_name": pack.build(tenant_id).display_name}
+            {"key": pack.key, "version": pack.version, "display_name": pack.display_name}
             for pack in CATALOG
         ]
     }
@@ -38,6 +38,15 @@ def install_pack(pack_key: str, request: Request, identity=Depends(get_current_i
     with database.session() as session:
         try:
             ids = IndustryPackService(SqlAlchemyMetadataRepository(session)).install(pack)
+            record_event(
+                session,
+                action="industry_pack.installed",
+                resource_type="industry_pack",
+                resource_id=pack.key,
+                actor_id=identity.actor.id,
+                request_id=request.headers.get("X-Request-ID"),
+                metadata={"version": pack.version, "entity_count": len(ids)},
+            )
             session.commit()
         except (IntegrityError, ValueError) as exc:
             session.rollback()
