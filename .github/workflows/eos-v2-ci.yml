@@ -83,5 +83,6 @@ jobs:
                    to_regclass('eos_v2_stock_balances'),
                    to_regclass('eos_v2_employees'),
                    to_regclass('eos_v2_projects'),
-                   to_regclass('eos_v2_industry_pack_installations');
+                   to_regclass('eos_v2_industry_pack_installations'),
+                   to_regclass('eos_v2_ai_composer_proposals');
           "
