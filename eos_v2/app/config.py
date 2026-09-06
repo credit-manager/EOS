@@ -14,6 +14,10 @@ class Settings:
     database_url: str = ""
     secret_key: str = ""
     max_body_bytes: int = 10 * 1024 * 1024
+    ai_base_url: str = ""
+    ai_api_key: str = ""
+    ai_model: str = ""
+    ai_timeout_seconds: float = 30.0
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -22,6 +26,10 @@ class Settings:
             database_url=os.getenv("DATABASE_URL", "").strip(),
             secret_key=os.getenv("EOS_SECRET_KEY", "").strip(),
             max_body_bytes=int(os.getenv("EOS_MAX_BODY_BYTES", str(10 * 1024 * 1024))),
+            ai_base_url=os.getenv("EOS_AI_BASE_URL", "").strip(),
+            ai_api_key=os.getenv("EOS_AI_API_KEY", "").strip(),
+            ai_model=os.getenv("EOS_AI_MODEL", "").strip(),
+            ai_timeout_seconds=float(os.getenv("EOS_AI_TIMEOUT_SECONDS", "30")),
         )
 
     def validate(self) -> None:
@@ -29,7 +37,11 @@ class Settings:
             raise ValueError("EOS_ENV must be development, test, staging, or production")
         if self.max_body_bytes <= 0:
             raise ValueError("EOS_MAX_BODY_BYTES must be positive")
+        if self.ai_timeout_seconds <= 0 or self.ai_timeout_seconds > 120:
+            raise ValueError("EOS_AI_TIMEOUT_SECONDS must be between 0 and 120")
         if self.environment in {"staging", "production"} and not self.database_url:
             raise ValueError("DATABASE_URL is required outside development/test")
         if self.environment == "production" and len(self.secret_key) < 32:
             raise ValueError("EOS_SECRET_KEY must contain at least 32 characters in production")
+        if any((self.ai_base_url, self.ai_api_key, self.ai_model)) and not all((self.ai_base_url, self.ai_api_key, self.ai_model)):
+            raise ValueError("AI Composer configuration requires EOS_AI_BASE_URL, EOS_AI_API_KEY, and EOS_AI_MODEL together")
