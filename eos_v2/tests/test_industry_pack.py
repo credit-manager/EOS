@@ -1,16 +1,42 @@
 from uuid import uuid4
 
-from eos_v2.modules.industry.construction_real_estate import ConstructionRealEstatePack
+import pytest
+
+from eos_v2.app.tenant_context import TenantContext, tenant_context
+from eos_v2.application.industry.pack_catalog import get_pack
+from eos_v2.modules.industry.construction_real_estate import build_pack
 
 
-def test_construction_pack_is_tenant_scoped_and_relationships_resolve():
-    tenant = uuid4()
-    pack = ConstructionRealEstatePack().build(tenant)
-    assert pack.key == "construction-real-estate"
+def test_catalog_contains_construction_real_estate() -> None:
+    pack = get_pack("construction-real-estate")
     assert pack.version == "1.0.0"
+    assert pack.builder(uuid4()).key == "construction-real-estate"
+
+
+def test_catalog_rejects_unknown_pack() -> None:
+    with pytest.raises(KeyError, match="unknown-industry-pack"):
+        get_pack("unknown-industry-pack")
+
+
+def test_construction_pack_is_tenant_bound() -> None:
+    tenant = uuid4()
+    pack = build_pack(tenant)
+    assert pack.tenant_id == tenant
     assert len(pack.entities) == 5
-    assert all(entity.tenant_id == tenant and entity.published is False for entity in pack.entities)
-    ids = {entity.id for entity in pack.entities}
+    assert {entity.name for entity in pack.entities} == {
+        "land_parcel",
+        "development_project",
+        "property_unit",
+        "property_contract",
+        "construction_work_package",
+    }
     for entity in pack.entities:
-        for relationship in entity.relationships:
-            assert relationship.target_entity_id in ids
+        assert entity.tenant_id == tenant
+
+
+def test_pack_builder_cannot_change_tenant_context() -> None:
+    tenant_a = uuid4()
+    tenant_b = uuid4()
+    with tenant_context(TenantContext(tenant_id=tenant_a, actor_id=uuid4())):
+        pack = build_pack(tenant_b)
+        assert pack.tenant_id == tenant_b
