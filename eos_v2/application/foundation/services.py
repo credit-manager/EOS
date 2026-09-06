@@ -28,11 +28,7 @@ class FoundationService:
     def transition_sales_order(order: SalesOrder, status: SalesOrderStatus) -> SalesOrder:
         if order.tenant_id != FoundationService.tenant():
             raise PermissionError("Cross-tenant operation denied")
-        allowed = {
-            SalesOrderStatus.DRAFT: {SalesOrderStatus.CONFIRMED, SalesOrderStatus.CANCELLED},
-            SalesOrderStatus.CONFIRMED: {SalesOrderStatus.CANCELLED},
-            SalesOrderStatus.CANCELLED: set(),
-        }
+        allowed = {SalesOrderStatus.DRAFT: {SalesOrderStatus.CONFIRMED, SalesOrderStatus.CANCELLED}, SalesOrderStatus.CONFIRMED: {SalesOrderStatus.CANCELLED}, SalesOrderStatus.CANCELLED: set()}
         if status not in allowed[order.status]:
             raise ValueError(f"Invalid sales order transition: {order.status.value} -> {status.value}")
         return replace(order, status=status)
@@ -45,11 +41,7 @@ class FoundationService:
     def transition_purchase_order(order: PurchaseOrder, status: PurchaseOrderStatus) -> PurchaseOrder:
         if order.tenant_id != FoundationService.tenant():
             raise PermissionError("Cross-tenant operation denied")
-        allowed = {
-            PurchaseOrderStatus.DRAFT: {PurchaseOrderStatus.CONFIRMED, PurchaseOrderStatus.CANCELLED},
-            PurchaseOrderStatus.CONFIRMED: {PurchaseOrderStatus.CANCELLED},
-            PurchaseOrderStatus.CANCELLED: set(),
-        }
+        allowed = {PurchaseOrderStatus.DRAFT: {PurchaseOrderStatus.CONFIRMED, PurchaseOrderStatus.CANCELLED}, PurchaseOrderStatus.CONFIRMED: {PurchaseOrderStatus.CANCELLED}, PurchaseOrderStatus.CANCELLED: set()}
         if status not in allowed[order.status]:
             raise ValueError(f"Invalid purchase order transition: {order.status.value} -> {status.value}")
         return replace(order, status=status)
@@ -59,8 +51,8 @@ class FoundationService:
         return Employee(tenant_id=FoundationService.tenant(), employee_number=employee_number, name=name, hire_date=hire_date)
 
     @staticmethod
-    def create_project(name: str, start_date: date, end_date: date | None = None) -> Project:
-        return Project(tenant_id=FoundationService.tenant(), name=name, start_date=start_date, end_date=end_date)
+    def create_project(code: str, name: str, start_date: date, end_date: date | None = None) -> Project:
+        return Project(tenant_id=FoundationService.tenant(), code=code, name=name, start_date=start_date, end_date=end_date)
 
     @staticmethod
     def apply_inventory_movement(item_id: UUID, quantity: Decimal, source: str, balance: StockBalance | None) -> tuple[InventoryMovement, StockBalance]:
