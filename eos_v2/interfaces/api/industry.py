@@ -20,7 +20,7 @@ def list_packs(identity=Depends(get_current_identity)) -> dict[str, object]:
     return {
         "packs": [
             {"key": pack.key, "version": pack.version, "display_name": pack.build(tenant_id).display_name}
-            for pack in CATALOG.values()
+            for pack in CATALOG
         ]
     }
 
