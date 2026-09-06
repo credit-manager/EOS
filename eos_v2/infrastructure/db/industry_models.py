@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import DateTime, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.types import Uuid
+from sqlalchemy.types import JSON, Uuid
 
 from eos_v2.infrastructure.db.metadata_models import Base
 
@@ -20,4 +20,5 @@ class IndustryPackInstallationModel(Base):
     tenant_id: Mapped[UUID] = mapped_column(Uuid(), nullable=False, index=True)
     pack_key: Mapped[str] = mapped_column(String(100), nullable=False)
     pack_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    entity_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     installed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
