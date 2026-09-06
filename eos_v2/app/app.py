@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from eos_v2.infrastructure.db.session import Database, DatabaseConfig
@@ -10,6 +10,8 @@ from eos_v2.interfaces.api.foundation import router as foundation_router
 from eos_v2.interfaces.api.industry import router as industry_router
 from eos_v2.interfaces.api.metadata import router as metadata_router
 from eos_v2.interfaces.api.records import router as records_router
+from eos_v2.application.identity.authentication import decode_access_token
+from eos_v2.app.tenant_context import TenantContext, reset_tenant_context, set_tenant_context
 
 from .config import Settings
 from .health import router as health_router
@@ -35,6 +37,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
     )
+
+    @app.middleware("http")
+    async def authenticated_tenant_context(request: Request, call_next):
+        """Establish tenant context in the request task so sync endpoints inherit it."""
+        authorization = request.headers.get("Authorization", "")
+        token_value = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+        context_token = None
+        if token_value:
+            try:
+                tenant_id, actor_id, _ = decode_access_token(token_value, settings.secret_key)
+            except ValueError:
+                pass
+            else:
+                context_token = set_tenant_context(TenantContext(tenant_id, actor_id))
+        try:
+            return await call_next(request)
+        finally:
+            if context_token is not None:
+                reset_tenant_context(context_token)
+
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(metadata_router)
