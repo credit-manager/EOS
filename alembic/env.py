@@ -154,6 +154,11 @@ def _ensure_alembic_version_table(connection):
     connection.exec_driver_sql(
         "ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(255)"
     )
+    # SQLAlchemy 2.x autobegins a transaction for the DDL above. Commit it
+    # before Alembic starts its own migration transaction; otherwise the
+    # compatibility DDL (and the migration transaction nested after it) can
+    # be rolled back when the connection closes on a fresh database.
+    connection.commit()
 
 
 db_url = os.environ.get("DATABASE_URL")
