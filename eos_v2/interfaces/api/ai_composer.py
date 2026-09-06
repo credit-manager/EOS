@@ -28,6 +28,9 @@ class ProposalResponse(BaseModel):
     provider: str
     prompt: str
     changes: list[dict[str, object]]
+    created_at: str
+    decided_at: str | None
+    decided_by: UUID | None
 
 
 def _service(request: Request, session) -> AIComposerService:
@@ -46,6 +49,9 @@ def _response(proposal) -> ProposalResponse:
             {"entity": change.entity.name, "label": change.entity.label, "version": change.entity.version, "rationale": change.rationale}
             for change in proposal.changes
         ],
+        created_at=proposal.created_at.isoformat(),
+        decided_at=proposal.decided_at.isoformat() if proposal.decided_at else None,
+        decided_by=proposal.decided_by,
     )
 
 
@@ -81,9 +87,7 @@ def get_proposal(request: Request, proposal_id: UUID, identity=Depends(get_curre
     with _require_database(request).session() as session:
         try:
             proposal = _service(request, session).get(proposal_id)
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail="Proposal not found") from exc
-        except PermissionError as exc:
+        except (KeyError, PermissionError) as exc:
             raise HTTPException(status_code=404, detail="Proposal not found") from exc
     return _response(proposal)
 
@@ -119,7 +123,7 @@ def reject_proposal(request: Request, proposal_id: UUID, identity=Depends(get_cu
             raise HTTPException(status_code=404, detail="Proposal not found") from exc
         except PermissionError as exc:
             session.rollback()
-            raise HTTPException(status_code=404, detail="Proposal not found") from exc
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
         except ValueError as exc:
             session.rollback()
             raise HTTPException(status_code=409, detail=str(exc)) from exc
