@@ -16,6 +16,7 @@
 - `0003_dynamic_record_unique_values.sql` — transactional registry enforcing metadata-defined unique fields and cascading cleanup for deleted records.
 - `0004_identity_authorization.sql` — tenants, actors, roles and explicit permission assignments.
 - `0005_outbox_events.sql` — durable tenant-scoped event outbox for reliable asynchronous delivery.
+- `0006_accounting.sql` — tenant-scoped chart of accounts and double-entry journal storage.
 
 ## Record invariants
 
@@ -36,6 +37,14 @@
 - Domain events always carry a tenant ID and namespaced event type.
 - Outbox writes are transactional with the business transaction; delivery is asynchronous and retryable.
 - Event handlers execute under the event's tenant context and cannot inherit another tenant's context.
+
+## Accounting invariants
+
+- Journal lines cannot contain both debit and credit.
+- Journal entries require at least two lines and must balance exactly before posting.
+- Accounts and journal data are tenant-scoped.
+- Account codes are unique within a tenant.
+- Posting is an application service operation; no legacy accounting tables are modified.
 
 ## Test contract
 
