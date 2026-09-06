@@ -17,6 +17,7 @@
 - `0004_identity_authorization.sql` — tenants, actors, roles and explicit permission assignments.
 - `0005_outbox_events.sql` — durable tenant-scoped event outbox for reliable asynchronous delivery.
 - `0006_accounting.sql` — tenant-scoped chart of accounts and double-entry journal storage.
+- `0007_foundation_modules.sql` — tenant-scoped Sales, Purchasing, Inventory, HR and Projects operational storage.
 
 ## Record invariants
 
@@ -45,6 +46,14 @@
 - Accounts and journal data are tenant-scoped.
 - Account codes are unique within a tenant.
 - Posting is an application service operation; no legacy accounting tables are modified.
+
+## Foundation module invariants
+
+- Sales and Purchasing orders are tenant-scoped and use explicit lifecycle transitions: draft → confirmed/cancelled; confirmed → cancelled.
+- Inventory balances are tenant-scoped, unique per item, and cannot become negative.
+- Employee numbers are unique within a tenant.
+- Project dates must satisfy start ≤ end when an end date exists.
+- Foundation APIs derive tenant identity exclusively from the authenticated request context.
 
 ## Test contract
 
