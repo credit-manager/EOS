@@ -22,7 +22,7 @@ def test_journal_entry_requires_balanced_double_entry() -> None:
         description="Sale",
         lines=(JournalLine(cash, debit=Decimal("100")), JournalLine(revenue, credit=Decimal("100"))),
     )
-    assert entry.currency == "usd"
+    assert entry.currency == "USD"
     with pytest.raises(ValueError, match="Unbalanced"):
         JournalEntry(
             tenant_id=tenant,
