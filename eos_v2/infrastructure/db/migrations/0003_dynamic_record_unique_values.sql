@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS eos_v2_dynamic_record_unique_values (
     tenant_id UUID NOT NULL,
     entity_id UUID NOT NULL,
     field_name VARCHAR(100) NOT NULL,
-    value_key VARCHAR(2048) NOT NULL,
+    value_key VARCHAR(64) NOT NULL,
     record_id UUID NOT NULL,
     CONSTRAINT pk_eos_v2_record_unique_value
         PRIMARY KEY (tenant_id, entity_id, field_name, value_key),
