@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from eos_v2.app.tenant_context import get_tenant_context
 from eos_v2.domain.metadata.entities import EntityDefinition, FieldDefinition, FieldType, RelationshipDefinition
+from eos_v2.infrastructure.db.industry_models import IndustryPackInstallationModel
 from eos_v2.infrastructure.db.metadata_models import MetadataEntityModel
 
 
@@ -73,3 +74,35 @@ class SqlAlchemyMetadataRepository:
         if model is None:
             raise KeyError("Published metadata entity not found")
         return self._to_domain(model)
+
+    def get_pack_installation(self, pack_key: str, pack_version: str) -> tuple[UUID, ...] | None:
+        tenant_id = get_tenant_context().tenant_id
+        installation = self.session.scalar(select(IndustryPackInstallationModel).where(
+            IndustryPackInstallationModel.tenant_id == tenant_id,
+            IndustryPackInstallationModel.pack_key == pack_key,
+            IndustryPackInstallationModel.pack_version == pack_version,
+        ))
+        if installation is None:
+            return None
+        rows = self.session.scalars(select(MetadataEntityModel).where(
+            MetadataEntityModel.tenant_id == tenant_id,
+            MetadataEntityModel.id.in_(
+                select(MetadataEntityModel.id).where(
+                    MetadataEntityModel.tenant_id == tenant_id,
+                    MetadataEntityModel.name.in_(select(MetadataEntityModel.name).where(MetadataEntityModel.tenant_id == tenant_id)),
+                )
+            ),
+        )).all()
+        return tuple(row.id for row in rows if row.published)
+
+    def record_pack_installation(self, pack_key: str, pack_version: str) -> None:
+        tenant_id = get_tenant_context().tenant_id
+        existing = self.session.scalar(select(IndustryPackInstallationModel).where(
+            IndustryPackInstallationModel.tenant_id == tenant_id,
+            IndustryPackInstallationModel.pack_key == pack_key,
+            IndustryPackInstallationModel.pack_version == pack_version,
+        ))
+        if existing is None:
+            self.session.add(IndustryPackInstallationModel(
+                tenant_id=tenant_id, pack_key=pack_key, pack_version=pack_version,
+            ))
