@@ -52,21 +52,19 @@ class FoundationRepository:
 
     def save_project(self, project: Project) -> None:
         self._check(project.tenant_id)
-        self.session.merge(ProjectModel(id=project.id, tenant_id=project.tenant_id, name=project.name, status=project.status.value, start_date=project.start_date, end_date=project.end_date))
+        self.session.merge(ProjectModel(id=project.id, tenant_id=project.tenant_id, code=project.code, name=project.name, status=project.status.value, start_date=project.start_date, end_date=project.end_date))
 
     def get_project(self, project_id: UUID) -> Project:
         row = self.session.scalar(select(ProjectModel).where(ProjectModel.id == project_id, ProjectModel.tenant_id == _tenant()))
         if row is None: raise KeyError("Project not found")
-        return Project(tenant_id=row.tenant_id, name=row.name, start_date=row.start_date, end_date=row.end_date, status=ProjectStatus(row.status), id=row.id)
+        return Project(tenant_id=row.tenant_id, code=row.code, name=row.name, start_date=row.start_date, end_date=row.end_date, status=ProjectStatus(row.status), id=row.id)
 
     def save_inventory(self, movement: InventoryMovement, balance: StockBalance) -> None:
         self._check(movement.tenant_id)
         self._check(balance.tenant_id)
         row = self.session.scalar(select(StockBalanceModel).where(StockBalanceModel.item_id == balance.item_id, StockBalanceModel.tenant_id == _tenant()))
-        if row is None:
-            self.session.add(StockBalanceModel(id=balance.id, tenant_id=balance.tenant_id, item_id=balance.item_id, quantity=balance.quantity))
-        else:
-            row.quantity = balance.quantity
+        if row is None: self.session.add(StockBalanceModel(id=balance.id, tenant_id=balance.tenant_id, item_id=balance.item_id, quantity=balance.quantity))
+        else: row.quantity = balance.quantity
         self.session.add(InventoryMovementModel(id=movement.id, tenant_id=movement.tenant_id, item_id=movement.item_id, quantity=movement.quantity, source=movement.source))
 
     def get_stock(self, item_id: UUID) -> StockBalance:
