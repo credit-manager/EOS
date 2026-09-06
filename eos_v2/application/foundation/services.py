@@ -6,8 +6,6 @@ from decimal import Decimal
 from uuid import UUID
 
 from eos_v2.app.tenant_context import get_tenant_context
-from eos_v2.domain.accounting.entities import AccountType
-from eos_v2.domain.metadata.records import DynamicRecord
 from eos_v2.modules.hr import Employee
 from eos_v2.modules.inventory import InventoryMovement, StockBalance
 from eos_v2.modules.projects import Project
