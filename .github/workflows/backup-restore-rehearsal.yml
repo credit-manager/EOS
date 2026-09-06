@@ -1,0 +1,64 @@
+name: EOS Backup Restore Rehearsal
+
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup-restore:
+    name: PostgreSQL Backup / Restore Rehearsal
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: eos_rehearsal
+          POSTGRES_PASSWORD: eos_rehearsal
+          POSTGRES_DB: eos_source
+        options: >-
+          --health-cmd "pg_isready -U eos_rehearsal -d eos_source"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install database tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Apply canonical schema
+        env:
+          DATABASE_URL: postgresql://eos_rehearsal:eos_rehearsal@127.0.0.1:5432/eos_source
+          SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          ENVIRONMENT: testing
+        run: alembic upgrade head
+      - name: Seed representative ledger data
+        env:
+          PGPASSWORD: eos_rehearsal
+        run: |
+          createdb -h 127.0.0.1 -U eos_rehearsal eos_restore
+          psql -h 127.0.0.1 -U eos_rehearsal -d eos_source -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO eos_v2_accounts (id, tenant_id, code, name, account_type, active)
+          VALUES
+            ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','1000','Cash','asset',TRUE),
+            ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','4000','Revenue','revenue',TRUE);
+          INSERT INTO eos_v2_journal_entries (id, tenant_id, entry_date, currency, description, posted)
+          VALUES ('00000000-0000-0000-0000-000000000010','00000000-0000-0000-0000-000000000001','2026-09-06','USD','Backup rehearsal entry',TRUE);
+          INSERT INTO eos_v2_journal_lines (tenant_id, journal_entry_id, account_id, debit, credit)
+          VALUES
+            ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000010','00000000-0000-0000-0000-000000000001',100,0),
+            ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000010','00000000-0000-0000-0000-000000000002',0,100);
+          SQL
+      - name: Run backup and restore rehearsal
+        env:
+          SOURCE_DATABASE_URL: postgresql://eos_rehearsal:eos_rehearsal@127.0.0.1:5432/eos_source
+          RESTORE_DATABASE_URL: postgresql://eos_rehearsal:eos_rehearsal@127.0.0.1:5432/eos_restore
+        run: bash ops/backup_restore_rehearsal.sh
