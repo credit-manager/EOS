@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 
 from eos_v2.application.accounting.service import AccountingService
+from eos_v2.application.audit.service import record_event
 from eos_v2.domain.accounting.entities import Account, AccountType, JournalEntry, JournalLine
 from eos_v2.domain.permissions.policy import Permission
 from eos_v2.infrastructure.db.accounting_repository import SqlAlchemyAccountingRepository
@@ -73,6 +74,15 @@ def create_account(payload: AccountRequest, request: Request, identity=Depends(g
         repository = SqlAlchemyAccountingRepository(session)
         try:
             repository.add_account(account)
+            record_event(
+                session,
+                action="account.created",
+                resource_type="account",
+                resource_id=account.id,
+                actor_id=identity.actor.id,
+                request_id=request.headers.get("X-Request-ID"),
+                metadata={"code": account.code, "account_type": account.account_type.value},
+            )
             session.commit()
         except IntegrityError as exc:
             session.rollback()
@@ -102,8 +112,18 @@ def post_journal_entry(payload: JournalEntryRequest, request: Request, identity=
     with database.session() as session:
         try:
             posted = AccountingService(SqlAlchemyAccountingRepository(session)).post(entry)
+            record_event(
+                session,
+                action="journal_entry.posted",
+                resource_type="journal_entry",
+                resource_id=posted.id,
+                actor_id=identity.actor.id,
+                request_id=request.headers.get("X-Request-ID"),
+                metadata={"currency": posted.currency, "line_count": len(posted.lines)},
+            )
             session.commit()
         except KeyError as exc:
+            session.rollback()
             raise HTTPException(status_code=404, detail="Accounting account not found") from exc
         except (PermissionError, ValueError) as exc:
             session.rollback()
