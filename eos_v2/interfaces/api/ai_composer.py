@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from uuid import UUID
-
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
+from uuid import UUID
 
 from eos_v2.application.ai_composer.providers import OpenAICompatibleComposerProvider
 from eos_v2.application.ai_composer.service import AIComposerService
+from eos_v2.application.audit.service import record_event
 from eos_v2.domain.ai_composer.entities import ProposalStatus
 from eos_v2.domain.permissions.policy import Permission
 from eos_v2.infrastructure.db.ai_composer_repository import SqlAlchemyComposerProposalRepository
@@ -68,6 +68,15 @@ def create_proposal(request: Request, payload: ProposalRequest, identity=Depends
     with _require_database(request).session() as session:
         try:
             proposal = _service(request, session).propose(payload.prompt)
+            record_event(
+                session,
+                action="ai_composer.proposal_created",
+                resource_type="ai_composer_proposal",
+                resource_id=proposal.id,
+                actor_id=identity.actor.id,
+                request_id=request.headers.get("X-Request-ID"),
+                metadata={"provider": proposal.provider, "change_count": len(proposal.changes)},
+            )
             session.commit()
         except httpx.HTTPError as exc:
             session.rollback()
@@ -98,6 +107,14 @@ def approve_proposal(request: Request, proposal_id: UUID, identity=Depends(get_c
     with _require_database(request).session() as session:
         try:
             proposal = _service(request, session).approve(proposal_id)
+            record_event(
+                session,
+                action="ai_composer.proposal_approved",
+                resource_type="ai_composer_proposal",
+                resource_id=proposal.id,
+                actor_id=identity.actor.id,
+                request_id=request.headers.get("X-Request-ID"),
+            )
             session.commit()
         except KeyError as exc:
             session.rollback()
@@ -117,6 +134,14 @@ def reject_proposal(request: Request, proposal_id: UUID, identity=Depends(get_cu
     with _require_database(request).session() as session:
         try:
             proposal = _service(request, session).reject(proposal_id)
+            record_event(
+                session,
+                action="ai_composer.proposal_rejected",
+                resource_type="ai_composer_proposal",
+                resource_id=proposal.id,
+                actor_id=identity.actor.id,
+                request_id=request.headers.get("X-Request-ID"),
+            )
             session.commit()
         except KeyError as exc:
             session.rollback()
