@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import logging
 import time
 from uuid import uuid4
 
@@ -28,12 +29,26 @@ from .health import router as health_router
 
 REQUESTS = Counter("eos_http_requests_total", "HTTP requests", ["method", "path", "status"])
 REQUEST_LATENCY = Histogram("eos_http_request_duration_seconds", "HTTP request duration", ["method", "path"])
+SECURITY_LOGGER = logging.getLogger("eos.security")
 
 
 def _metric_path(request: Request) -> str:
     route = request.scope.get("route")
     route_path = getattr(route, "path", None)
     return route_path or request.url.path
+
+
+def _log_security_event(request: Request, request_id: str, status_code: int) -> None:
+    if status_code not in {401, 403, 429, 500}:
+        return
+    # Never log Authorization headers, query strings, request bodies, or user data.
+    SECURITY_LOGGER.warning(
+        "security_event event=request_rejected request_id=%s method=%s path=%s status=%s",
+        request_id,
+        request.method,
+        _metric_path(request),
+        status_code,
+    )
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -78,10 +93,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 metric_path = getattr(route, "path", None) or request.url.path
                 REQUESTS.labels(request.method, metric_path, "500").inc()
                 REQUEST_LATENCY.labels(request.method, metric_path).observe(time.perf_counter() - started)
+                _log_security_event(request, request_id, 500)
                 raise
         metric_path = _metric_path(request)
         REQUESTS.labels(request.method, metric_path, str(response.status_code)).inc()
         REQUEST_LATENCY.labels(request.method, metric_path).observe(time.perf_counter() - started)
+        _log_security_event(request, request_id, response.status_code)
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
@@ -124,7 +141,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(foundation_router)
     app.include_router(industry_router)
     app.include_router(ai_composer_router)
-    app.include_router(web_router)
 
     metrics_app = make_asgi_app()
 
