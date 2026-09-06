@@ -24,6 +24,7 @@ class Settings:
     ai_timeout_seconds: float = 30.0
     allowed_hosts: tuple[str, ...] = ()
     cors_origins: tuple[str, ...] = ()
+    metrics_token: str = ""
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -38,6 +39,7 @@ class Settings:
             ai_timeout_seconds=float(os.getenv("EOS_AI_TIMEOUT_SECONDS", "30")),
             allowed_hosts=_csv_env("EOS_ALLOWED_HOSTS"),
             cors_origins=_csv_env("EOS_CORS_ORIGINS"),
+            metrics_token=os.getenv("EOS_METRICS_TOKEN", "").strip(),
         )
 
     def validate(self) -> None:
@@ -57,3 +59,5 @@ class Settings:
             raise ValueError("EOS_ALLOWED_HOSTS is required in production")
         if self.environment == "production" and not self.cors_origins:
             raise ValueError("EOS_CORS_ORIGINS is required in production")
+        if self.environment == "production" and len(self.metrics_token) < 16:
+            raise ValueError("EOS_METRICS_TOKEN must contain at least 16 characters in production")
