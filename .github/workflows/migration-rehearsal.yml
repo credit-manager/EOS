@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_ALEMBIC_HEAD: 20260906_harden_journal_line_tenant_scope
+  EXPECTED_ALEMBIC_HEAD: 20260906_restore_metadata_core
 
 jobs:
   migration-rehearsal:
