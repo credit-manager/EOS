@@ -1,11 +1,11 @@
 """Harden journal-line tenant isolation for existing databases.
 
-Revision ID: 20260906_harden_journal_line_tenant_scope
+Revision ID: 20260906_journal_line_tenant
 Revises: 20260905_restore_journal_tables
 """
 from alembic import op
 
-revision = "20260906_harden_journal_line_tenant_scope"
+revision = "20260906_journal_line_tenant"
 down_revision = "20260905_restore_journal_tables"
 branch_labels = None
 depends_on = None
