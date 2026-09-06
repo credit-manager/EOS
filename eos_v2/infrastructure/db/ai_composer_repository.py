@@ -44,20 +44,11 @@ def _deserialize_changes(items: list[dict]) -> tuple[ProposalChange, ...]:
             label=raw.get("label", ""),
             version=int(raw.get("version", 1)),
             fields=tuple(
-                FieldDefinition(
-                    name=f["name"],
-                    field_type=FieldType(f["field_type"]),
-                    required=bool(f.get("required")),
-                    unique=bool(f.get("unique")),
-                )
+                FieldDefinition(name=f["name"], field_type=FieldType(f["field_type"]), required=bool(f.get("required")), unique=bool(f.get("unique")))
                 for f in raw.get("fields", [])
             ),
             relationships=tuple(
-                RelationshipDefinition(
-                    name=r["name"],
-                    target_entity_id=UUID(r["target_entity_id"]),
-                    required=bool(r.get("required")),
-                )
+                RelationshipDefinition(name=r["name"], target_entity_id=UUID(r["target_entity_id"]), required=bool(r.get("required")))
                 for r in raw.get("relationships", [])
             ),
             published=bool(raw.get("published", False)),
@@ -84,6 +75,7 @@ class SqlAlchemyComposerProposalRepository:
             changes=_serialize(proposal),
             created_at=proposal.created_at,
             decided_at=proposal.decided_at,
+            decided_by=proposal.decided_by,
         ))
 
     def get(self, proposal_id: UUID) -> ComposerProposal:
@@ -101,6 +93,7 @@ class SqlAlchemyComposerProposalRepository:
             changes=_deserialize_changes(model.changes),
             created_at=model.created_at,
             decided_at=model.decided_at,
+            decided_by=model.decided_by,
         )
 
     def update(self, proposal: ComposerProposal) -> None:
@@ -112,3 +105,4 @@ class SqlAlchemyComposerProposalRepository:
             raise KeyError(proposal.id)
         model.status = proposal.status.value
         model.decided_at = proposal.decided_at
+        model.decided_by = proposal.decided_by
