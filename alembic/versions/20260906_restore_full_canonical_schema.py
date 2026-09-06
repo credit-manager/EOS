@@ -4,6 +4,10 @@ The published 87aba7990b4d revision has its upgrade/downgrade bodies reversed.
 Its downgrade body is therefore the canonical CREATE TABLE sequence. The
 canonical sequence was generated in reverse dependency order, so foreign-key
 constraints are deferred until every table exists.
+
+This repair migration is deliberately additive: earlier compatibility
+migrations may already have restored a subset of the canonical tables and
+indexes. Existing objects are preserved rather than recreated.
 """
 
 from __future__ import annotations
@@ -39,9 +43,8 @@ def _create_deferred_foreign_key(constraint: ForeignKeyConstraint) -> None:
     referent_table = referent.name
     referent_schema = referent.schema
 
-    existing = sa_inspect(op.get_bind()).get_foreign_keys(
-        source_table, schema=source_schema
-    )
+    inspector = sa_inspect(op.get_bind())
+    existing = inspector.get_foreign_keys(source_table, schema=source_schema)
     if any(item.get("name") == constraint.name for item in existing):
         return
 
@@ -67,10 +70,20 @@ def _create_deferred_foreign_key(constraint: ForeignKeyConstraint) -> None:
 def upgrade() -> None:
     baseline = _load_baseline()
     deferred: list[ForeignKeyConstraint] = []
+    inspector = sa_inspect(op.get_bind())
 
     original_create_table = op.create_table
+    original_create_index = op.create_index
 
     def create_table_without_fks(*args, **kwargs):
+        table_name = args[0]
+        schema = kwargs.get("schema")
+        existing_tables = inspector.get_table_names(schema=schema)
+        if table_name in existing_tables:
+            # Compatibility migrations may have already restored this table.
+            # Keep the existing definition and let the baseline continue.
+            return None
+
         foreign_keys = [item for item in args if isinstance(item, ForeignKeyConstraint)]
         deferred.extend(foreign_keys)
         filtered_args = tuple(
@@ -78,15 +91,27 @@ def upgrade() -> None:
         )
         return original_create_table(*filtered_args, **kwargs)
 
+    def create_index_if_missing(index, *args, **kwargs):
+        index_name = index if isinstance(index, str) else getattr(index, "name", None)
+        table_name = args[0] if args else kwargs.get("table_name")
+        schema = kwargs.get("schema")
+        if index_name and table_name:
+            existing_indexes = inspector.get_indexes(table_name, schema=schema)
+            if any(item.get("name") == index_name for item in existing_indexes):
+                return None
+        return original_create_index(index, *args, **kwargs)
+
     op.create_table = create_table_without_fks
+    op.create_index = create_index_if_missing
     try:
         baseline.downgrade()
     finally:
         op.create_table = original_create_table
+        op.create_index = original_create_index
 
-    # All tables now exist, so the foreign-key graph can be restored safely
-    # even though the historical baseline emitted CREATE TABLE statements in
-    # reverse dependency order.
+    # All newly-created tables now exist, so the foreign-key graph can be
+    # restored safely even though the historical baseline emitted CREATE TABLE
+    # statements in reverse dependency order. Existing FKs are skipped.
     for constraint in deferred:
         _create_deferred_foreign_key(constraint)
 
