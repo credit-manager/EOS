@@ -6,11 +6,11 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from jwt import PyJWKClient
 from prometheus_client import make_asgi_app
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from eos_v2.application.identity.authentication import decode_access_token
-from eos_v2.application.identity.jwks import RSAKeyRing
 from eos_v2.app.tenant_context import TenantContext, reset_tenant_context, set_tenant_context
 from eos_v2.infrastructure.db.session import Database, DatabaseConfig
 from eos_v2.interfaces.api.accounting import router as accounting_router
@@ -37,7 +37,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.state.database = Database(DatabaseConfig(settings.database_url)) if settings.database_url else None
-    app.state.jwt_keyring = RSAKeyRing.generate()
+    app.state.oidc_jwks_client = (
+        PyJWKClient(settings.oidc_jwks_url, cache_jwk_set=True, lifespan=300)
+        if settings.auth_mode == "oidc"
+        else None
+    )
 
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts) or ["*"])
     app.add_middleware(
@@ -72,7 +76,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         context_token = None
         if token_value:
             try:
-                tenant_id, actor_id, _ = decode_access_token(token_value, settings.secret_key)
+                tenant_id, actor_id, _ = decode_access_token(
+                    token_value,
+                    settings.secret_key,
+                    auth_mode=settings.auth_mode,
+                    oidc_issuer=settings.oidc_issuer,
+                    oidc_audience=settings.oidc_audience,
+                    oidc_jwks_client=app.state.oidc_jwks_client,
+                )
             except ValueError:
                 pass
             else:
@@ -104,10 +115,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await call_next(request)
 
     app.mount("/metrics", metrics_app)
-
-    @app.get("/.well-known/jwks.json", tags=["auth"])
-    def jwks() -> dict[str, object]:
-        return app.state.jwt_keyring.jwks()
 
     @app.get("/", tags=["system"])
     def root() -> dict[str, str]:
