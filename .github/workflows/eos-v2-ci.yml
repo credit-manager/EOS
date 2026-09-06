@@ -76,5 +76,12 @@ jobs:
                    to_regclass('eos_v2_outbox_events'),
                    to_regclass('eos_v2_accounts'),
                    to_regclass('eos_v2_journal_entries'),
-                   to_regclass('eos_v2_journal_lines');
+                   to_regclass('eos_v2_journal_lines'),
+                   to_regclass('eos_v2_sales_orders'),
+                   to_regclass('eos_v2_purchase_orders'),
+                   to_regclass('eos_v2_inventory_movements'),
+                   to_regclass('eos_v2_stock_balances'),
+                   to_regclass('eos_v2_employees'),
+                   to_regclass('eos_v2_projects'),
+                   to_regclass('eos_v2_industry_pack_installations');
           "
