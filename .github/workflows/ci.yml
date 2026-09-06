@@ -102,6 +102,40 @@ jobs:
           alembic upgrade head
           test "$(alembic heads | grep -c "^${EXPECTED_ALEMBIC_HEAD}")" -eq 1
           test "$(psql -h 127.0.0.1 -U migration_user -d eos_migration -Atc "SELECT version_num FROM alembic_version")" = "${EXPECTED_ALEMBIC_HEAD}"
+      - name: Verify canonical initial-schema table coverage
+        env:
+          DATABASE_URL: postgresql://migration_user:migration_pass@127.0.0.1:5432/eos_migration
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          import psycopg2
+          
+          migration = Path('alembic/versions/87aba7990b4d_initial_schema.py')
+          tree = ast.parse(migration.read_text(encoding='utf-8-sig'), filename=str(migration))
+          expected = set()
+          for node in ast.walk(tree):
+              if not isinstance(node, ast.Call):
+                  continue
+              func = node.func
+              if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) and func.value.id == 'op' and func.attr == 'create_table':
+                  if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+                      expected.add(node.args[0].value)
+          
+          conn = psycopg2.connect('postgresql://migration_user:migration_pass@127.0.0.1:5432/eos_migration')
+          with conn.cursor() as cur:
+              cur.execute("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public'")
+              actual = {row[0] for row in cur.fetchall()}
+          conn.close()
+          
+          missing = sorted(expected - actual)
+          print(f'Initial migration CREATE TABLE declarations: {len(expected)}')
+          print(f'Public tables after upgrade head: {len(actual)}')
+          print(f'Missing initial-schema tables: {len(missing)}')
+          if missing:
+              print('\n'.join(missing[:200]))
+              raise SystemExit('Canonical initial schema is incomplete on a fresh database')
+          PY
 
   live-tenant-isolation:
     name: Phase 2 - Live PostgreSQL Tenant Isolation E2E
