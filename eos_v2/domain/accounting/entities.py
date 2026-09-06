@@ -58,6 +58,7 @@ class JournalEntry:
 
     def __post_init__(self) -> None:
         currency = self.currency.upper()
+        object.__setattr__(self, "currency", currency)
         if len(currency) != 3 or not currency.isalpha():
             raise ValueError("Currency must be a 3-letter ISO-style code")
         if not self.description.strip():
