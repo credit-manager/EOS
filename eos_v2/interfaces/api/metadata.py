@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.exc import IntegrityError
 
 from eos_v2.app.tenant_context import get_tenant_context
 from eos_v2.application.metadata.versioning import MetadataVersioningService
@@ -90,6 +91,9 @@ def publish_metadata(request: Request, payload: MetadataCreateRequest, identity=
         try:
             entity = MetadataVersioningService(repository).publish_new_version(to_entity(payload))
             session.commit()
+        except IntegrityError as exc:
+            session.rollback()
+            raise HTTPException(status_code=409, detail="Metadata version already exists") from exc
         except ValueError as exc:
             session.rollback()
             raise HTTPException(status_code=409, detail=str(exc)) from exc
