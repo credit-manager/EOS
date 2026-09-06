@@ -3,26 +3,38 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 
+from eos_v2.application.industry.pack_catalog import CATALOG, get_pack
 from eos_v2.application.industry.pack_service import IndustryPackService
 from eos_v2.domain.permissions.policy import Permission
 from eos_v2.infrastructure.db.metadata_repository import SqlAlchemyMetadataRepository
 from eos_v2.interfaces.api.auth import get_current_identity, require_permission
-from eos_v2.modules.industry.construction_real_estate import ConstructionRealEstatePack
 
 router = APIRouter(prefix="/api/v1/industry", tags=["industry"])
 
 
-@router.post("/packs/construction-real-estate/install")
-def install_construction_real_estate(request: Request, identity=Depends(get_current_identity)) -> dict[str, object]:
+@router.get("/packs")
+def list_packs(identity=Depends(get_current_identity)) -> dict[str, object]:
+    require_permission(identity, Permission.READ)
+    return {"packs": [{"key": p.key, "version": p.version, "display_name": p.display_name} for p in CATALOG]}
+
+
+@router.post("/packs/{pack_key}/install")
+def install_pack(pack_key: str, request: Request, identity=Depends(get_current_identity)) -> dict[str, object]:
     require_permission(identity, Permission.ADMIN)
     database = request.app.state.database
     if database is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
+    try:
+        pack = get_pack(pack_key)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Industry pack not found") from exc
     with database.session() as session:
         try:
-            ids = IndustryPackService(SqlAlchemyMetadataRepository(session)).install(ConstructionRealEstatePack())
+            ids = IndustryPackService(SqlAlchemyMetadataRepository(session)).install(
+                type("CatalogPack", (), {"build": staticmethod(pack.builder), "key": pack.key, "version": pack.version})()
+            )
             session.commit()
         except (IntegrityError, ValueError) as exc:
             session.rollback()
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return {"pack": "construction-real-estate", "version": "1.0.0", "entity_ids": [str(item) for item in ids]}
+    return {"pack": pack.key, "version": pack.version, "entity_ids": [str(item) for item in ids]}
