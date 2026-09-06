@@ -36,11 +36,6 @@ def upgrade() -> None:
         "eos_v2_journal_lines",
         "NOT (debit > 0 AND credit > 0)",
     )
-    op.create_check_constraint(
-        "ck_eos_v2_journal_entries_nonnegative_totals",
-        "eos_v2_journal_entries",
-        "total_debit >= 0 AND total_credit >= 0",
-    )
     # A deferred constraint trigger makes the database the final authority for
     # double-entry balance, while allowing all lines to be inserted in one tx.
     op.execute("""
@@ -51,17 +46,19 @@ def upgrade() -> None:
         DECLARE
             debit_total NUMERIC;
             credit_total NUMERIC;
+            line_count INTEGER;
         BEGIN
-            SELECT COALESCE(SUM(debit), 0), COALESCE(SUM(credit), 0)
-              INTO debit_total, credit_total
+            SELECT COUNT(*), COALESCE(SUM(debit), 0), COALESCE(SUM(credit), 0)
+              INTO line_count, debit_total, credit_total
               FROM eos_v2_journal_lines
-             WHERE journal_entry_id = NEW.journal_entry_id
-               AND tenant_id = NEW.tenant_id;
-            IF debit_total <> credit_total THEN
-                RAISE EXCEPTION 'Journal entry % is not balanced: debit=% credit=%',
-                    NEW.journal_entry_id, debit_total, credit_total;
+             WHERE journal_entry_id = COALESCE(NEW.journal_entry_id, OLD.journal_entry_id)
+               AND tenant_id = COALESCE(NEW.tenant_id, OLD.tenant_id);
+            IF line_count < 2 OR debit_total <> credit_total THEN
+                RAISE EXCEPTION 'Journal entry % is invalid: lines=% debit=% credit=%',
+                    COALESCE(NEW.journal_entry_id, OLD.journal_entry_id),
+                    line_count, debit_total, credit_total;
             END IF;
-            RETURN NEW;
+            RETURN COALESCE(NEW, OLD);
         END;
         $$;
     """)
@@ -76,7 +73,6 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute("DROP TRIGGER IF EXISTS eos_v2_journal_lines_balanced ON eos_v2_journal_lines")
     op.execute("DROP FUNCTION IF EXISTS eos_v2_assert_journal_balanced()")
-    op.drop_constraint("ck_eos_v2_journal_entries_nonnegative_totals", "eos_v2_journal_entries", type_="check")
     op.drop_constraint("ck_eos_v2_journal_lines_exclusive_side", "eos_v2_journal_lines", type_="check")
     op.drop_constraint("fk_eos_v2_lines_tenant_account", "eos_v2_journal_lines", type_="foreignkey")
     op.drop_constraint("fk_eos_v2_lines_tenant_entry", "eos_v2_journal_lines", type_="foreignkey")
