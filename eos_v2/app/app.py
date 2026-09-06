@@ -4,8 +4,10 @@ from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import make_asgi_app
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from eos_v2.application.identity.jwks import RSAKeyRing
 from eos_v2.infrastructure.db.session import Database, DatabaseConfig
 from eos_v2.interfaces.api.accounting import router as accounting_router
 from eos_v2.interfaces.api.ai_composer import router as ai_composer_router
@@ -14,6 +16,7 @@ from eos_v2.interfaces.api.foundation import router as foundation_router
 from eos_v2.interfaces.api.industry import router as industry_router
 from eos_v2.interfaces.api.metadata import router as metadata_router
 from eos_v2.interfaces.api.records import router as records_router
+from eos_v2.interfaces.api.web import router as web_router
 from eos_v2.application.identity.authentication import decode_access_token
 from eos_v2.app.tenant_context import TenantContext, reset_tenant_context, set_tenant_context
 
@@ -24,24 +27,13 @@ from .health import router as health_router
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     settings.validate()
-
-    app = FastAPI(
-        title=settings.app_name,
-        version="2.0.0-alpha.1",
-        docs_url="/docs" if settings.environment != "production" else None,
-        redoc_url="/redoc" if settings.environment != "production" else None,
-    )
+    app = FastAPI(title=settings.app_name, version="2.0.0-alpha.1", docs_url="/docs" if settings.environment != "production" else None, redoc_url="/redoc" if settings.environment != "production" else None)
     app.state.settings = settings
     app.state.database = Database(DatabaseConfig(settings.database_url)) if settings.database_url else None
+    app.state.jwt_keyring = RSAKeyRing.generate()
 
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts) or ["*"])
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=list(settings.cors_origins),
-        allow_credentials=False,
-        allow_methods=["GET", "POST", "PUT", "DELETE"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
-    )
+    app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins), allow_credentials=False, allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Authorization", "Content-Type", "X-Request-ID"])
 
     @app.middleware("http")
     async def request_hardening(request: Request, call_next):
@@ -63,7 +55,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def authenticated_tenant_context(request: Request, call_next):
-        """Establish tenant context in the request task so sync endpoints inherit it."""
         authorization = request.headers.get("Authorization", "")
         token_value = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
         context_token = None
@@ -88,9 +79,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(foundation_router)
     app.include_router(industry_router)
     app.include_router(ai_composer_router)
+    app.include_router(web_router)
+    app.mount("/metrics", make_asgi_app())
+
+    @app.get("/.well-known/jwks.json", tags=["auth"])
+    def jwks() -> dict[str, object]:
+        return app.state.jwt_keyring.jwks()
 
     @app.get("/", tags=["system"])
     def root() -> dict[str, str]:
-        return {"name": settings.app_name, "runtime": "v2", "status": "ok"}
-
+        return {"name": settings.app_name, "runtime": "v2", "status": "ok", "web": "/web"}
     return app
