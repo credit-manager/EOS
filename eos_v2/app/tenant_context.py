@@ -24,6 +24,11 @@ def reset_tenant_context(token) -> None:
     _current.reset(token)
 
 
+def clear_tenant_context() -> None:
+    """Clear request-local context without crossing async/thread contexts."""
+    _current.set(None)
+
+
 def get_tenant_context() -> TenantContext:
     context = _current.get()
     if context is None:
