@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable
-from uuid import UUID
 
 from eos_v2.app.tenant_context import TenantContext, reset_tenant_context, set_tenant_context
 from eos_v2.domain.workflow.events import DomainEvent
