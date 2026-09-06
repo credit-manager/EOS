@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from uuid import UUID
 
+from eos_v2.app.tenant_context import get_tenant_context
 from eos_v2.domain.ai_composer.entities import ComposerProposal, ProposalChange, ProposalStatus
 from eos_v2.domain.metadata.entities import EntityDefinition, FieldDefinition, FieldType, RelationshipDefinition
 from eos_v2.infrastructure.db.ai_composer_models import ComposerProposalModel
@@ -42,9 +42,24 @@ def _deserialize_changes(items: list[dict]) -> tuple[ProposalChange, ...]:
             tenant_id=UUID(raw["tenant_id"]),
             name=raw["name"],
             label=raw.get("label", ""),
-            version=int(raw.get("version", 0)),
-            fields=tuple(FieldDefinition(name=f["name"], field_type=FieldType(f["field_type"]), required=bool(f.get("required")), unique=bool(f.get("unique"))) for f in raw.get("fields", [])),
-            relationships=tuple(RelationshipDefinition(name=r["name"], target_entity_id=UUID(r["target_entity_id"]), required=bool(r.get("required"))) for r in raw.get("relationships", [])),
+            version=int(raw.get("version", 1)),
+            fields=tuple(
+                FieldDefinition(
+                    name=f["name"],
+                    field_type=FieldType(f["field_type"]),
+                    required=bool(f.get("required")),
+                    unique=bool(f.get("unique")),
+                )
+                for f in raw.get("fields", [])
+            ),
+            relationships=tuple(
+                RelationshipDefinition(
+                    name=r["name"],
+                    target_entity_id=UUID(r["target_entity_id"]),
+                    required=bool(r.get("required")),
+                )
+                for r in raw.get("relationships", [])
+            ),
             published=bool(raw.get("published", False)),
         )
         result.append(ProposalChange(entity=entity, rationale=item.get("rationale", "AI generated metadata proposal")))
@@ -56,6 +71,9 @@ class SqlAlchemyComposerProposalRepository:
         self.session = session
 
     def add(self, proposal: ComposerProposal) -> None:
+        tenant_id = get_tenant_context().tenant_id
+        if proposal.tenant_id != tenant_id:
+            raise PermissionError("Proposal tenant does not match current tenant")
         self.session.add(ComposerProposalModel(
             id=proposal.id,
             tenant_id=proposal.tenant_id,
@@ -69,7 +87,8 @@ class SqlAlchemyComposerProposalRepository:
         ))
 
     def get(self, proposal_id: UUID) -> ComposerProposal:
-        model = self.session.query(ComposerProposalModel).filter_by(id=proposal_id).first()
+        tenant_id = get_tenant_context().tenant_id
+        model = self.session.query(ComposerProposalModel).filter_by(id=proposal_id, tenant_id=tenant_id).first()
         if model is None:
             raise KeyError(proposal_id)
         return ComposerProposal(
@@ -85,7 +104,10 @@ class SqlAlchemyComposerProposalRepository:
         )
 
     def update(self, proposal: ComposerProposal) -> None:
-        model = self.session.query(ComposerProposalModel).filter_by(id=proposal.id, tenant_id=proposal.tenant_id).first()
+        tenant_id = get_tenant_context().tenant_id
+        if proposal.tenant_id != tenant_id:
+            raise PermissionError("Proposal tenant does not match current tenant")
+        model = self.session.query(ComposerProposalModel).filter_by(id=proposal.id, tenant_id=tenant_id).first()
         if model is None:
             raise KeyError(proposal.id)
         model.status = proposal.status.value
