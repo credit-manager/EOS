@@ -20,6 +20,35 @@ def test_production_requires_database():
         create_app(Settings(environment="production", secret_key="x" * 32))
 
 
+def test_production_requires_oidc():
+    settings = Settings(
+        environment="production",
+        database_url="postgresql://user:pass@localhost/db",
+        secret_key="x" * 32,
+        allowed_hosts=("erp.example.com",),
+        cors_origins=("https://erp.example.com",),
+        metrics_token="m" * 32,
+        auth_mode="hs256",
+    )
+    with pytest.raises(ValueError, match="EOS_AUTH_MODE must be oidc"):
+        settings.validate()
+
+
+def test_production_accepts_valid_oidc_contract():
+    settings = Settings(
+        environment="production",
+        database_url="postgresql://user:pass@localhost/db",
+        allowed_hosts=("erp.example.com",),
+        cors_origins=("https://erp.example.com",),
+        metrics_token="m" * 32,
+        auth_mode="oidc",
+        oidc_issuer="https://identity.example.com/",
+        oidc_audience="eos-api",
+        oidc_jwks_url="https://identity.example.com/.well-known/jwks.json",
+    )
+    settings.validate()
+
+
 def test_tenant_context_is_explicit_and_scoped():
     tenant_id = uuid4()
     token = set_tenant_context(TenantContext(tenant_id=tenant_id))
