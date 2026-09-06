@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_ALEMBIC_HEAD: 20260906_restore_metadata_core
+  EXPECTED_ALEMBIC_HEAD: 20260906_harden_inventory_tenant_scope
 
 jobs:
   migration-rehearsal:
@@ -58,6 +58,11 @@ jobs:
           alembic current
           test "$(alembic heads | grep -c "^${EXPECTED_ALEMBIC_HEAD}")" -eq 1
           test "$(psql -d eos_rehearsal -Atc "SELECT version_num FROM alembic_version")" = "${EXPECTED_ALEMBIC_HEAD}"
+      - name: Verify canonical schema and inventory isolation
+        run: |
+          psql -d eos_rehearsal -v ON_ERROR_STOP=1 -c "SELECT count(*) AS public_tables FROM pg_catalog.pg_tables WHERE schemaname='public';"
+          psql -d eos_rehearsal -v ON_ERROR_STOP=1 -c "SELECT table_name, column_name, is_nullable FROM information_schema.columns WHERE table_schema='public' AND table_name IN ('products','warehouses','stock_movements') AND column_name='tenant_id' ORDER BY table_name;"
+          psql -d eos_rehearsal -v ON_ERROR_STOP=1 -c "SELECT relname, relrowsecurity FROM pg_class WHERE relname IN ('products','warehouses','stock_movements') ORDER BY relname;"
       - name: Seed backup and restore sentinel
         run: |
           psql -d eos_rehearsal -v ON_ERROR_STOP=1 <<'SQL'
