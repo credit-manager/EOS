@@ -68,10 +68,13 @@ def test_ai_proposal_is_draft_until_admin_approval():
 
     proposal = service.propose("Create a customer entity")
     assert proposal.status is ProposalStatus.DRAFT
+    assert proposal.decided_by is None
     assert not metadata.items
 
     approved = service.approve(proposal.id)
     assert approved.status is ProposalStatus.APPROVED
+    assert approved.decided_by == actor
+    assert approved.decided_at is not None
     assert len(metadata.items) == 1
     assert next(iter(metadata.items.values())).published
 
