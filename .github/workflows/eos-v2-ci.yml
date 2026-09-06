@@ -62,13 +62,12 @@ jobs:
             DECLARE applied_count INTEGER;
             BEGIN
               SELECT count(*) INTO applied_count FROM eos_v2_schema_migrations;
-              IF applied_count <> 9 THEN
-                RAISE EXCEPTION 'Expected 9 applied v2 migrations, got %', applied_count;
+              IF applied_count <> 10 THEN
+                RAISE EXCEPTION 'Expected 10 applied v2 migrations, got %', applied_count;
               END IF;
               IF EXISTS (
                 SELECT 1 FROM eos_v2_schema_migrations a
-                WHERE a.version IN ('0001_metadata_entities','0002_dynamic_records','0003_dynamic_record_unique_values','0004_identity_authorization','0005_outbox_events','0006_accounting','0007_foundation_modules','0008_industry_pack_installations','0009_ai_composer_proposals')
-                AND length(a.checksum) <> 64
+                WHERE length(a.checksum) <> 64
               ) THEN
                 RAISE EXCEPTION 'Invalid migration checksum';
               END IF;
