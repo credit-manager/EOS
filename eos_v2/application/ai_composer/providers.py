@@ -45,17 +45,21 @@ class OpenAICompatibleComposerProvider:
         payload = response.json()
         content = payload["choices"][0]["message"]["content"]
         data = json.loads(content) if isinstance(content, str) else content
-        if not isinstance(data, dict) or not isinstance(data.get("changes"), list):
-            raise ValueError("AI provider returned an invalid proposal envelope")
+        if not isinstance(data, dict) or not isinstance(data.get("changes"), list) or not data["changes"] or len(data["changes"]) > 20:
+            raise ValueError("AI provider returned an invalid proposal size or envelope")
         changes: list[ProposalChange] = []
         for item in data["changes"]:
             raw = item["entity"]
+            raw_fields = raw.get("fields", [])
+            raw_relationships = raw.get("relationships", [])
+            if not isinstance(raw_fields, list) or len(raw_fields) > 50 or not isinstance(raw_relationships, list) or len(raw_relationships) > 50:
+                raise ValueError("AI provider returned an oversized entity definition")
             fields = tuple(FieldDefinition(
                 name=f["name"], field_type=FieldType(f["field_type"]), required=bool(f.get("required")), unique=bool(f.get("unique"))
-            ) for f in raw.get("fields", []))
+            ) for f in raw_fields)
             relationships = tuple(RelationshipDefinition(
                 name=r["name"], target_entity_id=UUID(r["target_entity_id"]), required=bool(r.get("required"))
-            ) for r in raw.get("relationships", []))
+            ) for r in raw_relationships)
             entity = EntityDefinition(tenant_id=tenant_id, name=raw["name"], label=raw.get("label", ""), fields=fields, relationships=relationships)
             changes.append(ProposalChange(entity=entity, rationale=item.get("rationale", "AI metadata proposal")))
         return tuple(changes)
