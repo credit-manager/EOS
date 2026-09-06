@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import hmac
+import time
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from jwt import PyJWKClient
-from prometheus_client import make_asgi_app
+from prometheus_client import Counter, Histogram, make_asgi_app
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from eos_v2.application.identity.authentication import decode_access_token
@@ -24,6 +25,15 @@ from eos_v2.interfaces.api.web import router as web_router
 
 from .config import Settings
 from .health import router as health_router
+
+REQUESTS = Counter("eos_http_requests_total", "HTTP requests", ["method", "path", "status"])
+REQUEST_LATENCY = Histogram("eos_http_request_duration_seconds", "HTTP request duration", ["method", "path"])
+
+
+def _metric_path(request: Request) -> str:
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", None)
+    return route_path or request.url.path
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -56,10 +66,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def request_hardening(request: Request, call_next):
         request_id = request.headers.get("X-Request-ID", "").strip() or str(uuid4())
         content_length = request.headers.get("content-length")
+        started = time.perf_counter()
+        metric_path = request.url.path
         if content_length and content_length.isdigit() and int(content_length) > settings.max_body_bytes:
             response = JSONResponse(status_code=413, content={"detail": "Request body too large"})
         else:
-            response = await call_next(request)
+            try:
+                response = await call_next(request)
+            except Exception:
+                route = request.scope.get("route")
+                metric_path = getattr(route, "path", None) or request.url.path
+                REQUESTS.labels(request.method, metric_path, "500").inc()
+                REQUEST_LATENCY.labels(request.method, metric_path).observe(time.perf_counter() - started)
+                raise
+        metric_path = _metric_path(request)
+        REQUESTS.labels(request.method, metric_path, str(response.status_code)).inc()
+        REQUEST_LATENCY.labels(request.method, metric_path).observe(time.perf_counter() - started)
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
