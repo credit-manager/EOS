@@ -19,14 +19,19 @@ class AuthorizationDecision:
     reason: str
 
 
-def authorize(actor: Actor | None, tenant_id: UUID, permission: Permission) -> AuthorizationDecision:
-    """Deny by default; an actor may only act inside its authenticated tenant."""
+def authorize(
+    actor: Actor | None,
+    tenant_id: UUID,
+    permission: Permission,
+    granted_permissions: frozenset[Permission] = frozenset(),
+) -> AuthorizationDecision:
+    """Authorize only active tenant members with an explicitly assigned permission."""
     if actor is None:
         return AuthorizationDecision(False, "authentication_required")
     if not actor.active:
         return AuthorizationDecision(False, "actor_inactive")
     if actor.tenant_id != tenant_id:
         return AuthorizationDecision(False, "tenant_mismatch")
-    # Role/permission assignment will be introduced by the identity persistence slice.
-    # Until then, authenticated tenant membership alone never grants privileged access.
-    return AuthorizationDecision(False, f"permission_not_granted:{permission.value}")
+    if permission not in granted_permissions:
+        return AuthorizationDecision(False, f"permission_not_granted:{permission.value}")
+    return AuthorizationDecision(True, "allowed")
