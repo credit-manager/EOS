@@ -9,6 +9,19 @@
 - Data migrations must record source/target row counts and validation queries.
 - Application startup must never silently create or alter production schema.
 
-## First persistence slice
+## Current v2 migrations
 
-The first v2 persistence slice intentionally establishes the infrastructure boundary only. Metadata tables will be introduced in a subsequent vertical slice after the migration contract is tested.
+- `0001_metadata_entities.sql` — tenant-scoped immutable metadata definitions.
+- `0002_dynamic_records.sql` — tenant-scoped dynamic records with optimistic row versions.
+- `0003_dynamic_record_unique_values.sql` — transactional registry enforcing metadata-defined unique fields and cascading cleanup for deleted records.
+
+## Record invariants
+
+- Tenant scope is enforced in every repository query and write path.
+- Relationship references must resolve to an existing record of the declared target entity in the current tenant.
+- Unique field values are scoped by tenant + entity + field and are enforced by a database uniqueness constraint, not only an application pre-check.
+- Dynamic values use deterministic tagged JSON serialization for UUID, date, datetime and Decimal domain values.
+
+## Test contract
+
+Repository integration tests use an isolated SQLite database for fast deterministic coverage. PostgreSQL migration execution remains a release-gate responsibility and must be exercised against a clean and upgraded PostgreSQL database before staging promotion.
