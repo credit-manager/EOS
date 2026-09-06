@@ -58,5 +58,5 @@ def test_resource_must_match_authenticated_context() -> None:
 
 
 def test_missing_context_fails_closed() -> None:
-    with pytest.raises(RuntimeError, match="Tenant context is not set"):
+    with pytest.raises(RuntimeError, match="Tenant context is required"):
         authorize_current_actor(None, Permission.READ)
