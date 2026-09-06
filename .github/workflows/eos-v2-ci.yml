@@ -1,0 +1,77 @@
+name: EOS DBP v2 CI
+
+on:
+  push:
+    branches:
+      - eos-v2-rebuild
+  pull_request:
+    branches:
+      - main
+      - eos-v2-rebuild
+
+permissions:
+  contents: read
+
+jobs:
+  v2-tests:
+    name: v2 unit and integration tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: eos_v2
+          POSTGRES_PASSWORD: eos_v2
+          POSTGRES_DB: eos_v2_ci
+        options: >-
+          --health-cmd "pg_isready -U eos_v2 -d eos_v2_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Compile v2
+        run: python -m compileall -q eos_v2
+      - name: Run v2 tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: pytest -q eos_v2/tests --tb=short
+      - name: Validate v2 PostgreSQL migrations
+        env:
+          PGPASSWORD: eos_v2
+        run: |
+          for migration in eos_v2/infrastructure/db/migrations/*.sql; do
+            echo "Applying ${migration}"
+            psql -h 127.0.0.1 -U eos_v2 -d eos_v2_ci -v ON_ERROR_STOP=1 -f "${migration}"
+          done
+      - name: Validate migration idempotency
+        env:
+          PGPASSWORD: eos_v2
+        run: |
+          for migration in eos_v2/infrastructure/db/migrations/*.sql; do
+            psql -h 127.0.0.1 -U eos_v2 -d eos_v2_ci -v ON_ERROR_STOP=1 -f "${migration}"
+          done
+      - name: Verify v2 schema objects
+        env:
+          PGPASSWORD: eos_v2
+        run: |
+          psql -h 127.0.0.1 -U eos_v2 -d eos_v2_ci -v ON_ERROR_STOP=1 -c "
+            SELECT to_regclass('eos_v2_metadata_entities'),
+                   to_regclass('eos_v2_dynamic_records'),
+                   to_regclass('eos_v2_dynamic_record_unique_values'),
+                   to_regclass('eos_v2_tenants'),
+                   to_regclass('eos_v2_actors'),
+                   to_regclass('eos_v2_roles'),
+                   to_regclass('eos_v2_actor_roles'),
+                   to_regclass('eos_v2_role_permissions'),
+                   to_regclass('eos_v2_outbox_events');
+          "
