@@ -5,6 +5,9 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+import hashlib
+import json
+
 
 def to_storage(value: Any) -> Any:
     """Convert domain values into deterministic JSON-compatible values."""
@@ -41,5 +44,6 @@ def from_storage(value: Any) -> Any:
 
 
 def canonical_value(value: Any) -> str:
-    import json
-    return json.dumps(to_storage(value), sort_keys=True, separators=(",", ":"))
+    """Return a fixed-width collision-resistant key for database uniqueness indexes."""
+    payload = json.dumps(to_storage(value), sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
