@@ -23,10 +23,11 @@ def test_authenticated_metadata_and_record_api() -> None:
     tenant = TenantModel(id=uuid4(), name="Acme")
     actor = ActorModel(id=uuid4(), tenant_id=tenant.id, subject="api-user")
     role = RoleModel(id=uuid4(), tenant_id=tenant.id, name="platform-admin")
+    tenant_id, actor_id, actor_subject = tenant.id, actor.id, actor.subject
     with Session(engine) as session:
         session.add_all([
             tenant, actor, role,
-            ActorRoleModel(actor_id=actor.id, role_id=role.id),
+            ActorRoleModel(actor_id=actor_id, role_id=role.id),
             RolePermissionModel(role_id=role.id, permission="read"),
             RolePermissionModel(role_id=role.id, permission="write"),
             RolePermissionModel(role_id=role.id, permission="admin"),
@@ -34,36 +35,22 @@ def test_authenticated_metadata_and_record_api() -> None:
         session.commit()
 
     secret = "s" * 40
-    token = jwt.encode({
-        "sub": actor.subject,
-        "tenant_id": str(tenant.id),
-        "actor_id": str(actor.id),
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
-    }, secret, algorithm="HS256")
+    token = jwt.encode({"sub": actor_subject, "tenant_id": str(tenant_id), "actor_id": str(actor_id), "exp": datetime.now(timezone.utc) + timedelta(minutes=5)}, secret, algorithm="HS256")
     app = create_app(Settings(environment="test", database_url="sqlite:///file:eos_v2_api?mode=memory&cache=shared&uri=true", secret_key=secret))
     client = TestClient(app)
     headers = {"Authorization": f"Bearer {token}"}
-
     response = client.get("/api/v1/auth/me", headers=headers)
     assert response.status_code == 200
-    assert response.json()["tenant_id"] == str(tenant.id)
-
-    metadata = client.post("/api/v1/metadata", headers=headers, json={
-        "name": "customer",
-        "label": "Customer",
-        "fields": [{"name": "code", "field_type": "text", "required": True, "unique": True}],
-    })
+    assert response.json()["tenant_id"] == str(tenant_id)
+    metadata = client.post("/api/v1/metadata", headers=headers, json={"name": "customer", "label": "Customer", "fields": [{"name": "code", "field_type": "text", "required": True, "unique": True}]})
     assert metadata.status_code == 201, metadata.text
     entity_id = metadata.json()["id"]
-
     created = client.post(f"/api/v1/entities/{entity_id}/records", headers=headers, json={"data": {"code": "C-001"}})
     assert created.status_code == 201, created.text
     record_id = created.json()["id"]
     assert created.json()["row_version"] == 1
-
     duplicate = client.post(f"/api/v1/entities/{entity_id}/records", headers=headers, json={"data": {"code": "C-001"}})
     assert duplicate.status_code == 409
-
     fetched = client.get(f"/api/v1/records/{record_id}", headers=headers)
     assert fetched.status_code == 200
     assert fetched.json()["data"]["code"] == "C-001"
