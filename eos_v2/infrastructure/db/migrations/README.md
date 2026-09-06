@@ -18,6 +18,7 @@
 - `0005_outbox_events.sql` — durable tenant-scoped event outbox for reliable asynchronous delivery.
 - `0006_accounting.sql` — tenant-scoped chart of accounts and double-entry journal storage.
 - `0007_foundation_modules.sql` — tenant-scoped Sales, Purchasing, Inventory, HR and Projects operational storage.
+- `0008_industry_pack_installations.sql` — tenant-scoped industry pack installation registry for idempotent retries and version tracking.
 
 ## Record invariants
 
@@ -54,6 +55,13 @@
 - Employee numbers are unique within a tenant.
 - Project dates must satisfy start ≤ end when an end date exists.
 - Foundation APIs derive tenant identity exclusively from the authenticated request context.
+
+## Industry pack invariants
+
+- Pack identity is `(tenant_id, pack_key, pack_version)` and is unique in the database.
+- Reinstalling an already installed pack version returns the exact previously installed metadata entity IDs instead of creating duplicate metadata versions.
+- Pack installation is tenant-bound and requires administrative authorization at the API boundary.
+- A builder cannot publish a pack whose built manifest differs from its declared key/version.
 
 ## Test contract
 
