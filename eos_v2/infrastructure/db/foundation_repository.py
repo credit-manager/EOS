@@ -4,15 +4,16 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from eos_v2.app.tenant_context import get_tenant_context
 from eos_v2.infrastructure.db.foundation_models import EmployeeModel, InventoryMovementModel, ProjectModel, PurchaseOrderModel, SalesOrderModel, StockBalanceModel
 from eos_v2.modules.hr import Employee
-from eos_v2.modules.inventory import InventoryMovement, StockBalance
 from eos_v2.modules.projects import Project, ProjectStatus
 from eos_v2.modules.purchasing import PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus
 from eos_v2.modules.sales import SalesOrder, SalesOrderLine, SalesOrderStatus
+from eos_v2.modules.inventory import InventoryMovement, StockBalance
 
 
 def _tenant() -> UUID:
@@ -68,6 +69,61 @@ class FoundationRepository:
         else:
             row.quantity = balance.quantity
         self.session.add(InventoryMovementModel(id=movement.id, tenant_id=movement.tenant_id, item_id=movement.item_id, quantity=movement.quantity, source=movement.reference_type))
+
+    def apply_inventory_movement(self, movement: InventoryMovement) -> StockBalance:
+        """Persist a movement and update its tenant/item balance atomically on PostgreSQL."""
+        self._check(movement.tenant_id)
+        if self.session.bind is not None and self.session.bind.dialect.name == "postgresql":
+            statement = (
+                pg_insert(StockBalanceModel)
+                .values(
+                    id=UUID(int=0),
+                    tenant_id=movement.tenant_id,
+                    item_id=movement.item_id,
+                    quantity=movement.quantity,
+                )
+                .on_conflict_do_update(
+                    constraint="uq_eos_v2_stock_balance",
+                    set_={"quantity": StockBalanceModel.quantity + movement.quantity},
+                    where=(StockBalanceModel.quantity + movement.quantity >= 0),
+                )
+            )
+            self.session.execute(statement)
+        else:
+            row = self.session.scalar(
+                select(StockBalanceModel)
+                .where(StockBalanceModel.item_id == movement.item_id, StockBalanceModel.tenant_id == _tenant())
+                .with_for_update()
+            )
+            if row is None:
+                if movement.quantity < 0:
+                    raise ValueError("Insufficient stock")
+                self.session.add(StockBalanceModel(id=UUID(int=0), tenant_id=movement.tenant_id, item_id=movement.item_id, quantity=movement.quantity))
+            else:
+                new_quantity = Decimal(row.quantity) + movement.quantity
+                if new_quantity < 0:
+                    raise ValueError("Insufficient stock")
+                row.quantity = new_quantity
+
+        self.session.add(
+            InventoryMovementModel(
+                id=movement.id,
+                tenant_id=movement.tenant_id,
+                item_id=movement.item_id,
+                quantity=movement.quantity,
+                source=movement.reference_type,
+            )
+        )
+        self.session.flush()
+        row = self.session.scalar(
+            select(StockBalanceModel).where(
+                StockBalanceModel.item_id == movement.item_id,
+                StockBalanceModel.tenant_id == _tenant(),
+            )
+        )
+        if row is None:
+            raise RuntimeError("Inventory balance update did not produce a balance")
+        return StockBalance(tenant_id=row.tenant_id, item_id=row.item_id, quantity=Decimal(row.quantity), id=row.id)
 
     def get_stock(self, item_id: UUID) -> StockBalance:
         row = self.session.scalar(select(StockBalanceModel).where(StockBalanceModel.item_id == item_id, StockBalanceModel.tenant_id == _tenant()))
