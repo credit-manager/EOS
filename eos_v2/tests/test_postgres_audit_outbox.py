@@ -65,6 +65,33 @@ def test_audit_failure_rolls_back_with_business_transaction() -> None:
         reset_tenant_context(token)
 
 
+def test_outbox_rls_isolates_tenants_and_wrong_tenant_write_is_rejected() -> None:
+    url = _database_url()
+    tenant_a, tenant_b, event_id = uuid4(), uuid4(), uuid4()
+    with psycopg2.connect(url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT set_config('app.tenant_id', %s, false)", (str(tenant_a),))
+            cur.execute(
+                "INSERT INTO eos_v2_outbox_events (id, tenant_id, event_type, aggregate_id, payload, occurred_at) "
+                "VALUES (%s,%s,'test.created',%s,'{}'::jsonb,CURRENT_TIMESTAMP)",
+                (event_id, tenant_a, uuid4()),
+            )
+            conn.commit()
+            cur.execute("SELECT set_config('app.tenant_id', %s, false)", (str(tenant_b),))
+            cur.execute("SELECT count(*) FROM eos_v2_outbox_events")
+            assert cur.fetchone()[0] == 0
+            with pytest.raises(psycopg2.errors.InsufficientPrivilege):
+                cur.execute(
+                    "INSERT INTO eos_v2_outbox_events (id, tenant_id, event_type, aggregate_id, payload, occurred_at) "
+                    "VALUES (%s,%s,'test.forbidden',%s,'{}'::jsonb,CURRENT_TIMESTAMP)",
+                    (uuid4(), tenant_a, uuid4()),
+                )
+            conn.rollback()
+            cur.execute("SELECT set_config('app.tenant_id', %s, false)", (str(tenant_a),))
+            cur.execute("SELECT count(*) FROM eos_v2_outbox_events WHERE id=%s", (event_id,))
+            assert cur.fetchone()[0] == 1
+
+
 def test_outbox_retries_after_failed_publish_and_preserves_event_identity() -> None:
     url = _database_url()
     engine = create_engine(url, pool_pre_ping=True)
