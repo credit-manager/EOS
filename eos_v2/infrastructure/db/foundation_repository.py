@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -10,10 +10,10 @@ from sqlalchemy.orm import Session
 from eos_v2.app.tenant_context import get_tenant_context
 from eos_v2.infrastructure.db.foundation_models import EmployeeModel, InventoryMovementModel, ProjectModel, PurchaseOrderModel, SalesOrderModel, StockBalanceModel
 from eos_v2.modules.hr import Employee
+from eos_v2.modules.inventory import InventoryMovement, StockBalance
 from eos_v2.modules.projects import Project, ProjectStatus
 from eos_v2.modules.purchasing import PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus
 from eos_v2.modules.sales import SalesOrder, SalesOrderLine, SalesOrderStatus
-from eos_v2.modules.inventory import InventoryMovement, StockBalance
 
 
 def _tenant() -> UUID:
@@ -71,13 +71,13 @@ class FoundationRepository:
         self.session.add(InventoryMovementModel(id=movement.id, tenant_id=movement.tenant_id, item_id=movement.item_id, quantity=movement.quantity, source=movement.reference_type))
 
     def apply_inventory_movement(self, movement: InventoryMovement) -> StockBalance:
-        """Persist a movement and update its tenant/item balance atomically on PostgreSQL."""
+        """Persist a movement and update its tenant/item balance atomically."""
         self._check(movement.tenant_id)
         if self.session.bind is not None and self.session.bind.dialect.name == "postgresql":
             statement = (
                 pg_insert(StockBalanceModel)
                 .values(
-                    id=UUID(int=0),
+                    id=uuid4(),
                     tenant_id=movement.tenant_id,
                     item_id=movement.item_id,
                     quantity=movement.quantity,
@@ -88,7 +88,9 @@ class FoundationRepository:
                     where=(StockBalanceModel.quantity + movement.quantity >= 0),
                 )
             )
-            self.session.execute(statement)
+            result = self.session.execute(statement)
+            if result.rowcount == 0:
+                raise ValueError("Insufficient stock")
         else:
             row = self.session.scalar(
                 select(StockBalanceModel)
@@ -98,7 +100,7 @@ class FoundationRepository:
             if row is None:
                 if movement.quantity < 0:
                     raise ValueError("Insufficient stock")
-                self.session.add(StockBalanceModel(id=UUID(int=0), tenant_id=movement.tenant_id, item_id=movement.item_id, quantity=movement.quantity))
+                self.session.add(StockBalanceModel(id=uuid4(), tenant_id=movement.tenant_id, item_id=movement.item_id, quantity=movement.quantity))
             else:
                 new_quantity = Decimal(row.quantity) + movement.quantity
                 if new_quantity < 0:
