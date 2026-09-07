@@ -4,17 +4,17 @@ from __future__ import annotations
 import os
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import psycopg2
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from eos_v2.app.tenant_context import TenantContext, reset_tenant_context, set_tenant_context
 from eos_v2.application.audit.service import record_event
 from eos_v2.domain.workflow.events import DomainEvent
-from eos_v2.infrastructure.events.outbox import OutboxBase, OutboxEventModel, SqlAlchemyOutbox
+from eos_v2.infrastructure.events.outbox import SqlAlchemyOutbox
 
 
 pytestmark = pytest.mark.postgres
@@ -128,7 +128,7 @@ def test_outbox_postgres_workers_do_not_claim_same_rows() -> None:
 
         barrier = Barrier(2)
 
-        def claim_one() -> tuple[uuid4, ...]:
+        def claim_one() -> tuple[UUID, ...]:
             local_token = set_tenant_context(TenantContext(tenant_id, uuid4()))
             try:
                 with Session(engine) as session:
