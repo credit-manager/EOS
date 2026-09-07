@@ -1,4 +1,4 @@
-from __future__ import annotations
+from __future__
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -80,18 +80,23 @@ class SqlAlchemyOutbox:
         self.session.flush()
         return events
 
-    def mark_published(self, event_id: UUID, claim_token: UUID | None = None) -> bool:
+    def mark_published(self, event_id: UUID, claim_token: UUID) -> bool:
+        """Mark an event published only for the active lease owned by this worker."""
+        if claim_token is None:
+            raise ValueError("claim_token is required to mark an outbox event published")
         tenant_id = get_tenant_context().tenant_id
-        conditions = [
-            OutboxEventModel.id == event_id,
-            OutboxEventModel.tenant_id == tenant_id,
-            OutboxEventModel.published_at.is_(None),
-        ]
-        if claim_token is not None:
-            conditions.append(OutboxEventModel.claim_token == claim_token)
-        result = self.session.execute(update(OutboxEventModel).where(*conditions).values(
-            published_at=datetime.now(timezone.utc),
-            claim_token=None,
-            claimed_at=None,
-        ))
+        result = self.session.execute(
+            update(OutboxEventModel)
+            .where(
+                OutboxEventModel.id == event_id,
+                OutboxEventModel.tenant_id == tenant_id,
+                OutboxEventModel.published_at.is_(None),
+                OutboxEventModel.claim_token == claim_token,
+            )
+            .values(
+                published_at=datetime.now(timezone.utc),
+                claim_token=None,
+                claimed_at=None,
+            )
+        )
         return result.rowcount == 1
