@@ -52,6 +52,10 @@ jobs:
         env:
           DATABASE_URL: postgresql://eos_v2:eos_v2@127.0.0.1:5432/eos_v2_ci
         run: pytest -q eos_v2/tests/test_postgres_accounting_integrity.py -v --tb=short
+      - name: Real PostgreSQL audit and outbox verification
+        env:
+          DATABASE_URL: postgresql://eos_v2:eos_v2@127.0.0.1:5432/eos_v2_ci
+        run: pytest -q eos_v2/tests/test_postgres_audit_outbox.py -v --tb=short
       - name: Verify migration ledger and schema objects
         env:
           PGPASSWORD: eos_v2
