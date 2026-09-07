@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import DateTime, JSON, String, select, update
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
@@ -25,9 +25,14 @@ class OutboxEventModel(OutboxBase):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    claim_token: Mapped[UUID | None] = mapped_column(Uuid(), nullable=True, index=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivery_attempts: Mapped[int] = mapped_column(nullable=False, default=0)
 
 
 class SqlAlchemyOutbox:
+    CLAIM_LEASE = timedelta(minutes=5)
+
     def __init__(self, session: Session) -> None:
         self.session = session
 
@@ -45,27 +50,48 @@ class SqlAlchemyOutbox:
         ))
 
     def claim_unpublished(self, limit: int = 100) -> list[OutboxEventModel]:
-        """Lock a batch so concurrent PostgreSQL workers cannot claim the same rows."""
+        """Claim a leased batch; expired claims become eligible for retry.
+
+        Delivery is at-least-once. The returned claim_token must be supplied to
+        mark_published after the external publish succeeds. Consumers must
+        deduplicate using the immutable event id.
+        """
         if limit <= 0 or limit > 1000:
             raise ValueError("Outbox claim limit must be between 1 and 1000")
         tenant_id = get_tenant_context().tenant_id
+        now = datetime.now(timezone.utc)
+        cutoff = now - self.CLAIM_LEASE
         statement = (
             select(OutboxEventModel)
             .where(
                 OutboxEventModel.tenant_id == tenant_id,
                 OutboxEventModel.published_at.is_(None),
+                (OutboxEventModel.claimed_at.is_(None) | (OutboxEventModel.claimed_at < cutoff)),
             )
             .order_by(OutboxEventModel.occurred_at, OutboxEventModel.id)
             .limit(limit)
             .with_for_update(skip_locked=True)
         )
-        return list(self.session.scalars(statement))
+        events = list(self.session.scalars(statement))
+        for event in events:
+            event.claim_token = uuid4()
+            event.claimed_at = now
+            event.delivery_attempts += 1
+        self.session.flush()
+        return events
 
-    def mark_published(self, event_id: UUID) -> bool:
+    def mark_published(self, event_id: UUID, claim_token: UUID | None = None) -> bool:
         tenant_id = get_tenant_context().tenant_id
-        result = self.session.execute(update(OutboxEventModel).where(
+        conditions = [
             OutboxEventModel.id == event_id,
             OutboxEventModel.tenant_id == tenant_id,
             OutboxEventModel.published_at.is_(None),
-        ).values(published_at=datetime.now(timezone.utc)))
+        ]
+        if claim_token is not None:
+            conditions.append(OutboxEventModel.claim_token == claim_token)
+        result = self.session.execute(update(OutboxEventModel).where(*conditions).values(
+            published_at=datetime.now(timezone.utc),
+            claim_token=None,
+            claimed_at=None,
+        ))
         return result.rowcount == 1
