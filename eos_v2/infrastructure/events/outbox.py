@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Boolean, DateTime, JSON, String, select, update
+from sqlalchemy import DateTime, JSON, String, select, update
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -45,11 +45,21 @@ class SqlAlchemyOutbox:
         ))
 
     def claim_unpublished(self, limit: int = 100) -> list[OutboxEventModel]:
+        """Lock a batch so concurrent PostgreSQL workers cannot claim the same rows."""
+        if limit <= 0 or limit > 1000:
+            raise ValueError("Outbox claim limit must be between 1 and 1000")
         tenant_id = get_tenant_context().tenant_id
-        return list(self.session.scalars(select(OutboxEventModel).where(
-            OutboxEventModel.tenant_id == tenant_id,
-            OutboxEventModel.published_at.is_(None),
-        ).order_by(OutboxEventModel.occurred_at).limit(limit)))
+        statement = (
+            select(OutboxEventModel)
+            .where(
+                OutboxEventModel.tenant_id == tenant_id,
+                OutboxEventModel.published_at.is_(None),
+            )
+            .order_by(OutboxEventModel.occurred_at, OutboxEventModel.id)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        return list(self.session.scalars(statement))
 
     def mark_published(self, event_id: UUID) -> bool:
         tenant_id = get_tenant_context().tenant_id
