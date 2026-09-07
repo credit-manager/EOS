@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict
 
+from eos_v2.application.audit.service import record_event
 from eos_v2.application.records.service import DynamicRecordService
 from eos_v2.domain.permissions.policy import Permission
 from eos_v2.infrastructure.db.metadata_repository import SqlAlchemyMetadataRepository
@@ -52,6 +53,15 @@ def create_record(entity_id: UUID, payload: RecordRequest, request: Request, ide
         try:
             definition = metadata.get(entity_id)
             record = DynamicRecordService(records).create(definition, payload.data)
+            record_event(
+                session,
+                action="record.created",
+                resource_type="dynamic_record",
+                resource_id=record.id,
+                actor_id=identity.actor.id,
+                request_id=request.headers.get("X-Request-ID"),
+                metadata={"entity_id": str(record.entity_id), "entity_version": record.entity_version},
+            )
             session.commit()
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Metadata entity not found") from exc
@@ -89,6 +99,15 @@ def update_record(record_id: UUID, payload: RecordRequest, request: Request, ide
             current = service.get(record_id)
             definition = metadata.get(current.entity_id)
             updated = service.update(definition, record_id, payload.data, expected_row_version)
+            record_event(
+                session,
+                action="record.updated",
+                resource_type="dynamic_record",
+                resource_id=updated.id,
+                actor_id=identity.actor.id,
+                request_id=request.headers.get("X-Request-ID"),
+                metadata={"entity_id": str(updated.entity_id), "row_version": updated.row_version},
+            )
             session.commit()
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Record or metadata not found") from exc
@@ -96,8 +115,10 @@ def update_record(record_id: UUID, payload: RecordRequest, request: Request, ide
             session.rollback()
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except RuntimeError as exc:
+            session.rollback()
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ValueError as exc:
+            session.rollback()
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     return to_response(updated)
 
@@ -111,8 +132,17 @@ def delete_record(record_id: UUID, request: Request, identity=Depends(get_curren
     with database.session() as session:
         try:
             DynamicRecordService(SqlAlchemyRecordRepository(session)).delete(record_id, expected_row_version)
+            record_event(
+                session,
+                action="record.deleted",
+                resource_type="dynamic_record",
+                resource_id=record_id,
+                actor_id=identity.actor.id,
+                request_id=request.headers.get("X-Request-ID"),
+            )
             session.commit()
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Record not found") from exc
         except RuntimeError as exc:
+            session.rollback()
             raise HTTPException(status_code=409, detail=str(exc)) from exc
