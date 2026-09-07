@@ -209,9 +209,11 @@ def inventory(payload: InventoryRequest, request: Request, identity=Depends(get_
     try:
         with _db(request).session() as session:
             repository = FoundationRepository(session)
-            movement, balance = FoundationService.apply_inventory_movement(payload.item_id, payload.quantity, payload.source, repository.get_stock(payload.item_id))
-            repository.save_inventory(movement, balance)
+            movement, _ = FoundationService.apply_inventory_movement(payload.item_id, payload.quantity, payload.source, repository.get_stock(payload.item_id))
+            balance = repository.apply_inventory_movement(movement)
             session.commit()
+    except IntegrityError as exc:
+        raise HTTPException(status_code=422, detail="Insufficient stock") from exc
     except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"movement_id": str(movement.id), "tenant_id": str(movement.tenant_id), "item_id": str(movement.item_id), "quantity": str(balance.quantity)}
 
