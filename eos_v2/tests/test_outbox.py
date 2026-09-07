@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -26,5 +27,21 @@ def test_outbox_is_tenant_scoped_and_claims_pending_events() -> None:
             assert outbox.mark_published(event.id)
             session.commit()
             assert outbox.claim_unpublished() == []
+    finally:
+        reset_tenant_context(token)
+
+
+def test_outbox_claim_limit_is_bounded() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    OutboxBase.metadata.create_all(engine)
+    tenant = uuid4()
+    token = set_tenant_context(TenantContext(tenant))
+    try:
+        with Session(engine) as session:
+            outbox = SqlAlchemyOutbox(session)
+            with pytest.raises(ValueError, match="between 1 and 1000"):
+                outbox.claim_unpublished(0)
+            with pytest.raises(ValueError, match="between 1 and 1000"):
+                outbox.claim_unpublished(1001)
     finally:
         reset_tenant_context(token)
