@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 
 from eos_v2.app.tenant_context import get_tenant_context
+from eos_v2.application.audit.service import record_event
 from eos_v2.application.metadata.versioning import MetadataVersioningService
 from eos_v2.domain.metadata.entities import EntityDefinition, FieldDefinition, FieldType, RelationshipDefinition
 from eos_v2.domain.permissions.policy import Permission
@@ -90,6 +91,15 @@ def publish_metadata(request: Request, payload: MetadataCreateRequest, identity=
         repository = SqlAlchemyMetadataRepository(session)
         try:
             entity = MetadataVersioningService(repository).publish_new_version(to_entity(payload))
+            record_event(
+                session,
+                action="metadata.version_published",
+                resource_type="metadata_entity",
+                resource_id=entity.id,
+                actor_id=identity.actor.id,
+                request_id=request.headers.get("X-Request-ID"),
+                metadata={"name": entity.name, "version": entity.version},
+            )
             session.commit()
         except IntegrityError as exc:
             session.rollback()
