@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 
+from eos_v2.application.audit.service import record_event
 from eos_v2.application.foundation.services import FoundationService
 from eos_v2.domain.permissions.policy import Permission
 from eos_v2.infrastructure.db.foundation_repository import FoundationRepository
@@ -95,6 +96,7 @@ def create_sales(payload: SalesCreateRequest, request: Request, identity=Depends
         order = FoundationService.create_sales_order(payload.customer_id, payload.currency, tuple(SalesOrderLine(x.item_id, x.quantity, x.unit_price) for x in payload.lines))
         with _db(request).session() as session:
             FoundationRepository(session).save_sales(order)
+            record_event(session, action="sales_order.created", resource_type="sales_order", resource_id=order.id, actor_id=identity.actor.id, request_id=request.headers.get("X-Request-ID"), metadata={"currency": order.currency, "line_count": len(order.lines)})
             session.commit()
     except IntegrityError as exc:
         raise HTTPException(status_code=409, detail="Sales order already exists") from exc
@@ -121,6 +123,7 @@ def transition_sales(order_id: UUID, payload: TransitionRequest, request: Reques
             repository = FoundationRepository(session)
             updated = FoundationService.transition_sales_order(repository.get_sales(order_id), target)
             repository.save_sales(updated)
+            record_event(session, action="sales_order.transitioned", resource_type="sales_order", resource_id=updated.id, actor_id=identity.actor.id, request_id=request.headers.get("X-Request-ID"), metadata={"status": updated.status.value})
             session.commit()
     except KeyError as exc: raise HTTPException(status_code=404, detail="Sales order not found") from exc
     except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -134,6 +137,7 @@ def create_purchase(payload: PurchaseCreateRequest, request: Request, identity=D
         order = FoundationService.create_purchase_order(payload.supplier_id, payload.currency, tuple(PurchaseOrderLine(x.item_id, x.quantity, x.unit_cost) for x in payload.lines))
         with _db(request).session() as session:
             FoundationRepository(session).save_purchase(order)
+            record_event(session, action="purchase_order.created", resource_type="purchase_order", resource_id=order.id, actor_id=identity.actor.id, request_id=request.headers.get("X-Request-ID"), metadata={"currency": order.currency, "line_count": len(order.lines)})
             session.commit()
     except IntegrityError as exc: raise HTTPException(status_code=409, detail="Purchase order already exists") from exc
     except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -158,6 +162,7 @@ def transition_purchase(order_id: UUID, payload: TransitionRequest, request: Req
             repository = FoundationRepository(session)
             updated = FoundationService.transition_purchase_order(repository.get_purchase(order_id), target)
             repository.save_purchase(updated)
+            record_event(session, action="purchase_order.transitioned", resource_type="purchase_order", resource_id=updated.id, actor_id=identity.actor.id, request_id=request.headers.get("X-Request-ID"), metadata={"status": updated.status.value})
             session.commit()
     except KeyError as exc: raise HTTPException(status_code=404, detail="Purchase order not found") from exc
     except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -169,7 +174,10 @@ def create_employee(payload: EmployeeCreateRequest, request: Request, identity=D
     require_permission(identity, Permission.WRITE)
     employee = FoundationService.create_employee(payload.employee_number, payload.name, payload.hire_date)
     try:
-        with _db(request).session() as session: FoundationRepository(session).save_employee(employee); session.commit()
+        with _db(request).session() as session:
+            FoundationRepository(session).save_employee(employee)
+            record_event(session, action="employee.created", resource_type="employee", resource_id=employee.id, actor_id=identity.actor.id, request_id=request.headers.get("X-Request-ID"), metadata={"employee_number": employee.employee_number})
+            session.commit()
     except IntegrityError as exc: raise HTTPException(status_code=409, detail="Employee number already exists") from exc
     return {"id": str(employee.id), "tenant_id": str(employee.tenant_id), "employee_number": employee.employee_number, "name": employee.name, "hire_date": employee.hire_date.isoformat(), "active": employee.active}
 
@@ -189,7 +197,10 @@ def create_project(payload: ProjectCreateRequest, request: Request, identity=Dep
     try: project = FoundationService.create_project(payload.code, payload.name, payload.start_date, payload.end_date)
     except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
-        with _db(request).session() as session: FoundationRepository(session).save_project(project); session.commit()
+        with _db(request).session() as session:
+            FoundationRepository(session).save_project(project)
+            record_event(session, action="project.created", resource_type="project", resource_id=project.id, actor_id=identity.actor.id, request_id=request.headers.get("X-Request-ID"), metadata={"code": project.code})
+            session.commit()
     except IntegrityError as exc: raise HTTPException(status_code=409, detail="Project code already exists") from exc
     return {"id": str(project.id), "tenant_id": str(project.tenant_id), "code": project.code, "name": project.name, "status": project.status.value, "start_date": project.start_date.isoformat(), "end_date": project.end_date.isoformat() if project.end_date else None}
 
@@ -211,6 +222,7 @@ def inventory(payload: InventoryRequest, request: Request, identity=Depends(get_
             repository = FoundationRepository(session)
             movement, _ = FoundationService.apply_inventory_movement(payload.item_id, payload.quantity, payload.source, repository.get_stock(payload.item_id))
             balance = repository.apply_inventory_movement(movement)
+            record_event(session, action="inventory.movement_applied", resource_type="inventory_item", resource_id=movement.item_id, actor_id=identity.actor.id, request_id=request.headers.get("X-Request-ID"), metadata={"quantity": str(movement.quantity), "source": movement.reference_type, "movement_id": str(movement.id), "resulting_quantity": str(balance.quantity)})
             session.commit()
     except IntegrityError as exc:
         raise HTTPException(status_code=422, detail="Insufficient stock") from exc
