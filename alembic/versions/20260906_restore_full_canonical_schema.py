@@ -4,6 +4,10 @@ The published 87aba7990b4d revision has its upgrade/downgrade bodies reversed.
 Its downgrade body is therefore the canonical CREATE TABLE sequence. The
 canonical sequence was generated in reverse dependency order, so foreign-key
 constraints are deferred until every table exists.
+
+Some preceding repair migrations already restore a subset of those canonical
+tables. This migration is therefore additive: it creates only tables that do
+not exist yet and adds only foreign keys that are not already present.
 """
 
 from __future__ import annotations
@@ -39,9 +43,8 @@ def _create_deferred_foreign_key(constraint: ForeignKeyConstraint) -> None:
     referent_table = referent.name
     referent_schema = referent.schema
 
-    existing = sa_inspect(op.get_bind()).get_foreign_keys(
-        source_table, schema=source_schema
-    )
+    inspector = sa_inspect(op.get_bind())
+    existing = inspector.get_foreign_keys(source_table, schema=source_schema)
     if any(item.get("name") == constraint.name for item in existing):
         return
 
@@ -67,12 +70,24 @@ def _create_deferred_foreign_key(constraint: ForeignKeyConstraint) -> None:
 def upgrade() -> None:
     baseline = _load_baseline()
     deferred: list[ForeignKeyConstraint] = []
+    inspector = sa_inspect(op.get_bind())
 
     original_create_table = op.create_table
 
     def create_table_without_fks(*args, **kwargs):
-        foreign_keys = [item for item in args if isinstance(item, ForeignKeyConstraint)]
+        if not args or not isinstance(args[0], str):
+            return original_create_table(*args, **kwargs)
+
+        table_name = args[0]
+        source_schema = kwargs.get("schema")
+        foreign_keys = [
+            item for item in args[1:] if isinstance(item, ForeignKeyConstraint)
+        ]
         deferred.extend(foreign_keys)
+
+        if inspector.has_table(table_name, schema=source_schema):
+            return None
+
         filtered_args = tuple(
             item for item in args if not isinstance(item, ForeignKeyConstraint)
         )
@@ -84,10 +99,19 @@ def upgrade() -> None:
     finally:
         op.create_table = original_create_table
 
-    # All tables now exist, so the foreign-key graph can be restored safely
-    # even though the historical baseline emitted CREATE TABLE statements in
+    # All newly required tables now exist, so the foreign-key graph can be
+    # restored safely even though the historical baseline emits tables in
     # reverse dependency order.
     for constraint in deferred:
+        source_table = constraint.table.name
+        source_schema = constraint.table.schema
+        if not sa_inspect(op.get_bind()).has_table(source_table, schema=source_schema):
+            continue
+        referent = constraint.referred_table
+        if not sa_inspect(op.get_bind()).has_table(
+            referent.name, schema=referent.schema
+        ):
+            continue
         _create_deferred_foreign_key(constraint)
 
 
