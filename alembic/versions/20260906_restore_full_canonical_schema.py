@@ -80,6 +80,25 @@ def _create_deferred_foreign_key(constraint: ForeignKeyConstraint) -> None:
     )
 
 
+def _index_columns(args, kwargs):
+    """Normalize Alembic's single-sequence index-column argument.
+
+    The baseline emits ``op.create_index(name, table, [columns...])``. Treating
+    ``args[2:]`` as the column list creates a nested list and breaks set-based
+    schema checks. Preserve SQLAlchemy column expressions (for example
+    ``created_at DESC``) so they can be delegated to Alembic unchanged.
+    """
+    if len(args) > 2:
+        raw = args[2]
+    else:
+        raw = kwargs.get("columns", ())
+    if isinstance(raw, (list, tuple)):
+        return list(raw)
+    if raw is None:
+        return []
+    return [raw]
+
+
 def upgrade() -> None:
     baseline = _load_baseline()
     deferred: list[ForeignKeyConstraint] = []
@@ -113,7 +132,7 @@ def upgrade() -> None:
 
         index_name = args[0]
         table_name = args[1] if len(args) > 1 else kwargs.get("table_name")
-        columns = list(args[2:]) if len(args) > 2 else list(kwargs.get("columns", ()))
+        columns = _index_columns(args, kwargs)
         schema = kwargs.get("schema")
         if not table_name:
             return original_create_index(*args, **kwargs)
@@ -125,7 +144,8 @@ def upgrade() -> None:
         actual_columns = {
             item["name"] for item in inspector.get_columns(table_name, schema=schema)
         }
-        if not set(columns).issubset(actual_columns):
+        string_columns = {column for column in columns if isinstance(column, str)}
+        if not string_columns.issubset(actual_columns):
             return None
 
         existing_indexes = inspector.get_indexes(table_name, schema=schema)
