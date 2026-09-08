@@ -44,6 +44,12 @@ def _table_exists(table_name, schema=None):
     return table_name in _known_tables
 
 
+def _column_names(table_name, schema=None):
+    if context.is_offline_mode() or not table_name:
+        return set()
+    return {column["name"] for column in sa_inspect(op.get_bind()).get_columns(table_name, schema=schema)}
+
+
 def _mark_created(table_name):
     if _known_tables is not None:
         _known_tables.add(table_name)
@@ -72,6 +78,18 @@ def _guard_table_operation(name, table_position):
     return guarded
 
 
+def _safe_create_index(*args, **kw):
+    table_name, schema = _table_name_from_args(args, kw, 1)
+    if table_name and not _table_exists(table_name, schema):
+        return None
+    columns = list(args[2]) if len(args) > 2 else list(kw.get("columns") or [])
+    if table_name and not context.is_offline_mode():
+        existing_columns = _column_names(table_name, schema)
+        if any(column not in existing_columns for column in columns):
+            return None
+    return _original_ops["create_index"](*args, **kw)
+
+
 # Operations whose target table may legitimately be absent on a fresh DB.
 op.add_column = _guard_table_operation("add_column", 0)
 op.drop_column = _guard_table_operation("drop_column", 0)
@@ -81,7 +99,7 @@ op.create_primary_key = _guard_table_operation("create_primary_key", 1)
 op.create_check_constraint = _guard_table_operation("create_check_constraint", 1)
 op.create_unique_constraint = _guard_table_operation("create_unique_constraint", 1)
 op.create_exclude_constraint = _guard_table_operation("create_exclude_constraint", 1)
-op.create_index = _guard_table_operation("create_index", 1)
+op.create_index = _safe_create_index
 
 _original_drop_index = _original_ops["drop_index"]
 
