@@ -113,8 +113,6 @@ class AccountingEngine:
         if debit < 0 or credit < 0 or (debit == 0 and credit == 0):
             return None
 
-        # P80.5D FIX: only allow adding lines to a journal entry owned by the
-        # caller's tenant (prevents cross-tenant journal tampering).
         parent = self.db.execute(text(
             "SELECT tenant_id FROM dbp_journal_entries WHERE id = :jid"
         ), {"jid": journal_entry_id}).fetchone()
@@ -163,7 +161,6 @@ class AccountingEngine:
         if abs(total_debit - total_credit) > Decimal("0.001"):
             return {"success": False, "error": f"Entry not balanced: debit={total_debit}, credit={total_credit}"}
 
-        # Update GL balances
         for line in lines:
             aid = line[1]
             dr = float(line[2])
@@ -173,7 +170,6 @@ class AccountingEngine:
                 "WHERE id = :aid AND tenant_id = :t"
             ), {"aid": aid, "dr": dr, "cr": cr, "t": tenant_id})
 
-        # Mark posted
         self.db.execute(text(
             "UPDATE dbp_journal_entries SET status='posted', is_posted=true, "
             "posted_at=NOW(), total_debit=:td, total_credit=:tc WHERE id = :jid AND tenant_id = :t"
@@ -278,7 +274,13 @@ class AccountingEngine:
     # ── HELPERS ──
 
     def _ensure_tenant_exists(self, tenant_id: str, company_id: str) -> None:
-        """Ensure the canonical tenant registry row exists before FK-backed writes."""
+        """Ensure the canonical tenant registry row exists before FK-backed writes.
+
+        The canonical ``tenants`` table in the migration baseline does not have
+        the control-plane ``is_active`` column. Keep this bootstrap write limited
+        to the canonical identity fields so accounting is not coupled to the
+        separate ``dbp_saas_tenants`` lifecycle schema.
+        """
         existing = self.db.execute(
             text("SELECT 1 FROM tenants WHERE id = :tid"), {"tid": tenant_id}
         ).fetchone()
@@ -295,8 +297,8 @@ class AccountingEngine:
 
         self.db.execute(
             text(
-                "INSERT INTO tenants (id, name, slug, is_active) "
-                "VALUES (:tid, :name, :slug, true) "
+                "INSERT INTO tenants (id, name, slug) "
+                "VALUES (:tid, :name, :slug) "
                 "ON CONFLICT (id) DO NOTHING"
             ),
             {
