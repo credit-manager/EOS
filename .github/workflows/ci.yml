@@ -2,7 +2,7 @@ name: EOS Platform CI/CD
 
 on:
   push:
-    branches: [main, develop, 'feature/**']
+    branches: [main, develop, 'feature/**', 'hardening/**']
   pull_request:
     branches: [main, develop]
 
@@ -261,6 +261,8 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+        ports:
+          - 6379:6379
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
