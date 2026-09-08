@@ -4,7 +4,8 @@
 FROM node:20-bookworm-slim AS frontend-builder
 WORKDIR /frontend
 COPY erp-system/frontend/package.json ./package.json
-RUN npm install --no-audit --no-fund
+COPY erp-system/frontend/package-lock.json ./package-lock.json
+RUN npm ci --no-audit --no-fund
 COPY erp-system/frontend/ ./
 RUN npm run build
 
