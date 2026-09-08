@@ -277,12 +277,43 @@ class AccountingEngine:
 
     # ── HELPERS ──
 
+    def _ensure_tenant_exists(self, tenant_id: str, company_id: str) -> None:
+        """Ensure the canonical tenant registry row exists before FK-backed writes."""
+        existing = self.db.execute(
+            text("SELECT 1 FROM tenants WHERE id = :tid"), {"tid": tenant_id}
+        ).fetchone()
+        if existing:
+            return
+
+        company = self.db.execute(
+            text("SELECT name_en, code FROM dbp_companies WHERE id = :cid AND tenant_id = :tid"),
+            {"cid": company_id, "tid": tenant_id},
+        ).fetchone()
+        if not company:
+            from fastapi import HTTPException
+            raise HTTPException(403, detail="Company does not belong to your tenant")
+
+        self.db.execute(
+            text(
+                "INSERT INTO tenants (id, name, slug, is_active) "
+                "VALUES (:tid, :name, :slug, true) "
+                "ON CONFLICT (id) DO NOTHING"
+            ),
+            {
+                "tid": tenant_id,
+                "name": company[0] or tenant_id,
+                "slug": f"tenant-{tenant_id}",
+            },
+        )
+        self.db.flush()
+
     def _next_entry_number(self, tenant_id: str, company_id: str) -> str:
         # Fixed H8: Previously used MAX+1 via ORDER BY created_at LIMIT 1,
         # which is racy under concurrency. Now uses an atomic per-tenant
         # counter in the number_sequences table so concurrent callers
         # never receive the same entry number.
         from core.industry_security import uid
+        self._ensure_tenant_exists(tenant_id, company_id)
         seq_name = f"JE-{company_id}"
         row = self.db.execute(text(
             "INSERT INTO number_sequences "
