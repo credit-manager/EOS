@@ -41,12 +41,12 @@ def _deferred_fk_record(constraint: ForeignKeyConstraint, source_table: str, sou
     """Capture FK metadata before Alembic/SQLAlchemy binds the constraint.
 
     Constraints supplied to ``op.create_table`` are not guaranteed to be bound
-    to a Table object at interception time. Accessing ``constraint.table`` at
-    that point can therefore raise ``InvalidRequestError``. The canonical
-    source table is already known from the create_table call, so retain only
-    the portable FK attributes needed for the later ALTER TABLE operation.
+    to a Table object at interception time. Accessing ``constraint.table`` or
+    ``element.parent`` at that point can therefore fail. ``column_keys`` keeps
+    the local column names available without requiring a bound Table, while
+    ``target_fullname`` retains the canonical remote column specification.
     """
-    local_columns = [element.parent.name for element in constraint.elements]
+    local_columns = list(constraint.column_keys)
     remote_specs = [element.target_fullname for element in constraint.elements]
     return {
         "name": constraint.name,
