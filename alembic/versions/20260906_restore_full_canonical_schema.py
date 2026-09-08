@@ -6,8 +6,10 @@ canonical sequence was generated in reverse dependency order, so foreign-key
 constraints are deferred until every table exists.
 
 Some preceding repair migrations already restore a subset of those canonical
-tables. This migration is therefore additive: it creates only tables that do
-not exist yet and adds only foreign keys that are not already present.
+tables, sometimes with a compatible but narrower column shape. This migration
+is therefore additive and schema-aware: it creates only missing tables, adds
+only missing foreign keys, and restores indexes only when their referenced
+columns actually exist.
 """
 
 from __future__ import annotations
@@ -50,6 +52,17 @@ def _create_deferred_foreign_key(constraint: ForeignKeyConstraint) -> None:
 
     local_columns = [element.parent.name for element in constraint.elements]
     remote_columns = [element.column.name for element in constraint.elements]
+    actual_columns = {
+        item["name"] for item in inspector.get_columns(source_table, schema=source_schema)
+    }
+    referent_columns = {
+        item["name"]
+        for item in inspector.get_columns(referent_table, schema=referent_schema)
+    }
+    if not set(local_columns).issubset(actual_columns):
+        return
+    if not set(remote_columns).issubset(referent_columns):
+        return
 
     op.create_foreign_key(
         constraint.name,
@@ -70,9 +83,9 @@ def _create_deferred_foreign_key(constraint: ForeignKeyConstraint) -> None:
 def upgrade() -> None:
     baseline = _load_baseline()
     deferred: list[ForeignKeyConstraint] = []
-    inspector = sa_inspect(op.get_bind())
 
     original_create_table = op.create_table
+    original_create_index = op.create_index
 
     def create_table_without_fks(*args, **kwargs):
         if not args or not isinstance(args[0], str):
@@ -85,6 +98,7 @@ def upgrade() -> None:
         ]
         deferred.extend(foreign_keys)
 
+        inspector = sa_inspect(op.get_bind())
         if inspector.has_table(table_name, schema=source_schema):
             return None
 
@@ -93,11 +107,40 @@ def upgrade() -> None:
         )
         return original_create_table(*filtered_args, **kwargs)
 
+    def create_index_if_schema_compatible(*args, **kwargs):
+        if not args or not isinstance(args[0], str):
+            return original_create_index(*args, **kwargs)
+
+        index_name = args[0]
+        table_name = args[1] if len(args) > 1 else kwargs.get("table_name")
+        columns = list(args[2:]) if len(args) > 2 else list(kwargs.get("columns", ()))
+        schema = kwargs.get("schema")
+        if not table_name:
+            return original_create_index(*args, **kwargs)
+
+        inspector = sa_inspect(op.get_bind())
+        if not inspector.has_table(table_name, schema=schema):
+            return None
+
+        actual_columns = {
+            item["name"] for item in inspector.get_columns(table_name, schema=schema)
+        }
+        if not set(columns).issubset(actual_columns):
+            return None
+
+        existing_indexes = inspector.get_indexes(table_name, schema=schema)
+        if any(item.get("name") == index_name for item in existing_indexes):
+            return None
+
+        return original_create_index(*args, **kwargs)
+
     op.create_table = create_table_without_fks
+    op.create_index = create_index_if_schema_compatible
     try:
         baseline.downgrade()
     finally:
         op.create_table = original_create_table
+        op.create_index = original_create_index
 
     # All newly required tables now exist, so the foreign-key graph can be
     # restored safely even though the historical baseline emits tables in
@@ -105,10 +148,11 @@ def upgrade() -> None:
     for constraint in deferred:
         source_table = constraint.table.name
         source_schema = constraint.table.schema
-        if not sa_inspect(op.get_bind()).has_table(source_table, schema=source_schema):
+        inspector = sa_inspect(op.get_bind())
+        if not inspector.has_table(source_table, schema=source_schema):
             continue
         referent = constraint.referred_table
-        if not sa_inspect(op.get_bind()).has_table(
+        if not inspector.has_table(
             referent.name, schema=referent.schema
         ):
             continue
