@@ -37,21 +37,60 @@ def _load_baseline():
     return module
 
 
-def _create_deferred_foreign_key(constraint: ForeignKeyConstraint) -> None:
-    table = constraint.table
-    source_table = table.name
-    source_schema = table.schema
-    referent = constraint.referred_table
-    referent_table = referent.name
-    referent_schema = referent.schema
+def _deferred_fk_record(constraint: ForeignKeyConstraint, source_table: str, source_schema: str | None):
+    """Capture FK metadata before Alembic/SQLAlchemy binds the constraint.
 
-    inspector = sa_inspect(op.get_bind())
-    existing = inspector.get_foreign_keys(source_table, schema=source_schema)
-    if any(item.get("name") == constraint.name for item in existing):
+    Constraints supplied to ``op.create_table`` are not guaranteed to be bound
+    to a Table object at interception time. Accessing ``constraint.table`` at
+    that point can therefore raise ``InvalidRequestError``. The canonical
+    source table is already known from the create_table call, so retain only
+    the portable FK attributes needed for the later ALTER TABLE operation.
+    """
+    local_columns = [element.parent.name for element in constraint.elements]
+    remote_specs = [element.target_fullname for element in constraint.elements]
+    return {
+        "name": constraint.name,
+        "source_table": source_table,
+        "source_schema": source_schema,
+        "local_columns": local_columns,
+        "remote_specs": remote_specs,
+        "onupdate": constraint.onupdate,
+        "ondelete": constraint.ondelete,
+        "deferrable": constraint.deferrable,
+        "initially": constraint.initially,
+    }
+
+
+def _parse_remote_spec(spec: str, default_schema: str | None):
+    parts = spec.split(".")
+    if len(parts) == 2:
+        return default_schema, parts[0], parts[1]
+    if len(parts) == 3:
+        return parts[0], parts[1], parts[2]
+    raise ValueError(f"Unsupported foreign-key target specification: {spec!r}")
+
+
+def _create_deferred_foreign_key(record) -> None:
+    source_table = record["source_table"]
+    source_schema = record["source_schema"]
+    remote = [_parse_remote_spec(spec, source_schema) for spec in record["remote_specs"]]
+    referent_schema = remote[0][0]
+    referent_table = remote[0][1]
+    remote_columns = [item[2] for item in remote]
+
+    if any(item[0] != referent_schema or item[1] != referent_table for item in remote):
         return
 
-    local_columns = [element.parent.name for element in constraint.elements]
-    remote_columns = [element.column.name for element in constraint.elements]
+    inspector = sa_inspect(op.get_bind())
+    if not inspector.has_table(source_table, schema=source_schema):
+        return
+    if not inspector.has_table(referent_table, schema=referent_schema):
+        return
+
+    existing = inspector.get_foreign_keys(source_table, schema=source_schema)
+    if any(item.get("name") == record["name"] for item in existing):
+        return
+
     actual_columns = {
         item["name"] for item in inspector.get_columns(source_table, schema=source_schema)
     }
@@ -59,35 +98,28 @@ def _create_deferred_foreign_key(constraint: ForeignKeyConstraint) -> None:
         item["name"]
         for item in inspector.get_columns(referent_table, schema=referent_schema)
     }
-    if not set(local_columns).issubset(actual_columns):
+    if not set(record["local_columns"]).issubset(actual_columns):
         return
     if not set(remote_columns).issubset(referent_columns):
         return
 
     op.create_foreign_key(
-        constraint.name,
+        record["name"],
         source_table,
         referent_table,
-        local_columns,
+        record["local_columns"],
         remote_columns,
         source_schema=source_schema,
         referent_schema=referent_schema,
-        onupdate=constraint.onupdate,
-        ondelete=constraint.ondelete,
-        deferrable=constraint.deferrable,
-        initially=constraint.initially,
-        use_alter=constraint.use_alter,
+        onupdate=record["onupdate"],
+        ondelete=record["ondelete"],
+        deferrable=record["deferrable"],
+        initially=record["initially"],
     )
 
 
 def _index_columns(args, kwargs):
-    """Normalize Alembic's single-sequence index-column argument.
-
-    The baseline emits ``op.create_index(name, table, [columns...])``. Treating
-    ``args[2:]`` as the column list creates a nested list and breaks set-based
-    schema checks. Preserve SQLAlchemy column expressions (for example
-    ``created_at DESC``) so they can be delegated to Alembic unchanged.
-    """
+    """Normalize Alembic's single-sequence index-column argument."""
     if len(args) > 2:
         raw = args[2]
     else:
@@ -101,7 +133,7 @@ def _index_columns(args, kwargs):
 
 def upgrade() -> None:
     baseline = _load_baseline()
-    deferred: list[ForeignKeyConstraint] = []
+    deferred = []
 
     original_create_table = op.create_table
     original_create_index = op.create_index
@@ -115,7 +147,10 @@ def upgrade() -> None:
         foreign_keys = [
             item for item in args[1:] if isinstance(item, ForeignKeyConstraint)
         ]
-        deferred.extend(foreign_keys)
+        deferred.extend(
+            _deferred_fk_record(item, table_name, source_schema)
+            for item in foreign_keys
+        )
 
         inspector = sa_inspect(op.get_bind())
         if inspector.has_table(table_name, schema=source_schema):
@@ -162,21 +197,8 @@ def upgrade() -> None:
         op.create_table = original_create_table
         op.create_index = original_create_index
 
-    # All newly required tables now exist, so the foreign-key graph can be
-    # restored safely even though the historical baseline emits tables in
-    # reverse dependency order.
-    for constraint in deferred:
-        source_table = constraint.table.name
-        source_schema = constraint.table.schema
-        inspector = sa_inspect(op.get_bind())
-        if not inspector.has_table(source_table, schema=source_schema):
-            continue
-        referent = constraint.referred_table
-        if not inspector.has_table(
-            referent.name, schema=referent.schema
-        ):
-            continue
-        _create_deferred_foreign_key(constraint)
+    for record in deferred:
+        _create_deferred_foreign_key(record)
 
 
 def downgrade() -> None:
