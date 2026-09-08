@@ -1,5 +1,3 @@
-from __future__
-
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
@@ -40,14 +38,16 @@ class SqlAlchemyOutbox:
         tenant_id = get_tenant_context().tenant_id
         if event.tenant_id != tenant_id:
             raise PermissionError("Event tenant does not match current tenant")
-        self.session.add(OutboxEventModel(
-            id=event.id,
-            tenant_id=tenant_id,
-            event_type=event.event_type,
-            aggregate_id=event.aggregate_id,
-            payload=event.payload,
-            occurred_at=event.occurred_at,
-        ))
+        self.session.add(
+            OutboxEventModel(
+                id=event.id,
+                tenant_id=tenant_id,
+                event_type=event.event_type,
+                aggregate_id=event.aggregate_id,
+                payload=event.payload,
+                occurred_at=event.occurred_at,
+            )
+        )
 
     def claim_unpublished(self, limit: int = 100) -> list[OutboxEventModel]:
         """Claim a leased batch; expired claims become eligible for retry.
