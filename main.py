@@ -56,6 +56,7 @@ from routers import billing_flow
 from routers import portal
 from routers import saas_journey
 from routers import auth as auth_router
+from routers import invitations
 from routers import locale_router
 from routers import analytics_router
 from routers import whitelabel
@@ -248,6 +249,7 @@ app.include_router(billing_flow.router)
 app.include_router(portal.router)
 app.include_router(saas_journey.router)
 app.include_router(auth_router.router)
+app.include_router(invitations.router)
 app.include_router(locale_router.router)
 app.include_router(analytics_router.router)
 app.include_router(whitelabel.router)
