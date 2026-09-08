@@ -81,10 +81,12 @@ class SqlAlchemyOutbox:
         return events
 
     def mark_published(self, event_id: UUID, claim_token: UUID) -> bool:
-        """Mark an event published only for the active lease owned by this worker."""
+        """Mark an event published only while this worker still owns its lease."""
         if claim_token is None:
             raise ValueError("claim_token is required to mark an outbox event published")
         tenant_id = get_tenant_context().tenant_id
+        now = datetime.now(timezone.utc)
+        cutoff = now - self.CLAIM_LEASE
         result = self.session.execute(
             update(OutboxEventModel)
             .where(
@@ -92,9 +94,11 @@ class SqlAlchemyOutbox:
                 OutboxEventModel.tenant_id == tenant_id,
                 OutboxEventModel.published_at.is_(None),
                 OutboxEventModel.claim_token == claim_token,
+                OutboxEventModel.claimed_at.is_not(None),
+                OutboxEventModel.claimed_at >= cutoff,
             )
             .values(
-                published_at=datetime.now(timezone.utc),
+                published_at=now,
                 claim_token=None,
                 claimed_at=None,
             )
