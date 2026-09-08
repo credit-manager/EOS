@@ -1,0 +1,100 @@
+name: EOS Release Gates
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reproducibility:
+    name: Reproducibility and source-of-truth
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify canonical frontend lockfile
+        run: |
+          test -f erp-system/frontend/package.json
+          test -f erp-system/frontend/package-lock.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: erp-system/frontend/package-lock.json
+      - name: Clean frontend install
+        working-directory: erp-system/frontend
+        run: npm ci --no-audit --no-fund
+      - name: Frontend build
+        working-directory: erp-system/frontend
+        run: npm run build
+      - name: Verify production artifact
+        run: |
+          test -f erp-system/frontend/dist/index.html
+          test -n "$(find erp-system/frontend/dist/assets -type f | head -1)"
+
+  backend-quality:
+    name: Backend quality and security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Syntax validation
+        run: |
+          python -m py_compile main.py
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          roots = [Path('core'), Path('routers'), Path('models'), Path('services'), Path('eos_v2'), Path('tests')]
+          files = [p for root in roots if root.exists() for p in root.rglob('*.py')]
+          for path in files:
+              ast.parse(path.read_text(encoding='utf-8-sig'), filename=str(path))
+          print(f'Parsed {len(files)} Python files successfully')
+          PY
+      - name: Ruff fatal checks
+        run: ruff check . --select E9,F63,F7,F82
+      - name: Flake8 fatal checks
+        run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+      - name: Bandit high-confidence scan
+        run: bandit -r core/ routers/ models/ services/ eos_v2/ -ll -ii
+      - name: Dependency vulnerability audit
+        run: pip-audit
+      - name: Full automated test suite
+        env:
+          DATABASE_URL: sqlite:///./ci_release_gates.db
+          SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          ENVIRONMENT: testing
+          EOS_EMAIL_PROVIDER: console
+          PYTHONPATH: ${{ github.workspace }}
+        run: pytest -q --capture=sys
+
+  production-image:
+    name: Production Docker build
+    runs-on: ubuntu-latest
+    needs: [reproducibility, backend-quality]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production image
+        run: docker build --pull --tag eos:release-gate .
+      - name: Inspect runtime user
+        run: |
+          test "$(docker run --rm eos:release-gate id -un)" = "eos"
+      - name: Verify healthcheck exists
+        run: docker inspect eos:release-gate --format '{{json .Config.Healthcheck}}' | grep -q 'health'
+
+  release-gate:
+    name: Global release gate
+    runs-on: ubuntu-latest
+    needs: [production-image]
+    steps:
+      - run: echo "EOS release gates passed: reproducibility, quality, security, tests, and production image."
