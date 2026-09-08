@@ -5,7 +5,7 @@ sent through the configured EOS email provider. The invite recipient chooses
 an initial password through the invitation link; no password is emailed.
 """
 from datetime import datetime, timedelta, timezone
-import hashlib
+import os
 import secrets
 import uuid
 
@@ -14,9 +14,9 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from database import get_db
-from core.auth import get_current_user, require_admin_role
+from core.auth import require_admin_role
 from core.email_adapter import get_email_service
-from core.user_engine import UserEngine, _hash_token, pwd_context
+from core.user_engine import UserEngine, _hash_token, pwd_context, _validate_password
 from core.rate_limit import auth_limiter, write_limiter
 
 router = APIRouter(prefix="/api/v1/invitations", tags=["Organization Invitations"])
@@ -80,8 +80,6 @@ async def invite_user(
     if not company:
         raise _err(409, "ORGANIZATION_NOT_READY", "The organization has no company record")
 
-    # Reuse the existing verification-token columns for invitations. The token
-    # is stored only as SHA-256 and is never returned to the administrator.
     invite_token = secrets.token_urlsafe(32)
     invite_expires = datetime.now(timezone.utc) + timedelta(hours=_INVITE_EXPIRE_HOURS)
     uid = str(uuid.uuid4())
@@ -100,7 +98,7 @@ async def invite_user(
     )
     db.flush()
 
-    frontend_url = os.getenv("EOS_FRONTEND_URL", "http://localhost:3000")
+    frontend_url = os.getenv("EOS_FRONTEND_URL", "http://localhost:3000").rstrip("/")
     tpl = _invite_email(f"{frontend_url}/accept-invitation?token={invite_token}", first_name, company[1])
     email_result = get_email_service().send(
         to_email=email,
@@ -123,9 +121,6 @@ async def accept_invitation(body: dict, db: Session = Depends(get_db)):
     if not token or not password:
         raise _err(400, "MISSING", "token and password are required")
 
-    err = UserEngine(db)
-    # Reuse the same password policy as normal password creation.
-    from core.user_engine import _validate_password
     password_error = _validate_password(password)
     if password_error:
         raise _err(400, "INVALID_PASSWORD", password_error)
