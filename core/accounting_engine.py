@@ -295,15 +295,17 @@ class AccountingEngine:
             from fastapi import HTTPException
             raise HTTPException(403, detail="Company does not belong to your tenant")
 
+        tenant_name = company[0] or tenant_id
         self.db.execute(
             text(
-                "INSERT INTO tenants (id, name, slug) "
-                "VALUES (:tid, :name, :slug) "
+                "INSERT INTO tenants (id, name, name_ar, slug) "
+                "VALUES (:tid, :name, :name_ar, :slug) "
                 "ON CONFLICT (id) DO NOTHING"
             ),
             {
                 "tid": tenant_id,
-                "name": company[0] or tenant_id,
+                "name": tenant_name,
+                "name_ar": tenant_name,
                 "slug": f"tenant-{tenant_id}",
             },
         )
