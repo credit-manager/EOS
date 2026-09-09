@@ -40,6 +40,29 @@ def main() -> int:
         markers = fail_if_present(reporting, STUB_MARKERS)
         violations.extend(f"{reporting.relative_to(ROOT)}: financial/reporting stub {marker!r}" for marker in markers)
 
+    frontend_wrapper = ROOT / "app_server.py"
+    entrypoint = ROOT / "docker" / "entrypoint.sh"
+    dockerfile = ROOT / "Dockerfile"
+    if not frontend_wrapper.is_file():
+        violations.append("app_server.py: canonical frontend ASGI wrapper is missing")
+    else:
+        wrapper = frontend_wrapper.read_text(encoding="utf-8")
+        for marker in ("from main import app", "erp-system", "frontend", "index.html", "FileResponse"):
+            if marker not in wrapper:
+                violations.append(f"app_server.py: missing frontend runtime marker {marker!r}")
+    if not entrypoint.is_file():
+        violations.append("docker/entrypoint.sh: runtime entrypoint is missing")
+    else:
+        entrypoint_text = entrypoint.read_text(encoding="utf-8")
+        if "gunicorn app_server:app" not in entrypoint_text:
+            violations.append("docker/entrypoint.sh: must launch app_server:app")
+    if not dockerfile.is_file():
+        violations.append("Dockerfile: production image definition is missing")
+    else:
+        dockerfile_text = dockerfile.read_text(encoding="utf-8")
+        if "COPY --from=frontend-builder" not in dockerfile_text or "/erp-system/frontend/dist" not in dockerfile_text:
+            violations.append("Dockerfile: canonical frontend build artifact is not copied into runtime image")
+
     if violations:
         print("Commercial static gate FAILED")
         print("\n".join(violations))
