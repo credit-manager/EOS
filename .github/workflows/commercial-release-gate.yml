@@ -15,6 +15,7 @@ permissions:
 
 env:
   EXPECTED_ALEMBIC_HEAD: 20260909_finalize_tenant_rls
+  AUTH_DEFINER_ROLE: eos_auth_definer
 
 jobs:
   production-contract:
@@ -156,6 +157,9 @@ jobs:
                AND has_function_privilege('eos_runtime', 'public.eos_auth_tenant_by_refresh_hash(text)', 'EXECUTE')
                AND NOT has_function_privilege('eos_exporter', 'public.eos_auth_tenant_by_email(text)', 'EXECUTE')
                AND NOT has_function_privilege('public', 'public.eos_auth_tenant_by_email(text)', 'EXECUTE')
+               AND (SELECT rolcanlogin = false AND rolbypassrls = true AND rolsuper = false FROM pg_roles WHERE rolname = '${AUTH_DEFINER_ROLE}')
+               AND (SELECT has_table_privilege('${AUTH_DEFINER_ROLE}', 'public.dbp_users', 'SELECT'))
+               AND (SELECT has_table_privilege('${AUTH_DEFINER_ROLE}', 'public.dbp_refresh_tokens', 'SELECT'))
               THEN 'AUTH_LOOKUP_PRIVILEGES_PASS'
               ELSE 'AUTH_LOOKUP_PRIVILEGES_FAIL'
             END;
