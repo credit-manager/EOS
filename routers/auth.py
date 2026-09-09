@@ -42,17 +42,21 @@ def _auth_tenant(db: Session, function_name: str, value: str):
     return current_tenant_id.set(str(row[0]).lower())
 
 
-def _issue_refresh_token(db: Session, user_id: str, tenant_id: str, family_id: str | None = None) -> str:
+def _issue_refresh_token(db: Session, user_id: str, tenant_id: str, family_id: str | None = None, *, mfa_verified: bool = False) -> str:
     raw = secrets.token_urlsafe(64)
     db.execute(text(
-        "INSERT INTO dbp_refresh_tokens (id, token_hash, user_id, tenant_id, family_id, expires_at) "
-        "VALUES (:id, :hash, :user_id, :tenant_id, :family_id, :expires_at)"
-    ), {"id": str(uuid.uuid4()), "hash": _refresh_hash(raw), "user_id": user_id, "tenant_id": tenant_id,
-        "family_id": family_id or str(uuid.uuid4()), "expires_at": datetime.now(timezone.utc) + timedelta(days=_REFRESH_DAYS)})
+        "INSERT INTO dbp_refresh_tokens "
+        "(id, token_hash, user_id, tenant_id, family_id, mfa_verified, expires_at) "
+        "VALUES (:id, :hash, :user_id, :tenant_id, :family_id, :mfa_verified, :expires_at)"
+    ), {
+        "id": str(uuid.uuid4()), "hash": _refresh_hash(raw), "user_id": user_id, "tenant_id": tenant_id,
+        "family_id": family_id or str(uuid.uuid4()), "mfa_verified": mfa_verified,
+        "expires_at": datetime.now(timezone.utc) + timedelta(days=_REFRESH_DAYS),
+    })
     return raw
 
 
-def _issue_access_token(result: dict) -> str:
+def _issue_access_token(result: dict, *, mfa_verified: bool = False) -> str:
     """Issue access tokens through the central runtime/auth contract."""
     try:
         mode = resolve_auth_mode()
@@ -64,6 +68,7 @@ def _issue_access_token(result: dict) -> str:
                     "tenant_id": result["tenant_id"],
                     "email": result["email"],
                     "roles": [result["role"]],
+                    "mfa_verified": bool(mfa_verified),
                 },
             )
 
@@ -78,6 +83,13 @@ def _issue_access_token(result: dict) -> str:
         if isinstance(exc, HTTPException):
             raise
         raise _err(500, "SERVER_CONFIG", "Authentication signing configuration is invalid") from exc
+
+
+def _mfa_enabled(db: Session, user_id: str) -> bool:
+    row = db.execute(text(
+        "SELECT 1 FROM dbp_2fa_settings WHERE user_id=:uid AND is_enabled=TRUE"
+    ), {"uid": user_id}).fetchone()
+    return row is not None
 
 
 @router.post("/register", dependencies=[Depends(auth_limiter.check)])
@@ -158,14 +170,16 @@ async def login(body: dict, db: Session = Depends(get_db)):
         result = UserEngine(db).login(email, password)
         if not result["success"]:
             raise _err(403 if result.get("requires_verification") else 401, "LOGIN_FAILED", result["error"])
-        token = _issue_access_token(result)
-        refresh_token = _issue_refresh_token(db, result["user_id"], result["tenant_id"])
+        mfa_required = _mfa_enabled(db, str(result["user_id"]))
+        token = _issue_access_token(result, mfa_verified=not mfa_required)
+        refresh_token = _issue_refresh_token(db, result["user_id"], result["tenant_id"], mfa_verified=not mfa_required)
         company = db.execute(text("SELECT id FROM dbp_companies WHERE tenant_id = :tenant_id ORDER BY id LIMIT 1"),
                              {"tenant_id": result["tenant_id"]}).fetchone()
         db.commit()
         return {"status": "success", "data": {"access_token": token, "refresh_token": refresh_token, "token_type": "bearer", "expires_in": 1800,
                 "user": {"id": result["user_id"], "email": result["email"], "first_name": result.get("first_name"),
-                          "last_name": result.get("last_name"), "tenant_id": result["tenant_id"], "company_id": company[0] if company else None, "role": result["role"]}}}
+                          "last_name": result.get("last_name"), "tenant_id": result["tenant_id"], "company_id": company[0] if company else None, "role": result["role"],
+                          "mfa_required": mfa_required}}}
     except HTTPException:
         db.rollback()
         raise
@@ -188,7 +202,7 @@ async def refresh_token(body: dict, db: Session = Depends(get_db)):
     try:
         now = datetime.now(timezone.utc)
         row = db.execute(text(
-            "SELECT id, user_id, tenant_id, family_id, expires_at, rotated_at, revoked_at FROM dbp_refresh_tokens "
+            "SELECT id, user_id, tenant_id, family_id, mfa_verified, expires_at, rotated_at, revoked_at FROM dbp_refresh_tokens "
             "WHERE token_hash = :hash FOR UPDATE"
         ), {"hash": token_hash}).mappings().first()
         if not row:
@@ -208,15 +222,18 @@ async def refresh_token(body: dict, db: Session = Depends(get_db)):
                        {"now": now, "family_id": row["family_id"]})
             db.commit()
             raise _err(401, "SESSION_REVOKED", "User session is no longer active")
+        mfa_required = _mfa_enabled(db, str(row["user_id"]))
+        if mfa_required and not bool(row["mfa_verified"]):
+            raise _err(401, "MFA_VERIFICATION_REQUIRED", "MFA verification required before refreshing this session")
         result = {"user_id": row["user_id"], "tenant_id": row["tenant_id"], "email": user["email"], "role": user["role"]}
         new_raw = secrets.token_urlsafe(64)
         new_hash = _refresh_hash(new_raw)
-        db.execute(text("INSERT INTO dbp_refresh_tokens (id, token_hash, user_id, tenant_id, family_id, expires_at) VALUES (:id, :hash, :user_id, :tenant_id, :family_id, :expires_at)"),
+        db.execute(text("INSERT INTO dbp_refresh_tokens (id, token_hash, user_id, tenant_id, family_id, mfa_verified, expires_at) VALUES (:id, :hash, :user_id, :tenant_id, :family_id, :mfa_verified, :expires_at)"),
                    {"id": str(uuid.uuid4()), "hash": new_hash, "user_id": row["user_id"], "tenant_id": row["tenant_id"],
-                    "family_id": row["family_id"], "expires_at": now + timedelta(days=_REFRESH_DAYS)})
+                    "family_id": row["family_id"], "mfa_verified": bool(row["mfa_verified"]), "expires_at": now + timedelta(days=_REFRESH_DAYS)})
         db.execute(text("UPDATE dbp_refresh_tokens SET rotated_at = :now, last_used_at = :now, replaced_by_hash = :new_hash WHERE id = :id AND rotated_at IS NULL AND revoked_at IS NULL"),
                    {"now": now, "new_hash": new_hash, "id": row["id"]})
-        access = _issue_access_token(result)
+        access = _issue_access_token(result, mfa_verified=bool(row["mfa_verified"]))
         db.commit()
         return {"status": "success", "data": {"access_token": access, "refresh_token": new_raw, "token_type": "bearer", "expires_in": 1800}}
     except HTTPException:
