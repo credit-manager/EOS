@@ -4,7 +4,8 @@ Revision ID: 20260909_finalize_tenant_rls
 Revises: 20260909_merge_release_heads
 
 The release head runs after schema restoration and normalizes tenant isolation
-for every known tenant-scoped table that actually has a tenant_id column.
+for every public base table that actually has a tenant_id column. The dynamic
+scan prevents newly-added tenant tables from silently escaping the RLS contract.
 """
 
 from alembic import op
@@ -42,13 +43,54 @@ TENANT_SCOPED_TABLES = (
 def _migration_block(down: bool = False) -> str:
     tables_sql = ", ".join("%r" % table for table in TENANT_SCOPED_TABLES)
     if down:
-        operations = """
+        return f"""
+        DO $$
+        DECLARE
+            v_table_name text;
+            v_policy_name text;
+        BEGIN
+            FOR v_table_name IN
+                SELECT c.relname
+                FROM pg_class AS c
+                JOIN pg_namespace AS n ON n.oid = c.relnamespace
+                JOIN information_schema.columns AS cols
+                  ON cols.table_schema = n.nspname
+                 AND cols.table_name = c.relname
+                 AND cols.column_name = 'tenant_id'
+                WHERE n.nspname = 'public'
+                  AND c.relkind = 'r'
+                  AND c.relname = ANY(ARRAY[{tables_sql}]::text[])
+            LOOP
                 v_policy_name := 'tenant_isolation_' || v_table_name;
+                EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', 'tenant_isolation', v_table_name);
                 EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', v_policy_name, v_table_name);
                 EXECUTE format('ALTER TABLE public.%I NO FORCE ROW LEVEL SECURITY', v_table_name);
-                EXECUTE format('ALTER TABLE public.%I DISABLE ROW LEVEL SECURITY', v_table_name);"""
-    else:
-        operations = """
+                EXECUTE format('ALTER TABLE public.%I DISABLE ROW LEVEL SECURITY', v_table_name);
+            END LOOP;
+        END $$;
+        """
+
+    return f"""
+        DO $$
+        DECLARE
+            v_table_name text;
+            v_policy_name text;
+        BEGIN
+            FOR v_table_name IN
+                SELECT c.relname
+                FROM pg_class AS c
+                JOIN pg_namespace AS n ON n.oid = c.relnamespace
+                JOIN information_schema.columns AS cols
+                  ON cols.table_schema = n.nspname
+                 AND cols.table_name = c.relname
+                 AND cols.column_name = 'tenant_id'
+                WHERE n.nspname = 'public'
+                  AND c.relkind = 'r'
+                  AND (
+                      c.relname = ANY(ARRAY[{tables_sql}]::text[])
+                      OR c.relname LIKE 'dbp_%'
+                  )
+            LOOP
                 v_policy_name := 'tenant_isolation_' || v_table_name;
                 EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', 'tenant_isolation', v_table_name);
                 EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', v_policy_name, v_table_name);
@@ -59,28 +101,7 @@ def _migration_block(down: bool = False) -> str:
                     'USING (tenant_id::text = current_setting(''app.tenant_id'', true)) ' ||
                     'WITH CHECK (tenant_id::text = current_setting(''app.tenant_id'', true))',
                     v_policy_name, v_table_name
-                );"""
-    return f"""
-        DO $$
-        DECLARE
-            v_table_name text;
-            v_policy_name text;
-        BEGIN
-            FOREACH v_table_name IN ARRAY ARRAY[{tables_sql}]::text[]
-            LOOP
-                IF to_regclass(format('public.%I', v_table_name)) IS NULL THEN
-                    CONTINUE;
-                END IF;
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns AS cols
-                    WHERE cols.table_schema = 'public'
-                      AND cols.table_name = v_table_name
-                      AND cols.column_name = 'tenant_id'
-                ) THEN
-                    CONTINUE;
-                END IF;
-{operations}
+                );
             END LOOP;
         END $$;
         """
