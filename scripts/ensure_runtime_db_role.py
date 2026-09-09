@@ -3,11 +3,9 @@
 Runs with the migration/database-owner connection so an existing PostgreSQL
 volume is reconciled safely on every deployment. The application runtime role
 gets CRUD access; the monitoring exporter role gets PostgreSQL monitoring
-privileges only. Runtime function execution is intentionally not granted here;
-only narrowly scoped authentication lookup functions receive EXECUTE during
-migration.
+privileges only. Runtime DDL is intentionally unavailable except through
+narrowly scoped SECURITY DEFINER functions created by migrations.
 """
-
 from __future__ import annotations
 
 import os
@@ -39,15 +37,15 @@ def ensure_login_role(cur, role_name: str, password: str, migration_user: str, d
         )
 
     cur.execute(
-        "SELECT rolsuper, rolcreaterole, rolcreatedb, rolcanlogin FROM pg_roles WHERE rolname = %s",
+        "SELECT rolsuper, rolcreaterole, rolcreatedb, rolcanlogin, rolbypassrls FROM pg_roles WHERE rolname = %s",
         (role_name,),
     )
     role_flags = cur.fetchone()
-    if role_flags != (False, False, False, True):
+    if role_flags != (False, False, False, True, False):
         raise SystemExit(
             f"Role {role_name!r} has unsafe flags: "
-            f"superuser={role_flags[0]}, createrole={role_flags[1]}, "
-            f"createdb={role_flags[2]}, canlogin={role_flags[3]}"
+            f"superuser={role_flags[0]}, createrole={role_flags[1]}, createdb={role_flags[2]}, "
+            f"canlogin={role_flags[3]}, bypassrls={role_flags[4]}"
         )
 
     cur.execute(
@@ -81,6 +79,10 @@ def main() -> None:
                     "Application and exporter roles must differ from the PostgreSQL migration/database-owner role"
                 )
 
+            # Never depend on PostgreSQL's default public-schema ACLs: make the
+            # DDL boundary explicit for every environment, old or new.
+            cur.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
+
             ensure_login_role(cur, runtime_user, runtime_password, migration_user, database_name)
             ensure_login_role(cur, exporter_user, exporter_password, migration_user, database_name)
 
@@ -107,9 +109,6 @@ def main() -> None:
                 ).format(sql.Identifier(migration_user), sql.Identifier(runtime_user))
             )
 
-            # Remove any legacy/default function execution privilege from the
-            # runtime role. Specific authentication lookup functions are granted
-            # explicitly by the final RLS migration only.
             cur.execute(
                 sql.SQL("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM {}").format(
                     sql.Identifier(runtime_user)
@@ -122,9 +121,7 @@ def main() -> None:
                 ).format(sql.Identifier(migration_user), sql.Identifier(runtime_user))
             )
 
-            cur.execute(
-                sql.SQL("GRANT pg_monitor TO {}").format(sql.Identifier(exporter_user))
-            )
+            cur.execute(sql.SQL("GRANT pg_monitor TO {}").format(sql.Identifier(exporter_user)))
 
     print(f"Runtime database role ready: {runtime_user}")
     print(f"Monitoring database role ready: {exporter_user}")
