@@ -2,7 +2,6 @@
 
 import os
 import re
-import sys
 from typing import List, Tuple
 from urllib.parse import urlparse
 
@@ -30,19 +29,19 @@ def validate_production_config() -> List[Tuple[str, str, bool]]:
 
     _check(checks, "EOS_AUTH_MODE", os.getenv("EOS_AUTH_MODE", ""), r"production")
 
-    secret_key = os.getenv("EOS_SECRET_KEY", "")
-    if _check(checks, "EOS_SECRET_KEY", secret_key, r".{32,}") and re.search(
-        r"(?:CHANGE_ME|test_secret_key|example|placeholder)", secret_key, re.IGNORECASE
-    ):
-        checks.append(("EOS_SECRET_KEY", "INVALID FORMAT", True))
-
     algorithm = os.getenv("EOS_ALGORITHM", "HS256").strip().upper() or "HS256"
     if algorithm not in SUPPORTED_JWT_ALGORITHMS:
         checks.append(("EOS_ALGORITHM", "INVALID FORMAT", True))
     else:
         checks.append(("EOS_ALGORITHM", "OK", True))
 
-    if algorithm == "RS256":
+    if algorithm == "HS256":
+        secret_key = os.getenv("EOS_SECRET_KEY", "")
+        if _check(checks, "EOS_SECRET_KEY", secret_key, r".{32,}") and re.search(
+            r"(?:CHANGE_ME|test_secret_key|example|placeholder)", secret_key, re.IGNORECASE
+        ):
+            checks.append(("EOS_SECRET_KEY", "INVALID FORMAT", True))
+    elif algorithm == "RS256":
         private_key = os.getenv("EOS_JWT_PRIVATE_KEY", "").strip()
         public_key = os.getenv("EOS_JWT_PUBLIC_KEY", "").strip()
         private_ok = _check(checks, "EOS_JWT_PRIVATE_KEY", private_key)
