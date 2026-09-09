@@ -38,6 +38,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       EOS_AUTH_MODE: production
       EOS_SECRET_KEY: ${EOS_SECRET_KEY:?EOS_SECRET_KEY is required}
+      EOS_DB_RUNTIME_USER: ${EOS_DB_RUNTIME_USER:?EOS_DB_RUNTIME_USER is required}
+      EOS_DB_RUNTIME_PASSWORD: ${EOS_DB_RUNTIME_PASSWORD:?EOS_DB_RUNTIME_PASSWORD is required}
     entrypoint: ["/app/docker/migrate-entrypoint.sh"]
     networks: [eos-network]
 
