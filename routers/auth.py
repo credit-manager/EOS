@@ -42,13 +42,21 @@ def _issue_refresh_token(db: Session, user_id: str, tenant_id: str, family_id: s
 def _issue_access_token(result: dict) -> str:
     mode = os.getenv("EOS_AUTH_MODE", "test").lower()
     if mode == "production":
-        secret_key = os.getenv("EOS_SECRET_KEY")
-        if not secret_key or len(secret_key) < 32:
-            raise _err(500, "SERVER_CONFIG", "Production JWT secret is not configured correctly")
-    else:
-        secret_key = os.getenv("EOS_TEST_SECRET_KEY", "").strip()
-        if not secret_key:
-            raise _err(500, "SERVER_CONFIG", "EOS_TEST_SECRET_KEY is not configured")
+        try:
+            from core.production_auth import create_access_token
+            return create_access_token(
+                result["user_id"],
+                extra_data={
+                    "tenant_id": result["tenant_id"],
+                    "email": result["email"],
+                    "roles": [result["role"]],
+                },
+            )
+        except ValueError as exc:
+            raise _err(500, "SERVER_CONFIG", str(exc)) from exc
+    secret_key = os.getenv("EOS_TEST_SECRET_KEY", "").strip()
+    if not secret_key:
+        raise _err(500, "SERVER_CONFIG", "EOS_TEST_SECRET_KEY is not configured")
     now = datetime.now(timezone.utc)
     payload = {"sub": result["user_id"], "exp": now + timedelta(minutes=30), "iat": now, "type": "access",
                "tenant_id": result["tenant_id"], "email": result["email"], "roles": [result["role"]],
