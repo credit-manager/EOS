@@ -161,7 +161,8 @@ jobs:
           printf '%s\n' "$rendered" | grep -F 'eos_exporter:exporter-password-contract@db:5432/eos'
           printf '%s\n' "$rendered" | grep -F 'service_completed_successfully'
           printf '%s\n' "$rendered" | grep -F '/app/docker/migrate-entrypoint.sh'
-          printf '%s\n' "$rendered" | grep -F '/etc/nginx/templates/eos.conf.template:ro'
+          printf '%s\n' "$rendered" | grep -F '/etc/nginx/eos.conf.template:ro'
+          printf '%s\n' "$rendered" | grep -F '/usr/local/bin/eos-nginx-entrypoint.sh:ro'
           printf '%s\n' "$rendered" | grep -F 'prometheuscommunity/postgres-exporter:v0.20.1'
 
   container-security:
