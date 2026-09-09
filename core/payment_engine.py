@@ -1,10 +1,8 @@
-"""
-EOS Payment Gateway Engine
-Supports: Stripe, Mada, STC Pay, Bank Transfer, Cash
+"""EOS Payment Gateway Engine.
 
 Runtime code deliberately contains no schema DDL. Payment settlement is an
 explicit state transition and starts as pending; a trusted provider/webhook
-path must confirm completion.
+path must confirm completion. Gateway credentials are encrypted at rest.
 """
 from __future__ import annotations
 
@@ -15,6 +13,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
 from sqlalchemy import text
+
+from core.secret_store import contains_secret, encrypt_json
 
 
 class PaymentGatewayEngine:
@@ -50,14 +50,18 @@ class PaymentGatewayEngine:
         return currency
 
     @staticmethod
-    def _safe_gateway_config(config: Optional[dict]) -> dict:
-        if not config:
-            return {}
-        secret_names = {"secret", "secret_key", "api_key", "password", "token", "private_key", "client_secret"}
-        return {
-            str(key): ("[REDACTED]" if str(key).lower() in secret_names else value)
-            for key, value in config.items()
-        }
+    def _serialize_gateway_config(config: Optional[dict]) -> str:
+        if config is None:
+            return "{}"
+        if not isinstance(config, dict):
+            raise ValueError("Gateway config must be an object")
+        if contains_secret(config):
+            return json.dumps({
+                "encrypted": True,
+                "ciphertext": encrypt_json(config),
+                "version": 1,
+            }, separators=(",", ":"))
+        return json.dumps(config, ensure_ascii=False, separators=(",", ":"))
 
     def list_gateways(self, tenant_id):
         rows = self.db.execute(
@@ -76,22 +80,20 @@ class PaymentGatewayEngine:
             raise ValueError("Gateway name is required")
         if gateway_type not in self._GATEWAY_TYPES:
             raise ValueError("Unsupported gateway type")
-        if config is not None and not isinstance(config, dict):
-            raise ValueError("Gateway config must be an object")
 
         gid = str(uuid.uuid4())
         self.db.execute(
             text(
                 "INSERT INTO dbp_payment_gateways "
                 "(id, tenant_id, gateway_name, gateway_type, config) "
-                "VALUES (:id, :t, :name, :type, :config)"
+                "VALUES (:id, :t, :name, :type, CAST(:config AS JSONB))"
             ),
             {
                 "id": gid,
                 "t": tenant_id,
                 "name": gateway_name,
                 "type": gateway_type,
-                "config": json.dumps(config or {}),
+                "config": self._serialize_gateway_config(config),
             },
         )
         self.db.commit()
@@ -139,10 +141,7 @@ class PaymentGatewayEngine:
 
     def complete_transaction(self, transaction_id, tenant_id, gateway_response=None):
         row = self.db.execute(
-            text(
-                "SELECT id, status FROM dbp_payment_transactions "
-                "WHERE id=:id AND tenant_id=:t FOR UPDATE"
-            ),
+            text("SELECT id, status FROM dbp_payment_transactions WHERE id=:id AND tenant_id=:t FOR UPDATE"),
             {"id": transaction_id, "t": tenant_id},
         ).fetchone()
         if not row:
@@ -157,21 +156,14 @@ class PaymentGatewayEngine:
                 "gateway_response = COALESCE(gateway_response,'{}'::jsonb) || :resp "
                 "WHERE id=:id AND tenant_id=:t AND status='pending'"
             ),
-            {
-                "id": transaction_id,
-                "t": tenant_id,
-                "resp": json.dumps(gateway_response or {}),
-            },
+            {"id": transaction_id, "t": tenant_id, "resp": json.dumps(gateway_response or {})},
         )
         self.db.commit()
         return {"status": "completed", "transaction_id": transaction_id}
 
     def fail_transaction(self, transaction_id, tenant_id, reason=""):
         row = self.db.execute(
-            text(
-                "SELECT id, status FROM dbp_payment_transactions "
-                "WHERE id=:id AND tenant_id=:t FOR UPDATE"
-            ),
+            text("SELECT id, status FROM dbp_payment_transactions WHERE id=:id AND tenant_id=:t FOR UPDATE"),
             {"id": transaction_id, "t": tenant_id},
         ).fetchone()
         if not row:
@@ -193,10 +185,7 @@ class PaymentGatewayEngine:
 
     def refund_transaction(self, transaction_id, tenant_id, amount=None):
         row = self.db.execute(
-            text(
-                "SELECT * FROM dbp_payment_transactions "
-                "WHERE id=:id AND tenant_id=:t FOR UPDATE"
-            ),
+            text("SELECT * FROM dbp_payment_transactions WHERE id=:id AND tenant_id=:t FOR UPDATE"),
             {"id": transaction_id, "t": tenant_id},
         ).fetchone()
         if not row:
@@ -244,10 +233,7 @@ class PaymentGatewayEngine:
         return [dict(row._mapping) for row in rows]
 
     def get_transaction(self, transaction_id, tenant_id):
-        row = self.db.execute(
-            text("SELECT * FROM dbp_payment_transactions WHERE id=:id AND tenant_id=:t"),
-            {"id": transaction_id, "t": tenant_id},
-        ).fetchone()
+        row = self.db.execute(text("SELECT * FROM dbp_payment_transactions WHERE id=:id AND tenant_id=:t"), {"id": transaction_id, "t": tenant_id}).fetchone()
         return dict(row._mapping) if row else None
 
     def create_payment_link(self, tenant_id, amount, description=None, email=None, expires_hours=24):
@@ -297,27 +283,7 @@ class PaymentGatewayEngine:
         return self.create_transaction(tenant_id, amount, method="cash")
 
     def get_summary(self, tenant_id):
-        total = self.db.execute(
-            text(
-                "SELECT COALESCE(SUM(amount),0) FROM dbp_payment_transactions "
-                "WHERE tenant_id=:t AND status='completed' AND transaction_type='payment'"
-            ),
-            {"t": tenant_id},
-        ).fetchone()[0]
-        refunded = self.db.execute(
-            text(
-                "SELECT COALESCE(SUM(amount),0) FROM dbp_payment_transactions "
-                "WHERE tenant_id=:t AND status='completed' AND transaction_type='refund'"
-            ),
-            {"t": tenant_id},
-        ).fetchone()[0]
-        pending = self.db.execute(
-            text("SELECT COUNT(*) FROM dbp_payment_transactions WHERE tenant_id=:t AND status='pending'"),
-            {"t": tenant_id},
-        ).fetchone()[0]
-        return {
-            "total_collected": float(total),
-            "total_refunded": float(refunded),
-            "net_amount": float(total - refunded),
-            "pending_count": pending,
-        }
+        total = self.db.execute(text("SELECT COALESCE(SUM(amount),0) FROM dbp_payment_transactions WHERE tenant_id=:t AND status='completed' AND transaction_type='payment'"), {"t": tenant_id}).fetchone()[0]
+        refunded = self.db.execute(text("SELECT COALESCE(SUM(amount),0) FROM dbp_payment_transactions WHERE tenant_id=:t AND status='completed' AND transaction_type='refund'"), {"t": tenant_id}).fetchone()[0]
+        pending = self.db.execute(text("SELECT COUNT(*) FROM dbp_payment_transactions WHERE tenant_id=:t AND status='pending'"), {"t": tenant_id}).fetchone()[0]
+        return {"total_collected": float(total), "total_refunded": float(refunded), "net_amount": float(total - refunded), "pending_count": pending}
