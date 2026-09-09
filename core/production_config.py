@@ -1,5 +1,6 @@
 """Fail-closed production configuration validation."""
 
+import base64
 import os
 import re
 from typing import List, Tuple
@@ -22,6 +23,19 @@ def _check(checks, name: str, value: str, pattern: str | None = None) -> bool:
         return False
     checks.append((name, "OK", True))
     return True
+
+
+def _validate_fernet_key(checks: list[tuple[str, str, bool]]) -> None:
+    key = os.getenv("EOS_SECRET_ENCRYPTION_KEY", "").strip()
+    if not _check(checks, "EOS_SECRET_ENCRYPTION_KEY", key, r"[A-Za-z0-9_-]{43}="):
+        return
+    try:
+        decoded = base64.urlsafe_b64decode(key.encode("ascii"))
+    except Exception:
+        checks.append(("EOS_SECRET_ENCRYPTION_KEY", "INVALID FORMAT", True))
+        return
+    if len(decoded) != 32:
+        checks.append(("EOS_SECRET_ENCRYPTION_KEY", "INVALID FORMAT", True))
 
 
 def validate_production_config() -> List[Tuple[str, str, bool]]:
@@ -50,6 +64,8 @@ def validate_production_config() -> List[Tuple[str, str, bool]]:
             checks.append(("EOS_JWT_PRIVATE_KEY", "INVALID FORMAT", True))
         if public_ok and "BEGIN PUBLIC KEY" not in public_key and "BEGIN RSA PUBLIC KEY" not in public_key:
             checks.append(("EOS_JWT_PUBLIC_KEY", "INVALID FORMAT", True))
+
+    _validate_fernet_key(checks)
 
     issuer = os.getenv("EOS_JWT_ISSUER", "eos-dbp").strip()
     audience = os.getenv("EOS_JWT_AUDIENCE", "eos-api").strip()
@@ -98,13 +114,7 @@ def validate_production_config() -> List[Tuple[str, str, bool]]:
     else:
         try:
             hosts = allowed_hosts()
-            if any(
-                not host
-                or host == "*"
-                or host.startswith(".")
-                or any(char.isspace() for char in host)
-                for host in hosts
-            ):
+            if any(not host or host == "*" or host.startswith(".") or any(char.isspace() for char in host) for host in hosts):
                 raise RuntimeConfigurationError("invalid trusted host")
             checks.append(("EOS_ALLOWED_HOSTS", "OK", True))
         except RuntimeConfigurationError:
