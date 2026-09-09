@@ -16,9 +16,23 @@ class FinanceEngine:
     def __init__(self, db: Session):
         self.db = db
 
+    def _verify_company_tenant(self, company_id: str, tenant_id: str):
+        """Raise 403 unless the company belongs to the calling tenant.
+
+        P80.5D FIX: prevents a tenant from attaching records (bank accounts,
+        payments, budgets) to a company owned by another tenant.
+        """
+        row = self.db.execute(text(
+            "SELECT tenant_id FROM dbp_companies WHERE id = :cid"
+        ), {"cid": company_id}).fetchone()
+        if not row or row[0] != tenant_id:
+            from fastapi import HTTPException
+            raise HTTPException(403, detail="Company does not belong to your tenant")
+
     # ── BANK ACCOUNTS ──
 
     def create_bank_account(self, tenant_id: str, company_id: str, account_name: str, **kw) -> str:
+        self._verify_company_tenant(company_id, tenant_id)
         bid = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_bank_accounts (id, tenant_id, company_id, account_name, "
@@ -31,11 +45,12 @@ class FinanceEngine:
         self.db.flush()
         return bid
 
-    def get_bank_accounts(self, company_id: str) -> List[Dict]:
+    def get_bank_accounts(self, company_id: str, tenant_id: str) -> List[Dict]:
         rows = self.db.execute(text(
             "SELECT id, account_name, bank_name, account_number, currency_code, "
-            "current_balance, is_active FROM dbp_bank_accounts WHERE company_id = :cid ORDER BY account_name"
-        ), {"cid": company_id}).fetchall()
+            "current_balance, is_active FROM dbp_bank_accounts "
+            "WHERE company_id = :cid AND tenant_id = :t ORDER BY account_name"
+        ), {"cid": company_id, "t": tenant_id}).fetchall()
         return [{"id": r[0], "account_name": r[1], "bank_name": r[2],
                  "account_number": r[3], "currency_code": r[4],
                  "current_balance": float(r[5]) if r[5] else 0, "is_active": bool(r[6])}
@@ -47,6 +62,15 @@ class FinanceEngine:
                        payment_date: str, amount: float, **kw) -> Optional[str]:
         if payment_type not in self.PAYMENT_TYPES or amount <= 0:
             return None
+        self._verify_company_tenant(company_id, tenant_id)
+        baid = kw.get("bank_account_id")
+        if baid:
+            bank_row = self.db.execute(text(
+                "SELECT tenant_id FROM dbp_bank_accounts WHERE id = :bid"
+            ), {"bid": baid}).fetchone()
+            if not bank_row or bank_row[0] != tenant_id:
+                from fastapi import HTTPException
+                raise HTTPException(403, detail="Bank account does not belong to your tenant")
         pid = str(uuid.uuid4())
         pnum = self._next_payment_number(company_id)
         self.db.execute(text(
@@ -66,10 +90,14 @@ class FinanceEngine:
         self.db.flush()
         return pid
 
-    def approve_payment(self, payment_id: str, approved_by: str) -> Dict[str, Any]:
+    def approve_payment(self, payment_id: str, approved_by: str, tenant_id: str) -> Dict[str, Any]:
+        # P80.5D FIX: scope the payment lookup AND the bank-account balance
+        # mutation to the caller's tenant, so a tenant cannot approve another
+        # tenant's payment and rewrite its cash balance.
         row = self.db.execute(text(
-            "SELECT status, amount, payment_type, bank_account_id FROM dbp_payments WHERE id = :pid"
-        ), {"pid": payment_id}).fetchone()
+            "SELECT status, amount, payment_type, bank_account_id FROM dbp_payments "
+            "WHERE id = :pid AND tenant_id = :t"
+        ), {"pid": payment_id, "t": tenant_id}).fetchone()
         if not row:
             return {"success": False, "error": "Payment not found"}
         if row[0] != "pending":
@@ -78,25 +106,32 @@ class FinanceEngine:
         amount, ptype, bank_id = float(row[1]), row[2], row[3]
 
         if bank_id:
+            bank_row = self.db.execute(text(
+                "SELECT tenant_id FROM dbp_bank_accounts WHERE id = :bid"
+            ), {"bid": bank_id}).fetchone()
+            if not bank_row or bank_row[0] != tenant_id:
+                return {"success": False, "error": "Bank account not found for tenant"}
             if ptype in ("receipt", "refund"):
                 self.db.execute(text(
-                    "UPDATE dbp_bank_accounts SET current_balance = current_balance + :amt WHERE id = :bid"
-                ), {"amt": amount, "bid": bank_id})
+                    "UPDATE dbp_bank_accounts SET current_balance = current_balance + :amt "
+                    "WHERE id = :bid AND tenant_id = :t"
+                ), {"amt": amount, "bid": bank_id, "t": tenant_id})
             else:
                 self.db.execute(text(
-                    "UPDATE dbp_bank_accounts SET current_balance = current_balance - :amt WHERE id = :bid"
-                ), {"amt": amount, "bid": bank_id})
+                    "UPDATE dbp_bank_accounts SET current_balance = current_balance - :amt "
+                    "WHERE id = :bid AND tenant_id = :t"
+                ), {"amt": amount, "bid": bank_id, "t": tenant_id})
 
         self.db.execute(text(
-            "UPDATE dbp_payments SET status='completed', approved_by = :ab WHERE id = :pid"
-        ), {"ab": approved_by, "pid": payment_id})
+            "UPDATE dbp_payments SET status='completed', approved_by = :ab WHERE id = :pid AND tenant_id = :t"
+        ), {"ab": approved_by, "pid": payment_id, "t": tenant_id})
         self.db.flush()
         return {"success": True, "status": "completed"}
 
-    def list_payments(self, company_id: str, payment_type: Optional[str] = None,
+    def list_payments(self, company_id: str, tenant_id: str, payment_type: Optional[str] = None,
                       status: Optional[str] = None, limit: int = 50) -> List[Dict]:
-        conditions = ["company_id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id, "lim": limit}
+        conditions = ["company_id = :cid", "tenant_id = :t"]
+        params: Dict[str, Any] = {"cid": company_id, "t": tenant_id, "lim": limit}
         if payment_type:
             conditions.append("payment_type = :pt")
             params["pt"] = payment_type
@@ -153,6 +188,7 @@ class FinanceEngine:
     def create_budget(self, tenant_id: str, company_id: str, account_id: str,
                       fiscal_year_id: str, budget_amount: float,
                       cost_center_id: str = None, period: str = None) -> str:
+        self._verify_company_tenant(company_id, tenant_id)
         bid = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_budgets (id, tenant_id, company_id, account_id, "
@@ -163,9 +199,9 @@ class FinanceEngine:
         self.db.flush()
         return bid
 
-    def get_budgets(self, company_id: str, fiscal_year_id: str = None) -> List[Dict]:
-        conditions = ["b.company_id = :cid"]
-        params: Dict[str, Any] = {"cid": company_id}
+    def get_budgets(self, company_id: str, tenant_id: str, fiscal_year_id: str = None) -> List[Dict]:
+        conditions = ["b.company_id = :cid", "b.tenant_id = :t"]
+        params: Dict[str, Any] = {"cid": company_id, "t": tenant_id}
         if fiscal_year_id:
             conditions.append("b.fiscal_year_id = :fyid")
             params["fyid"] = fiscal_year_id
@@ -183,8 +219,8 @@ class FinanceEngine:
                  "actual_amount": float(r[7]) if r[7] else 0,
                  "variance": float(r[8]) if r[8] else 0} for r in rows]
 
-    def get_budget_utilization(self, company_id: str) -> List[Dict]:
-        budgets = self.get_budgets(company_id)
+    def get_budget_utilization(self, company_id: str, tenant_id: str) -> List[Dict]:
+        budgets = self.get_budgets(company_id, tenant_id)
         result = []
         for b in budgets:
             pct = (b["actual_amount"] / b["budget_amount"] * 100) if b["budget_amount"] > 0 else 0

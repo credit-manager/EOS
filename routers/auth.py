@@ -1,206 +1,230 @@
 """
-P61 Auth Router — Production authentication endpoints.
-Register, login, verify email, password reset, user management.
+Production authentication endpoints: registration, login, verification,
+password reset, rotating refresh sessions and tenant user administration.
 """
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from database import get_db
-from core.auth import get_current_user, require_permission, TEST_SECRET_KEY, TEST_ALGORITHM
+from core.auth import get_current_user, require_permission, require_admin_role
 from core.user_engine import UserEngine
 from core.email_adapter import get_email_service, EmailTemplateEngine
-from core.rate_limit import write_limiter
+from core.rate_limit import write_limiter, auth_limiter
 from datetime import datetime, timedelta, timezone
-from jose import jwt as jose_jwt
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+import hashlib
+import jwt
 import os
+import secrets
+import uuid
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
-
-
-# ──────────────────────────────────────────────────────────────
-# INPUT VALIDATION SCHEMAS
-# ──────────────────────────────────────────────────────────────
-
-class RegisterRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(..., min_length=8, max_length=128)
-    first_name: str = Field(..., min_length=1, max_length=100)
-    last_name: str = Field(..., min_length=1, max_length=100)
-    company_name: str = Field(..., min_length=1, max_length=200)
-    first_name_ar: Optional[str] = Field(None, max_length=100)
-    last_name_ar: Optional[str] = Field(None, max_length=100)
-    phone: Optional[str] = Field(None, max_length=50)
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(..., min_length=1)
-
-
-class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
-
-
-class ResetPasswordRequest(BaseModel):
-    token: str = Field(..., min_length=1)
-    new_password: str = Field(..., min_length=8, max_length=128)
-
-
-class ChangePasswordRequest(BaseModel):
-    current_password: str = Field(..., min_length=1)
-    new_password: str = Field(..., min_length=8, max_length=128)
-
-
-class VerifyEmailRequest(BaseModel):
-    token: str = Field(..., min_length=1)
-
-
-class InviteUserRequest(BaseModel):
-    email: EmailStr
-    role: str = Field(default="dynamic_viewer")
-    first_name: Optional[str] = Field(None, max_length=100)
-    last_name: Optional[str] = Field(None, max_length=100)
+_REFRESH_DAYS = 30
 
 
 def _err(sc, code, msg):
     return HTTPException(sc, detail={"status": "error", "error": {"code": code, "message": msg}})
 
 
-@router.post("/register", dependencies=[Depends(write_limiter.check)])
-async def register(body: RegisterRequest, request: Request, db: Session = Depends(get_db)):
-    from database import SessionLocal
-    from sqlalchemy import text
-    import uuid, secrets
+def _refresh_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
+
+def _issue_refresh_token(db: Session, user_id: str, tenant_id: str, family_id: str | None = None) -> str:
+    raw = secrets.token_urlsafe(64)
+    db.execute(text(
+        "INSERT INTO dbp_refresh_tokens (id, token_hash, user_id, tenant_id, family_id, expires_at) "
+        "VALUES (:id, :hash, :user_id, :tenant_id, :family_id, :expires_at)"
+    ), {"id": str(uuid.uuid4()), "hash": _refresh_hash(raw), "user_id": user_id, "tenant_id": tenant_id,
+        "family_id": family_id or str(uuid.uuid4()), "expires_at": datetime.now(timezone.utc) + timedelta(days=_REFRESH_DAYS)})
+    return raw
+
+
+def _issue_access_token(result: dict) -> str:
+    mode = os.getenv("EOS_AUTH_MODE", "test").lower()
+    if mode == "production":
+        secret_key = os.getenv("EOS_SECRET_KEY")
+        if not secret_key or len(secret_key) < 32:
+            raise _err(500, "SERVER_CONFIG", "Production JWT secret is not configured correctly")
+    else:
+        secret_key = os.getenv("EOS_TEST_SECRET_KEY", "").strip()
+        if not secret_key:
+            raise _err(500, "SERVER_CONFIG", "EOS_TEST_SECRET_KEY is not configured")
+    now = datetime.now(timezone.utc)
+    payload = {"sub": result["user_id"], "exp": now + timedelta(minutes=30), "iat": now, "type": "access",
+               "tenant_id": result["tenant_id"], "email": result["email"], "roles": [result["role"]],
+               "iss": os.getenv("EOS_JWT_ISSUER", "eos-dbp"), "aud": os.getenv("EOS_JWT_AUDIENCE", "eos-api"),
+               "jti": str(uuid.uuid4())}
+    return jwt.encode(payload, secret_key, algorithm="HS256")
+
+
+@router.post("/register", dependencies=[Depends(auth_limiter.check)])
+async def register(body: dict, request: Request, db: Session = Depends(get_db)):
+    required = ["email", "password", "first_name", "last_name", "company_name"]
+    for f in required:
+        if not body.get(f):
+            raise _err(400, "MISSING", f"{f} required")
+    from database import SessionLocal
     db2 = SessionLocal()
     try:
         tenant_id = f"tenant_{secrets.token_hex(8)}"
-        company_name = body.company_name
-
-        db2.execute(text(
-            "INSERT INTO dbp_companies (id, tenant_id, code, name_en, name_ar) "
-            "VALUES (:id, :tid, :code, :name, :name)"
-        ), {"id": str(uuid.uuid4()), "tid": tenant_id,
-            "code": company_name.lower().replace(" ", "_")[:30],
-            "name": company_name})
-        db2.commit()
-
+        company_name = body["company_name"]
+        company_id = str(uuid.uuid4())
+        db2.execute(text("INSERT INTO dbp_companies (id, tenant_id, code, name_en, name_ar) VALUES (:id, :tid, :code, :name, :name)"),
+                    {"id": company_id, "tid": tenant_id, "code": company_name.lower().replace(" ", "_")[:30], "name": company_name})
         engine = UserEngine(db2)
-        result = engine.register(
-            tenant_id=tenant_id,
-            email=body.email,
-            password=body.password,
-            first_name=body.first_name,
-            last_name=body.last_name,
-            first_name_ar=body.first_name_ar,
-            last_name_ar=body.last_name_ar,
-            phone=body.phone,
-            role="admin"
-        )
-        db2.commit()
-
+        result = engine.register(tenant_id=tenant_id, email=body["email"], password=body["password"], first_name=body["first_name"],
+                                 last_name=body["last_name"], first_name_ar=body.get("first_name_ar"), last_name_ar=body.get("last_name_ar"),
+                                 phone=body.get("phone"), role="admin")
         if not result["success"]:
+            db2.rollback()
             raise _err(400, "REGISTER_FAILED", result["error"])
-
+        db2.commit()
         email_svc = get_email_service()
         frontend_url = os.getenv("EOS_FRONTEND_URL", "http://localhost:3000")
         verification_token = result.get("verification_token", "")
-        verification_url = f"{frontend_url}/verify-email?token={verification_token}"
-        tpl = EmailTemplateEngine.verification_email(verification_url, body.first_name)
-        email_svc.send(to_email=body.email, subject=tpl["subject"], html_body=tpl["html"], text_body=tpl.get("text"))
-
-        return {"status": "success", "data": {
-            "user_id": result["user_id"],
-            "tenant_id": tenant_id,
-            "email": result["email"],
-            "requires_verification": result["requires_verification"],
-            "verification_token": verification_token if email_svc.__class__.__name__ == "ConsoleEmailProvider" else None,
-            "message": "Registration successful. Please verify your email."
-        }}
+        tpl = EmailTemplateEngine.verification_email(f"{frontend_url}/verify-email?token={verification_token}", body["first_name"])
+        email_svc.send(to_email=body["email"], subject=tpl["subject"], html_body=tpl["html"], text_body=tpl.get("text"))
+        return {"status": "success", "data": {"user_id": result["user_id"], "tenant_id": tenant_id, "company_id": company_id, "email": result["email"],
+                "requires_verification": result["requires_verification"],
+                "verification_token": verification_token if email_svc.__class__.__name__ == "ConsoleEmailProvider" else None,
+                "message": "Registration successful. Please verify your email."}}
+    except HTTPException:
+        raise
+    except Exception:
+        db2.rollback()
+        raise
     finally:
         db2.close()
 
 
-@router.post("/verify-email")
-async def verify_email(body: VerifyEmailRequest, db: Session = Depends(get_db)):
+@router.post("/verify-email", dependencies=[Depends(auth_limiter.check)])
+async def verify_email(body: dict, db: Session = Depends(get_db)):
+    token = body.get("token")
+    if not token:
+        raise _err(400, "MISSING", "token required")
     engine = UserEngine(db)
-    result = engine.verify_email(body.token)
+    result = engine.verify_email(token)
     if not result["success"]:
         raise _err(400, "VERIFY_FAILED", result["error"])
     db.commit()
-
     email_svc = get_email_service()
     user = engine.get_user_by_id(result["user_id"])
     if user:
-        tpl = EmailTemplateEngine.welcome_email(
-            user.get("first_name", "User"),
-            user.get("email", "user@example.com").split("@")[0]
-        )
+        tpl = EmailTemplateEngine.welcome_email(user.get("first_name", "User"), user.get("email", "user@example.com").split("@")[0])
         email_svc.send(to_email=user["email"], subject=tpl["subject"], html_body=tpl["html"], text_body=tpl.get("text"))
-
     return {"status": "success", "data": {"message": "Email verified"}}
 
 
-@router.post("/login", dependencies=[Depends(write_limiter.check)])
-async def login(body: LoginRequest, db: Session = Depends(get_db)):
-    engine = UserEngine(db)
-    result = engine.login(body.email, body.password)
+@router.post("/login", dependencies=[Depends(auth_limiter.check)])
+async def login(body: dict, db: Session = Depends(get_db)):
+    email = body.get("email")
+    password = body.get("password")
+    if not email or not password:
+        raise _err(400, "MISSING", "email and password required")
+    result = UserEngine(db).login(email, password)
     if not result["success"]:
-        sc = 403 if result.get("requires_verification") else 401
-        raise _err(sc, "LOGIN_FAILED", result["error"])
-
-    import os
-    secret_key = os.getenv("EOS_SECRET_KEY") or TEST_SECRET_KEY
-    algorithm = os.getenv("EOS_ALGORITHM", TEST_ALGORITHM)
-    expire = datetime.now(timezone.utc) + timedelta(minutes=60)
-
-    payload = {
-        "sub": result["user_id"],
-        "exp": expire,
-        "iat": datetime.now(timezone.utc),
-        "type": "access",
-        "tenant_id": result["tenant_id"],
-        "email": result["email"],
-        "roles": [result["role"]],
-    }
-    token = jose_jwt.encode(payload, secret_key, algorithm=algorithm)
-    return {"status": "success", "data": {
-        "access_token": token, "token_type": "bearer",
-        "user": {
-            "id": result["user_id"], "email": result["email"],
-            "first_name": result.get("first_name"),
-            "last_name": result.get("last_name"),
-            "tenant_id": result["tenant_id"], "role": result["role"]
-        }
-    }}
+        raise _err(403 if result.get("requires_verification") else 401, "LOGIN_FAILED", result["error"])
+    try:
+        token = _issue_access_token(result)
+        refresh_token = _issue_refresh_token(db, result["user_id"], result["tenant_id"])
+        company = db.execute(text("SELECT id FROM dbp_companies WHERE tenant_id = :tenant_id ORDER BY id LIMIT 1"),
+                             {"tenant_id": result["tenant_id"]}).fetchone()
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise _err(500, "SESSION_FAILED", "Unable to create authenticated session")
+    return {"status": "success", "data": {"access_token": token, "refresh_token": refresh_token, "token_type": "bearer", "expires_in": 1800,
+            "user": {"id": result["user_id"], "email": result["email"], "first_name": result.get("first_name"),
+                      "last_name": result.get("last_name"), "tenant_id": result["tenant_id"], "company_id": company[0] if company else None, "role": result["role"]}}}
 
 
-@router.post("/forgot-password", dependencies=[Depends(write_limiter.check)])
-async def forgot_password(body: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
+@router.post("/refresh", dependencies=[Depends(auth_limiter.check)])
+async def refresh_token(body: dict, db: Session = Depends(get_db)):
+    raw = str(body.get("refresh_token") or "").strip()
+    if not raw or len(raw) < 40:
+        raise _err(401, "INVALID_REFRESH_TOKEN", "Invalid refresh token")
+    now = datetime.now(timezone.utc)
+    token_hash = _refresh_hash(raw)
+    row = db.execute(text(
+        "SELECT id, user_id, tenant_id, family_id, expires_at, rotated_at, revoked_at FROM dbp_refresh_tokens "
+        "WHERE token_hash = :hash FOR UPDATE"
+    ), {"hash": token_hash}).mappings().first()
+    if not row:
+        raise _err(401, "INVALID_REFRESH_TOKEN", "Invalid refresh token")
+    if row["revoked_at"] is not None or row["rotated_at"] is not None:
+        db.execute(text("UPDATE dbp_refresh_tokens SET revoked_at = COALESCE(revoked_at, :now) WHERE family_id = :family_id AND revoked_at IS NULL"),
+                   {"now": now, "family_id": row["family_id"]})
+        db.commit()
+        raise _err(401, "REFRESH_REUSE_DETECTED", "Refresh session has been revoked")
+    if row["expires_at"] <= now:
+        db.execute(text("UPDATE dbp_refresh_tokens SET revoked_at = :now WHERE id = :id"), {"now": now, "id": row["id"]})
+        db.commit()
+        raise _err(401, "REFRESH_EXPIRED", "Refresh token expired")
+    user = UserEngine(db).get_user_by_id_tenant(row["user_id"], row["tenant_id"])
+    if not user or not user.get("is_active", True):
+        db.execute(text("UPDATE dbp_refresh_tokens SET revoked_at = :now WHERE family_id = :family_id AND revoked_at IS NULL"),
+                   {"now": now, "family_id": row["family_id"]})
+        db.commit()
+        raise _err(401, "SESSION_REVOKED", "User session is no longer active")
+    result = {"user_id": row["user_id"], "tenant_id": row["tenant_id"], "email": user["email"], "role": user["role"]}
+    new_raw = secrets.token_urlsafe(64)
+    new_hash = _refresh_hash(new_raw)
+    db.execute(text("INSERT INTO dbp_refresh_tokens (id, token_hash, user_id, tenant_id, family_id, expires_at) VALUES (:id, :hash, :user_id, :tenant_id, :family_id, :expires_at)"),
+               {"id": str(uuid.uuid4()), "hash": new_hash, "user_id": row["user_id"], "tenant_id": row["tenant_id"],
+                "family_id": row["family_id"], "expires_at": now + timedelta(days=_REFRESH_DAYS)})
+    db.execute(text("UPDATE dbp_refresh_tokens SET rotated_at = :now, last_used_at = :now, replaced_by_hash = :new_hash WHERE id = :id AND rotated_at IS NULL AND revoked_at IS NULL"),
+               {"now": now, "new_hash": new_hash, "id": row["id"]})
+    try:
+        access = _issue_access_token(result)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise _err(500, "SESSION_FAILED", "Unable to refresh authenticated session")
+    return {"status": "success", "data": {"access_token": access, "refresh_token": new_raw, "token_type": "bearer", "expires_in": 1800}}
+
+
+@router.post("/logout", dependencies=[Depends(auth_limiter.check)])
+async def logout(body: dict | None = None, db: Session = Depends(get_db)):
+    raw = str((body or {}).get("refresh_token") or "").strip()
+    if raw:
+        db.execute(text("UPDATE dbp_refresh_tokens SET revoked_at = :now WHERE token_hash = :hash AND revoked_at IS NULL"),
+                   {"now": datetime.now(timezone.utc), "hash": _refresh_hash(raw)})
+        db.commit()
+    return {"status": "success", "data": {"message": "Logged out"}}
+
+
+@router.post("/forgot-password", dependencies=[Depends(auth_limiter.check)])
+async def forgot_password(body: dict, request: Request, db: Session = Depends(get_db)):
+    email = body.get("email")
+    if not email:
+        raise _err(400, "MISSING", "email required")
     engine = UserEngine(db)
-    result = engine.request_password_reset(body.email)
+    result = engine.request_password_reset(email)
     db.commit()
-
     if result.get("reset_token"):
         user = engine.get_user_by_id(result.get("user_id", "")) if result.get("user_id") else None
         first_name = user.get("first_name", "User") if user else "User"
         frontend_url = os.getenv("EOS_FRONTEND_URL", "http://localhost:3000")
-        reset_url = f"{frontend_url}/reset-password?token={result['reset_token']}"
-        tpl = EmailTemplateEngine.password_reset_email(reset_url, first_name)
+        tpl = EmailTemplateEngine.password_reset_email(f"{frontend_url}/reset-password?token={result['reset_token']}", first_name)
         email_svc = get_email_service()
-        email_svc.send(to_email=body.email, subject=tpl["subject"], html_body=tpl["html"], text_body=tpl.get("text"))
-
-    return {"status": "success", "data": {
-        "message": "If email exists, reset link sent",
-        "reset_token": result.get("reset_token") if os.getenv("EOS_EMAIL_PROVIDER", "console") == "console" else None
-    }}
+        email_svc.send(to_email=email, subject=tpl["subject"], html_body=tpl["html"], text_body=tpl.get("text"))
+    return {"status": "success", "data": {"message": "If email exists, reset link sent",
+            "reset_token": result.get("reset_token") if os.getenv("EOS_EMAIL_PROVIDER", "console") == "console" else None}}
 
 
-@router.post("/reset-password")
-async def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
-    engine = UserEngine(db)
-    result = engine.reset_password(body.token, body.new_password)
+@router.post("/reset-password", dependencies=[Depends(auth_limiter.check)])
+async def reset_password(body: dict, db: Session = Depends(get_db)):
+    token = body.get("token")
+    new_password = body.get("new_password")
+    if not token or not new_password:
+        raise _err(400, "MISSING", "token and new_password required")
+    result = UserEngine(db).reset_password(token, new_password)
     if not result["success"]:
         raise _err(400, "RESET_FAILED", result["error"])
     db.commit()
@@ -208,10 +232,12 @@ async def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_d
 
 
 @router.post("/change-password", dependencies=[Depends(require_permission("dynamic", "update"))])
-async def change_password(body: ChangePasswordRequest, user: dict = Depends(get_current_user),
-                          db: Session = Depends(get_db)):
-    engine = UserEngine(db)
-    result = engine.change_password(user["id"], body.current_password, body.new_password)
+async def change_password(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    current = body.get("current_password")
+    new = body.get("new_password")
+    if not current or not new:
+        raise _err(400, "MISSING", "current_password and new_password required")
+    result = UserEngine(db).change_password(user["id"], current, new)
     if not result["success"]:
         raise _err(400, "CHANGE_FAILED", result["error"])
     db.commit()
@@ -220,85 +246,24 @@ async def change_password(body: ChangePasswordRequest, user: dict = Depends(get_
 
 @router.get("/me", dependencies=[Depends(require_permission("dynamic", "read"))])
 async def get_me(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    engine = UserEngine(db)
-    u = engine.get_user_by_id(user["id"])
+    u = UserEngine(db).get_user_by_id_tenant(user["id"], user["tenant_id"])
     if not u:
         raise _err(404, "NOT_FOUND", "User not found")
+    company = db.execute(text("SELECT id FROM dbp_companies WHERE tenant_id = :tenant_id ORDER BY id LIMIT 1"),
+                         {"tenant_id": user["tenant_id"]}).fetchone()
+    u["company_id"] = company[0] if company else None
     return {"status": "success", "data": u}
 
 
 @router.get("/users", dependencies=[Depends(require_permission("dynamic", "read"))])
 async def list_users(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    engine = UserEngine(db)
-    users = engine.list_users(user["tenant_id"])
+    users = UserEngine(db).list_users(user["tenant_id"])
     return {"status": "success", "data": users, "count": len(users)}
 
 
 @router.get("/users/{user_id}", dependencies=[Depends(require_permission("dynamic", "read"))])
 async def get_user(user_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    engine = UserEngine(db)
-    u = engine.get_user_by_id_tenant(user_id, user["tenant_id"])
+    u = UserEngine(db).get_user_by_id_tenant(user_id, user["tenant_id"])
     if not u:
         raise _err(404, "NOT_FOUND", "User not found")
     return {"status": "success", "data": u}
-
-
-@router.put("/users/{user_id}", dependencies=[Depends(require_permission("dynamic", "update"))])
-async def update_user(user_id: str, body: dict, user: dict = Depends(get_current_user),
-                      db: Session = Depends(get_db)):
-    engine = UserEngine(db)
-    result = engine.update_user(user_id, user["tenant_id"], body)
-    if not result["success"]:
-        raise _err(400, "UPDATE_FAILED", result["error"])
-    db.commit()
-    return {"status": "success", "data": {"message": result["message"]}}
-
-
-@router.put("/users/{user_id}/role", dependencies=[Depends(require_permission("dynamic", "update"))])
-async def change_role(user_id: str, body: dict, user: dict = Depends(get_current_user),
-                      db: Session = Depends(get_db)):
-    new_role = body.get("role")
-    if not new_role:
-        raise _err(400, "MISSING", "role required")
-    engine = UserEngine(db)
-    result = engine.change_role(user_id, user["tenant_id"], new_role)
-    if not result["success"]:
-        raise _err(400, "ROLE_FAILED", result["error"])
-    db.commit()
-    return {"status": "success", "data": {"message": result["message"]}}
-
-
-@router.delete("/users/{user_id}", dependencies=[Depends(require_permission("dynamic", "update"))])
-async def deactivate_user(user_id: str, user: dict = Depends(get_current_user),
-                          db: Session = Depends(get_db)):
-    engine = UserEngine(db)
-    result = engine.deactivate_user(user_id, user["tenant_id"])
-    if not result["success"]:
-        raise _err(400, "DELETE_FAILED", result["error"])
-    db.commit()
-    return {"status": "success", "data": {"message": result["message"]}}
-
-
-@router.post("/users/invite", dependencies=[Depends(require_permission("dynamic", "create"))])
-async def invite_user(body: InviteUserRequest, user: dict = Depends(get_current_user),
-                      db: Session = Depends(get_db)):
-    engine = UserEngine(db)
-    result = engine.invite_user(
-        tenant_id=user["tenant_id"], email=body.email, role=body.role,
-        first_name=body.first_name or "", last_name=body.last_name or ""
-    )
-    if not result["success"]:
-        raise _err(400, "INVITE_FAILED", result["error"])
-    db.commit()
-
-    email_svc = get_email_service()
-    if result.get("verification_token"):
-        frontend_url = os.getenv("EOS_FRONTEND_URL", "http://localhost:3000")
-        verify_url = f"{frontend_url}/verify-email?token={result['verification_token']}"
-        tpl = EmailTemplateEngine.verification_email(verify_url, body.first_name or "User")
-        email_svc.send(to_email=body.email, subject=tpl["subject"], html_body=tpl["html"], text_body=tpl.get("text"))
-
-    return {"status": "success", "data": {
-        "message": f"Invitation sent to {body.email}",
-        "user_id": result["user_id"]
-    }}

@@ -1,0 +1,103 @@
+:root {
+  /* EOS Global Design Tokens v1.0 */
+  --eos-primary-50: #f4f7fb;
+  --eos-primary-100: #e7edf7;
+  --eos-primary-200: #cbd8eb;
+  --eos-primary-300: #a7bbd9;
+  --eos-primary-400: #7896bf;
+  --eos-primary-500: #4f70a3;
+  --eos-primary-600: #38578c;
+  --eos-primary-700: #2d426b;
+  --eos-primary-800: #223052;
+  --eos-primary-900: #18233f;
+
+  --eos-neutral-0: #ffffff;
+  --eos-neutral-50: #f8fafc;
+  --eos-neutral-100: #f1f5f9;
+  --eos-neutral-200: #e2e8f0;
+  --eos-neutral-300: #cbd5e1;
+  --eos-neutral-400: #94a3b8;
+  --eos-neutral-500: #64748b;
+  --eos-neutral-600: #475569;
+  --eos-neutral-700: #334155;
+  --eos-neutral-800: #1e293b;
+  --eos-neutral-900: #0f172a;
+  --eos-neutral-950: #020617;
+
+  --eos-success-600: #15803d;
+  --eos-success-100: #dcfce7;
+  --eos-warning-600: #b45309;
+  --eos-warning-100: #fef3c7;
+  --eos-error-600: #b91c1c;
+  --eos-error-100: #fee2e2;
+  --eos-info-600: #0369a1;
+  --eos-info-100: #e0f2fe;
+
+  --eos-font-sans: 'IBM Plex Sans', 'IBM Plex Sans Arabic', 'Noto Sans', 'Noto Sans Arabic', system-ui, sans-serif;
+  --eos-font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --eos-text-xs: 0.75rem;
+  --eos-text-sm: 0.8125rem;
+  --eos-text-md: 0.875rem;
+  --eos-text-lg: 1rem;
+  --eos-text-xl: 1.25rem;
+  --eos-text-2xl: 1.5rem;
+  --eos-text-3xl: 2rem;
+
+  --eos-space-1: 0.25rem;
+  --eos-space-2: 0.5rem;
+  --eos-space-3: 0.75rem;
+  --eos-space-4: 1rem;
+  --eos-space-5: 1.25rem;
+  --eos-space-6: 1.5rem;
+  --eos-space-8: 2rem;
+  --eos-space-10: 2.5rem;
+  --eos-space-12: 3rem;
+  --eos-space-16: 4rem;
+
+  --eos-radius-sm: 0.25rem;
+  --eos-radius-md: 0.375rem;
+  --eos-radius-lg: 0.5rem;
+  --eos-radius-xl: 0.75rem;
+  --eos-radius-2xl: 1rem;
+
+  --eos-border: 1px solid var(--eos-neutral-200);
+  --eos-shadow-sm: 0 1px 2px rgb(15 23 42 / 0.05);
+  --eos-shadow-md: 0 4px 12px rgb(15 23 42 / 0.08);
+
+  --eos-focus-ring: 0 0 0 3px rgb(56 87 140 / 0.28);
+  --eos-control-height-sm: 2rem;
+  --eos-control-height-md: 2.25rem;
+  --eos-control-height-lg: 2.625rem;
+  --eos-content-max: 1440px;
+}
+
+[data-theme='dark'], .dark {
+  --eos-surface: #0f172a;
+  --eos-surface-raised: #1e293b;
+  --eos-text: #f8fafc;
+  --eos-text-muted: #94a3b8;
+  --eos-border-color: #334155;
+}
+
+:root, [data-theme='light'] {
+  --eos-surface: #ffffff;
+  --eos-surface-raised: #f8fafc;
+  --eos-text: #0f172a;
+  --eos-text-muted: #64748b;
+  --eos-border-color: #e2e8f0;
+}
+
+[dir='rtl'] {
+  --eos-direction: rtl;
+}
+
+[dir='ltr'] {
+  --eos-direction: ltr;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    scroll-behavior: auto;
+  }
+}

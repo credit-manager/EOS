@@ -21,6 +21,7 @@ from core.industry_security import (
     now, uid, get_company_id, check_permission,
     audit_log, post_journal,
     success_response, list_response, error_response,
+    get_tenant_config,
 )
 
 router = APIRouter(prefix="/services", tags=["Services ERP"])
@@ -312,7 +313,7 @@ def accept_quotation(quote_id: str, user: dict = Depends(get_current_user), db=D
                     "(id,tenant_id,contract_number,client_id,title,contract_type,value,status,created_by) "
                     "VALUES (:id,:t,:cc,:cid,:ti,'fixed_price',:v,'active',:cb)"),
                {"id": contr_id, "t": t, "cc": contract_code, "cid": q[2],
-                "ti": f"Contract from {q_id[:8]}", "v": q[3], "cb": user["id"]})
+                "ti": f"Contract from {quote_id[:8]}", "v": q[3], "cb": user["id"]})
     audit_log(db, t, user["id"], "accept", "svc_quotation", quote_id,
               new_values={"status": "accepted", "contract_id": contr_id})
     db.commit()
@@ -877,10 +878,12 @@ def get_profitability(project_id: str, user: dict = Depends(get_current_user), d
                          {"pid": project_id}).fetchone()
     revenue = float(inv_row[0] or 0)
 
-    labor = db.execute(text("SELECT COALESCE(SUM(sl.hours * 50),0) FROM dbp_svc_timesheet_lines sl "
+    # Fixed H13: labor rate is now configurable per tenant (default 50).
+    labor_rate = float(get_tenant_config(db, t, "labor_rate", 50.0))
+    labor = db.execute(text("SELECT COALESCE(SUM(sl.hours * :rate),0) FROM dbp_svc_timesheet_lines sl "
                             "JOIN dbp_svc_timesheets ts ON sl.timesheet_id=ts.id "
                             "WHERE sl.project_id=:pid AND ts.status='approved'"),
-                       {"pid": project_id}).fetchone()
+                       {"pid": project_id, "rate": labor_rate}).fetchone()
     labor_cost = float(labor[0] or 0)
 
     exp = db.execute(text("SELECT COALESCE(SUM(amount),0) FROM dbp_svc_expenses WHERE project_id=:pid AND status='approved'"),

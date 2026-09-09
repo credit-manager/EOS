@@ -3,6 +3,8 @@ EOS Experience Engine — Form Engine
 Dynamic form generation from entity definitions.
 """
 
+import ast
+import operator
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
@@ -301,7 +303,6 @@ class FormEngine:
             for field in section.fields:
                 if field.formula:
                     try:
-                        # Simple formula evaluation
                         result = self._eval_formula(field.formula, data)
                         results[field.code] = result
                     except Exception:
@@ -310,16 +311,36 @@ class FormEngine:
         return results
 
     def _eval_formula(self, formula: str, data: Dict[str, Any]) -> Any:
-        """Simple formula evaluation."""
-        # Replace field references with values
-        expr = formula
-        for key, value in data.items():
-            if isinstance(value, (int, float)):
-                expr = expr.replace(key, str(value))
-        try:
-            return eval(expr)  # Simple eval for basic formulas
-        except Exception:
-            return 0
+        """Safely evaluate numeric arithmetic formulas without Python execution."""
+        tree = ast.parse(formula, mode="eval")
+        operators = {
+            ast.Add: operator.add,
+            ast.Sub: operator.sub,
+            ast.Mult: operator.mul,
+            ast.Div: operator.truediv,
+            ast.FloorDiv: operator.floordiv,
+            ast.Mod: operator.mod,
+            ast.Pow: operator.pow,
+        }
+        unary_operators = {ast.UAdd: operator.pos, ast.USub: operator.neg}
+
+        def evaluate(node: ast.AST) -> Any:
+            if isinstance(node, ast.Expression):
+                return evaluate(node.body)
+            if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
+                return node.value
+            if isinstance(node, ast.Name):
+                value = data.get(node.id)
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    return value
+                raise ValueError("Formula references a non-numeric field")
+            if isinstance(node, ast.BinOp) and type(node.op) in operators:
+                return operators[type(node.op)](evaluate(node.left), evaluate(node.right))
+            if isinstance(node, ast.UnaryOp) and type(node.op) in unary_operators:
+                return unary_operators[type(node.op)](evaluate(node.operand))
+            raise ValueError("Unsupported formula expression")
+
+        return evaluate(tree)
 
     def _serialize_section(self, section: FormSection, data: Dict[str, Any]) -> Dict[str, Any]:
         return {

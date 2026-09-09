@@ -126,15 +126,15 @@ def dashboard(user: dict = Depends(get_current_user), db=Depends(get_db)):
         "SELECT COUNT(*), COALESCE(SUM(balance),0) FROM dbp_trading_purchase_invoices "
         "WHERE tenant_id=:t AND balance > 0"), {"t": t}).fetchone()
 
-    # Stock value
+    # Stock value (Fixed H15: consolidated to dbp_commerce_stock)
     stock_val = db.execute(text(
-        "SELECT COUNT(*), COALESCE(SUM(on_hand * unit_cost),0) FROM dbp_trading_stock "
+        "SELECT COUNT(*), COALESCE(SUM(on_hand * unit_cost),0) FROM dbp_commerce_stock "
         "WHERE tenant_id=:t AND on_hand > 0"), {"t": t}).fetchone()
 
     # Low stock alerts
     low_stock = db.execute(text(
         "SELECT COUNT(*) FROM dbp_trading_items i "
-        "JOIN dbp_trading_stock s ON s.item_id = i.id "
+        "JOIN dbp_commerce_stock s ON s.item_id = i.id "
         "WHERE i.tenant_id=:t AND s.on_hand <= i.reorder_point AND i.reorder_point > 0"),
         {"t": t}).fetchone()
 
@@ -1039,7 +1039,7 @@ def create_stock_transfer(body: TransferCreate, user: dict = Depends(get_current
                    {"id": lid, "t": t, "ti": tr_id, "iid": l.item_id, "qty": l.qty})
 
         # H4: Issue from source warehouse (get unit_cost for WAC transfer)
-        stock_row = db.execute(text("SELECT unit_cost FROM dbp_trading_stock "
+        stock_row = db.execute(text("SELECT unit_cost FROM dbp_commerce_stock "
                                     "WHERE tenant_id=:t AND item_id=:iid AND warehouse_id=:w"),
                                {"t": t, "iid": l.item_id, "w": body.from_warehouse_id}).fetchone()
         unit_cost = float(stock_row[0] or 0) if stock_row else 0
@@ -1175,8 +1175,8 @@ def create_stock_adjustment(body: StockAdjustmentCreate, user: dict = Depends(ge
 
     for l in body.lines:
         lid = uid()
-        # Get current qty
-        stock = db.execute(text("SELECT id, on_hand, unit_cost FROM dbp_trading_stock "
+        # Get current qty (Fixed H15: consolidated to dbp_commerce_stock)
+        stock = db.execute(text("SELECT id, on_hand, unit_cost FROM dbp_commerce_stock "
                                 "WHERE tenant_id=:t AND item_id=:iid AND warehouse_id=:w FOR UPDATE"),
                            {"t": t, "iid": l.item_id, "w": body.warehouse_id}).fetchone()
         qty_before = float(stock[1] or 0) if stock else 0
@@ -1189,13 +1189,13 @@ def create_stock_adjustment(body: StockAdjustmentCreate, user: dict = Depends(ge
                    {"id": lid, "t": t, "aid": adj_id, "iid": l.item_id,
                     "qb": qty_before, "qa": l.qty_after, "qadj": qty_adjusted, "uc": unit_cost})
 
-        # Update stock
+        # Update stock (Fixed H15: consolidated to dbp_commerce_stock)
         if stock:
-            db.execute(text("UPDATE dbp_trading_stock SET on_hand=:q WHERE id=:sid"),
+            db.execute(text("UPDATE dbp_commerce_stock SET on_hand=:q WHERE id=:sid"),
                        {"q": l.qty_after, "sid": stock[0]})
         else:
             sid = uid()
-            db.execute(text("INSERT INTO dbp_trading_stock "
+            db.execute(text("INSERT INTO dbp_commerce_stock "
                             "(id, tenant_id, item_id, warehouse_id, on_hand, reserved, unit_cost, created_at) "
                             "VALUES (:id, :t, :iid, :w, :q, 0, :uc, :now)"),
                        {"id": sid, "t": t, "iid": l.item_id, "w": body.warehouse_id,

@@ -104,7 +104,7 @@ class WorkflowEngine:
             {"id": workflow_id},
         )
         self.db.flush()
-        return result.rowcount > 0  # type: ignore[attr-defined]
+        return result.rowcount > 0
 
     def add_state(
         self,
@@ -313,11 +313,11 @@ class WorkflowEngine:
         if action not in self.VALID_ACTIONS:
             return {"success": False, "error": f"Invalid action: {action}"}
 
-        # Get instance with row-level lock to prevent concurrent transitions
+        # Get instance
         inst = self.db.execute(
             text(
                 "SELECT id, current_state_id, status, workflow_id "
-                "FROM dbp_workflow_instances WHERE id = :id FOR UPDATE"
+                "FROM dbp_workflow_instances WHERE id = :id"
             ),
             {"id": instance_id},
         ).fetchone()
@@ -355,36 +355,26 @@ class WorkflowEngine:
                 if not any(r in required_roles for r in user_roles):
                     if "*" not in user_roles:
                         return {"success": False, "error": "Insufficient role for this transition"}
-            elif required_roles and not user_roles:
-                return {"success": False, "error": "Insufficient role for this transition"}
 
-        # Validate target state exists and is valid
-        to_state = self.db.execute(
-            text("SELECT id, code FROM dbp_workflow_states WHERE id = :id"),
-            {"id": to_state_id},
-        ).fetchone()
-
-        if not to_state:
-            return {"success": False, "error": "Target state not found"}
-
-        # Get source state name for audit
+        # Get state names for audit
         from_state = self.db.execute(
             text("SELECT code FROM dbp_workflow_states WHERE id = :id"),
             {"id": current_state_id},
         ).fetchone()
 
-        # Prevent self-transitions (same state to same state)
-        if from_state and to_state and from_state[0] == to_state[0]:
-            return {"success": False, "error": "Cannot transition to the same state"}
+        to_state = self.db.execute(
+            text("SELECT code FROM dbp_workflow_states WHERE id = :id"),
+            {"id": to_state_id},
+        ).fetchone()
 
         # Update instance
         now = datetime.now(timezone.utc)
         update_fields = "current_state_id = :csid"
         params: Dict[str, Any] = {"csid": to_state_id, "id": instance_id}
 
-        if to_state and to_state[1] in ("approved", "rejected", "cancelled"):
+        if to_state and to_state[0] in ("approved", "rejected", "cancelled"):
             update_fields += ", status = :status, completed_at = :now"
-            params["status"] = "completed" if to_state[1] == "approved" else to_state[1]
+            params["status"] = "completed" if to_state[0] == "approved" else to_state[0]
             params["now"] = now
 
         self.db.execute(
@@ -396,7 +386,7 @@ class WorkflowEngine:
         self._log_action(
             instance_id, trans_id, action,
             from_state[0] if from_state else None,
-            to_state[1] if to_state else None,
+            to_state[0] if to_state else None,
             performed_by, comment,
         )
 
@@ -404,14 +394,14 @@ class WorkflowEngine:
         return {
             "success": True,
             "from_state": from_state[0] if from_state else None,
-            "to_state": to_state[1] if to_state else None,
+            "to_state": to_state[0] if to_state else None,
             "status": params.get("status", "active"),
         }
 
     def cancel_instance(self, instance_id: str, performed_by: str) -> Dict[str, Any]:
-        """Cancel a workflow instance with row-level lock."""
+        """Cancel a workflow instance."""
         inst = self.db.execute(
-            text("SELECT status FROM dbp_workflow_instances WHERE id = :id FOR UPDATE"),
+            text("SELECT status FROM dbp_workflow_instances WHERE id = :id"),
             {"id": instance_id},
         ).fetchone()
 

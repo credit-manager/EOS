@@ -1,0 +1,28 @@
+# Backend Dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# تثبيت تبعيات النظام
+RUN apt-get update && apt-get install -y \
+    gcc \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# تثبيت تبعيات Python
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# نسخ كود التطبيق
+COPY . .
+
+# إنشاء متغير البيئة
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+# فتح المنفذ
+EXPOSE 8000
+
+# تشغيل التطبيق
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

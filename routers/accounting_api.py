@@ -1,5 +1,7 @@
 """
 EOS Accounting API Router — /api/v1/accounting
+C1 FIX: All queries now filter by tenant_id for multi-tenant isolation.
+C5 FIX: Journal posting now updates GL account balances.
 """
 import uuid
 from typing import Optional
@@ -27,8 +29,9 @@ async def list_accounts(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    conditions = ["1=1"]
-    params: dict = {}
+    tid = user.get("tenant_id")
+    conditions = ["tenant_id = :tid"]
+    params: dict = {"tid": tid}
     if account_type:
         conditions.append("account_type = :at")
         params["at"] = account_type
@@ -65,10 +68,11 @@ async def list_accounts(
 
 @router.get("/accounts/{account_id}")
 async def get_account(account_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    tid = user.get("tenant_id")
     r = db.execute(
         text("SELECT id, code, name_en, name_ar, account_type, parent_id, currency_code, "
              "is_active, is_system, opening_balance, current_balance, description "
-             "FROM dbp_accounts WHERE id = :id"), {"id": account_id}
+             "FROM dbp_accounts WHERE id = :id AND tenant_id = :tid"), {"id": account_id, "tid": tid}
     ).fetchone()
     if not r:
         raise HTTPException(404, detail="Account not found")
@@ -83,6 +87,7 @@ async def get_account(account_id: str, user: dict = Depends(get_current_user), d
 async def create_account(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     if not body.get("name"):
         raise HTTPException(400, detail="name required")
+    tid = user.get("tenant_id")
     aid = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     db.execute(
@@ -91,7 +96,7 @@ async def create_account(body: dict, user: dict = Depends(get_current_user), db:
              "current_balance, description, created_at) "
              "VALUES (:id, :tid, :cid, :code, :name, :name_ar, :at, :pid, :cur, true, false, "
              "0, 0, :desc, :now)"),
-        {"id": aid, "tid": user.get("tenant_id"), "cid": user.get("tenant_id"),
+        {"id": aid, "tid": tid, "cid": tid,
          "code": body.get("code", f"ACC-{aid[:6].upper()}"),
          "name": body["name"], "name_ar": body.get("name_ar"),
          "at": body.get("account_type", "asset"), "pid": body.get("parent_id"),
@@ -103,28 +108,32 @@ async def create_account(body: dict, user: dict = Depends(get_current_user), db:
 
 @router.put("/accounts/{account_id}")
 async def update_account(account_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    existing = db.execute(text("SELECT id FROM dbp_accounts WHERE id = :id"), {"id": account_id}).fetchone()
+    tid = user.get("tenant_id")
+    existing = db.execute(text("SELECT id FROM dbp_accounts WHERE id = :id AND tenant_id = :tid"),
+                          {"id": account_id, "tid": tid}).fetchone()
     if not existing:
         raise HTTPException(404, detail="Account not found")
-    fields, params = [], {"id": account_id}
+    fields, params = [], {"id": account_id, "tid": tid}
     for col in ("name_en", "name_ar", "code", "account_type", "parent_id", "currency_code", "description"):
         if col in body:
             fields.append(f"{col} = :{col}")
             params[col] = body[col]
     if fields:
-        db.execute(text(f"UPDATE dbp_accounts SET {', '.join(fields)} WHERE id = :id"), params)
+        db.execute(text(f"UPDATE dbp_accounts SET {', '.join(fields)} WHERE id = :id AND tenant_id = :tid"), params)
         db.commit()
     return {"message": "Account updated"}
 
 
 @router.delete("/accounts/{account_id}")
 async def delete_account(account_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    existing = db.execute(text("SELECT is_system FROM dbp_accounts WHERE id = :id"), {"id": account_id}).fetchone()
+    tid = user.get("tenant_id")
+    existing = db.execute(text("SELECT is_system FROM dbp_accounts WHERE id = :id AND tenant_id = :tid"),
+                          {"id": account_id, "tid": tid}).fetchone()
     if not existing:
         raise HTTPException(404, detail="Account not found")
     if existing[0]:
         raise HTTPException(400, detail="Cannot delete system account")
-    db.execute(text("DELETE FROM dbp_accounts WHERE id = :id"), {"id": account_id})
+    db.execute(text("DELETE FROM dbp_accounts WHERE id = :id AND tenant_id = :tid"), {"id": account_id, "tid": tid})
     db.commit()
     return {"message": "Account deleted"}
 
@@ -141,8 +150,9 @@ async def list_journal_entries(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    conditions = ["1=1"]
-    params: dict = {}
+    tid = user.get("tenant_id")
+    conditions = ["tenant_id = :tid"]
+    params: dict = {"tid": tid}
     if start_date:
         conditions.append("entry_date >= :sd")
         params["sd"] = start_date
@@ -180,10 +190,11 @@ async def list_journal_entries(
 
 @router.get("/journal/{entry_id}")
 async def get_journal_entry(entry_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    tid = user.get("tenant_id")
     r = db.execute(
         text("SELECT id, entry_number, entry_date, entry_type, description, reference, "
              "status, total_debit, total_credit, is_posted, created_by "
-             "FROM dbp_journal_entries WHERE id = :id"), {"id": entry_id}
+             "FROM dbp_journal_entries WHERE id = :id AND tenant_id = :tid"), {"id": entry_id, "tid": tid}
     ).fetchone()
     if not r:
         raise HTTPException(404, detail="Journal entry not found")
@@ -212,17 +223,21 @@ async def get_journal_entry(entry_id: str, user: dict = Depends(get_current_user
 
 @router.post("/journal", status_code=201)
 async def create_journal_entry(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    tid = user.get("tenant_id")
     eid = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     lines = body.get("lines", [])
     total_debit = sum(l.get("debit", 0) for l in lines)
     total_credit = sum(l.get("credit", 0) for l in lines)
 
+    if abs(total_debit - total_credit) > 0.01:
+        raise HTTPException(400, detail=f"Entry not balanced: debit={total_debit}, credit={total_credit}")
+
     db.execute(
         text("INSERT INTO dbp_journal_entries (id, tenant_id, company_id, entry_number, entry_date, "
              "entry_type, description, reference, status, total_debit, total_credit, is_posted, created_by, created_at) "
              "VALUES (:id, :tid, :cid, :en, :ed, :et, :desc, :ref, 'draft', :td, :tc, false, :cb, :now)"),
-        {"id": eid, "tid": user.get("tenant_id"), "cid": user.get("tenant_id"),
+        {"id": eid, "tid": tid, "cid": tid,
          "en": f"JE-{eid[:8].upper()}", "ed": body.get("entry_date", now),
          "et": body.get("entry_type", "general"), "desc": body.get("description", ""),
          "ref": body.get("reference"), "td": total_debit, "tc": total_credit,
@@ -246,24 +261,63 @@ async def create_journal_entry(body: dict, user: dict = Depends(get_current_user
 
 @router.post("/journal/{entry_id}/post")
 async def post_journal_entry(entry_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    existing = db.execute(text("SELECT id, status FROM dbp_journal_entries WHERE id = :id"), {"id": entry_id}).fetchone()
+    """C4 FIX: Uses SELECT FOR UPDATE to prevent double-posting.
+       C5 FIX: Updates GL account balances after posting."""
+    tid = user.get("tenant_id")
+    existing = db.execute(text(
+        "SELECT id, status FROM dbp_journal_entries WHERE id = :id AND tenant_id = :tid FOR UPDATE"
+    ), {"id": entry_id, "tid": tid}).fetchone()
     if not existing:
         raise HTTPException(404, detail="Journal entry not found")
     if existing[1] == "posted":
         raise HTTPException(400, detail="Already posted")
+
+    lines = db.execute(text(
+        "SELECT account_id, debit, credit FROM dbp_journal_lines WHERE journal_entry_id = :eid"
+    ), {"eid": entry_id}).fetchall()
+
+    for line in lines:
+        aid, dr, cr = line[0], float(line[1] or 0), float(line[2] or 0)
+        if dr > 0 or cr > 0:
+            db.execute(text(
+                "UPDATE dbp_accounts SET current_balance = current_balance + :dr - :cr "
+                "WHERE id = :aid AND tenant_id = :tid"
+            ), {"aid": aid, "dr": dr, "cr": cr, "tid": tid})
+
     now = datetime.now(timezone.utc)
-    db.execute(text("UPDATE dbp_journal_entries SET status = 'posted', is_posted = true, posted_at = :now WHERE id = :id"),
-               {"id": entry_id, "now": now})
+    db.execute(text(
+        "UPDATE dbp_journal_entries SET status = 'posted', is_posted = true, posted_at = :now WHERE id = :id AND tenant_id = :tid"
+    ), {"id": entry_id, "now": now, "tid": tid})
     db.commit()
     return {"message": "Journal entry posted"}
 
 
 @router.post("/journal/{entry_id}/reverse")
 async def reverse_journal_entry(entry_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    existing = db.execute(text("SELECT id, status FROM dbp_journal_entries WHERE id = :id"), {"id": entry_id}).fetchone()
+    tid = user.get("tenant_id")
+    existing = db.execute(text(
+        "SELECT id, status FROM dbp_journal_entries WHERE id = :id AND tenant_id = :tid"
+    ), {"id": entry_id, "tid": tid}).fetchone()
     if not existing:
         raise HTTPException(404, detail="Journal entry not found")
-    db.execute(text("UPDATE dbp_journal_entries SET status = 'reversed' WHERE id = :id"), {"id": entry_id})
+    if existing[1] == "reversed":
+        raise HTTPException(400, detail="Already reversed")
+
+    if existing[1] == "posted":
+        lines = db.execute(text(
+            "SELECT account_id, debit, credit FROM dbp_journal_lines WHERE journal_entry_id = :eid"
+        ), {"eid": entry_id}).fetchall()
+        for line in lines:
+            aid, dr, cr = line[0], float(line[1] or 0), float(line[2] or 0)
+            if dr > 0 or cr > 0:
+                db.execute(text(
+                    "UPDATE dbp_accounts SET current_balance = current_balance - :dr + :cr "
+                    "WHERE id = :aid AND tenant_id = :tid"
+                ), {"aid": aid, "dr": dr, "cr": cr, "tid": tid})
+
+    db.execute(text(
+        "UPDATE dbp_journal_entries SET status = 'reversed' WHERE id = :id AND tenant_id = :tid"
+    ), {"id": entry_id, "tid": tid})
     db.commit()
     return {"message": "Journal entry reversed"}
 
@@ -276,9 +330,11 @@ async def trial_balance(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    tid = user.get("tenant_id")
     rows = db.execute(
         text("SELECT code, name_en, account_type, current_balance FROM dbp_accounts "
-             "WHERE is_active = true ORDER BY code")
+             "WHERE tenant_id = :tid AND is_active = true ORDER BY code"),
+        {"tid": tid}
     ).fetchall()
     accounts = [{"code": r[0], "name": r[1], "account_type": r[2],
                  "balance": float(r[3]) if r[3] else 0} for r in rows]
@@ -294,9 +350,11 @@ async def income_statement(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    tid = user.get("tenant_id")
     rows = db.execute(
         text("SELECT code, name_en, account_type, current_balance FROM dbp_accounts "
-             "WHERE account_type IN ('revenue', 'expense') AND is_active = true ORDER BY code")
+             "WHERE tenant_id = :tid AND account_type IN ('revenue', 'expense') AND is_active = true ORDER BY code"),
+        {"tid": tid}
     ).fetchall()
     revenue = sum(float(r[3]) for r in rows if r[2] == "revenue" and r[3])
     expenses = sum(abs(float(r[3])) for r in rows if r[2] == "expense" and r[3])
@@ -309,9 +367,11 @@ async def balance_sheet(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    tid = user.get("tenant_id")
     rows = db.execute(
         text("SELECT code, name_en, account_type, current_balance FROM dbp_accounts "
-             "WHERE account_type IN ('asset', 'liability', 'equity') AND is_active = true ORDER BY code")
+             "WHERE tenant_id = :tid AND account_type IN ('asset', 'liability', 'equity') AND is_active = true ORDER BY code"),
+        {"tid": tid}
     ).fetchall()
     assets = sum(float(r[3]) for r in rows if r[2] == "asset" and r[3])
     liabilities = sum(abs(float(r[3])) for r in rows if r[2] == "liability" and r[3])
@@ -336,9 +396,11 @@ async def profit_and_loss(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    tid = user.get("tenant_id")
     rows = db.execute(
         text("SELECT code, name_en, account_type, current_balance FROM dbp_accounts "
-             "WHERE account_type IN ('revenue', 'expense') AND is_active = true ORDER BY code")
+             "WHERE tenant_id = :tid AND account_type IN ('revenue', 'expense') AND is_active = true ORDER BY code"),
+        {"tid": tid}
     ).fetchall()
     revenue = sum(float(r[3]) for r in rows if r[2] == "revenue" and r[3])
     expenses = sum(abs(float(r[3])) for r in rows if r[2] == "expense" and r[3])

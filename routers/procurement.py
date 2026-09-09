@@ -30,8 +30,8 @@ async def create_item(cid: str, body: dict, user: dict = Depends(get_current_use
 
 
 @router.get("/companies/{cid}/suppliers", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_suppliers(cid: str, db: Session = Depends(get_db)):
-    return {"status": "success", "data": ProcurementEngine(db).list_suppliers(cid)}
+async def list_suppliers(cid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return {"status": "success", "data": ProcurementEngine(db).list_suppliers(cid, tenant_id=user.get("tenant_id"))}
 
 
 @router.post("/companies/{cid}/suppliers", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
@@ -44,8 +44,8 @@ async def create_supplier(cid: str, body: dict, user: dict = Depends(get_current
 
 
 @router.get("/companies/{cid}/purchase-requests", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_purchase_requests(cid: str, status: Optional[str] = None, db: Session = Depends(get_db)):
-    return {"status": "success", "data": ProcurementEngine(db).list_purchase_requests(cid, status=status)}
+async def list_purchase_requests(cid: str, status: Optional[str] = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return {"status": "success", "data": ProcurementEngine(db).list_purchase_requests(cid, status=status, tenant_id=user.get("tenant_id"))}
 
 
 @router.post("/companies/{cid}/purchase-requests", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
@@ -57,7 +57,7 @@ async def create_purchase_request(cid: str, body: dict, user: dict = Depends(get
 
 @router.post("/purchase-requests/{rid}/approve", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def approve_purchase_request(rid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    result = ProcurementEngine(db).approve_purchase_request(rid, user.get("id") or "admin")
+    result = ProcurementEngine(db).approve_purchase_request(rid, user.get("id") or "admin", user.get("tenant_id"))
     if not result["success"]:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "APPROVE_FAILED", "message": result["error"]}})
     db.commit()
@@ -65,8 +65,8 @@ async def approve_purchase_request(rid: str, user: dict = Depends(get_current_us
 
 
 @router.get("/companies/{cid}/purchase-orders", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_purchase_orders(cid: str, status: Optional[str] = None, db: Session = Depends(get_db)):
-    return {"status": "success", "data": ProcurementEngine(db).list_purchase_orders(cid, status=status)}
+async def list_purchase_orders(cid: str, status: Optional[str] = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return {"status": "success", "data": ProcurementEngine(db).list_purchase_orders(cid, status=status, tenant_id=user.get("tenant_id"))}
 
 
 @router.post("/companies/{cid}/purchase-orders", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
@@ -83,8 +83,8 @@ async def create_purchase_order(cid: str, body: dict, user: dict = Depends(get_c
 
 
 @router.get("/purchase-orders/{oid}", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_purchase_order(oid: str, db: Session = Depends(get_db)):
-    po = ProcurementEngine(db).get_purchase_order(oid)
+async def get_purchase_order(oid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    po = ProcurementEngine(db).get_purchase_order(oid, user.get("tenant_id"))
     if not po:
         raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Order not found"}})
     return {"status": "success", "data": po}
@@ -92,7 +92,7 @@ async def get_purchase_order(oid: str, db: Session = Depends(get_db)):
 
 @router.post("/purchase-orders/{oid}/approve", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def approve_purchase_order(oid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    result = ProcurementEngine(db).approve_purchase_order(oid, user.get("id") or "admin")
+    result = ProcurementEngine(db).approve_purchase_order(oid, user.get("id") or "admin", user.get("tenant_id"))
     if not result["success"]:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "APPROVE_FAILED", "message": result["error"]}})
     db.commit()
@@ -106,6 +106,7 @@ async def receive_goods(oid: str, body: dict, user: dict = Depends(get_current_u
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
     result = ProcurementEngine(db).receive_goods(oid, body["line_id"], body["quantity"],
                                                   body["received_date"], user.get("id") or "admin",
+                                                  tenant_id=user.get("tenant_id"),
                                                   notes=body.get("notes"))
     if not result["success"]:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "RECEIVE_FAILED", "message": result["error"]}})

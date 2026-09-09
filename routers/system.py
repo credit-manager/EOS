@@ -122,7 +122,7 @@ async def create_data_import(cid: str, body: dict,
 async def update_data_import(iid: str, body: dict,
                             user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     result = SystemEngine(db).update_data_import(
-        iid,
+        iid, tenant_id=user["tenant_id"],
         success_count=body.get("success_count"),
         error_count=body.get("error_count"),
         status=body.get("status"),

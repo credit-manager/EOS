@@ -44,6 +44,31 @@ def get_company_id(db: Session, tenant_id: str) -> str:
     return row[0] if row else ""
 
 
+def get_tenant_config(db: Session, tenant_id: str, key: str, default=None):
+    """
+    Read a tenant-scoped configuration value from dbp_system_config.
+
+    Fixed H11/H12/H13: replace hardcoded VAT/labor settings with values
+    that can be configured per tenant. Falls back to `default` when the
+    key is not set.
+    """
+    if not tenant_id:
+        return default
+    try:
+        row = db.execute(text(
+            "SELECT config_value FROM dbp_system_config "
+            "WHERE tenant_id=:t AND config_key=:k LIMIT 1"
+        ), {"t": tenant_id, "k": key}).fetchone()
+    except Exception:
+        return default
+    if not row:
+        return default
+    val = row[0]
+    if isinstance(val, dict) and "value" in val:
+        return val["value"]
+    return val or default
+
+
 # ═══════════════════════════════════════════════════
 # H2: RBAC — Role-Based Access Control
 # ═══════════════════════════════════════════════════
@@ -139,10 +164,10 @@ def post_journal(db: Session, tenant_id: str, company_id: str,
     """
     jid = uid()
     entry_number = f"JE-{now().strftime('%Y%m%d')}-{jid[:8].upper()}"
-    total_debit = sum(float(l.get("debit", 0)) for l in lines)
-    total_credit = sum(float(l.get("credit", 0)) for l in lines)
+    total_debit = sum(Decimal(str(l.get("debit", 0))) for l in lines)
+    total_credit = sum(Decimal(str(l.get("credit", 0))) for l in lines)
 
-    if abs(total_debit - total_credit) > 0.01:
+    if abs(total_debit - total_credit) > Decimal("0.01"):
         raise HTTPException(400, detail=f"Journal not balanced: debit={total_debit}, credit={total_credit}")
 
     db.execute(
@@ -164,6 +189,21 @@ def post_journal(db: Session, tenant_id: str, company_id: str,
              "cr": line.get("credit", 0), "cc": line.get("cost_center", ""),
              "ord": i + 1, "now": now()},
         )
+        # P80.5D FIX: Keep the GL in sync. Posting a journal must flow into
+        # dbp_accounts.current_balance, which the trial balance / income
+        # statement / balance sheet reports read directly. Previously this
+        # path inserted lines marked posted but never updated current_balance,
+        # so journals posted here silently disappeared from reported balances.
+        # Journal lines carry the ACCOUNT CODE (primary key of a trading entry);
+        # map it to dbp_accounts.code scoped by tenant (same scope as the reports).
+        dr = Decimal(str(line.get("debit", 0)))
+        cr = Decimal(str(line.get("credit", 0)))
+        if line.get("account_code"):
+            db.execute(
+                text("UPDATE dbp_accounts SET current_balance = current_balance + :dr - :cr "
+                     "WHERE code = :code AND tenant_id = :tid"),
+                {"code": line.get("account_code", ""), "dr": dr, "cr": cr, "tid": tenant_id},
+            )
     return jid
 
 
@@ -186,10 +226,10 @@ def atomic_stock_issue(db: Session, tenant_id: str, item_id: str,
     ).fetchone()
     if not stock:
         raise HTTPException(404, detail=f"Item not found: {item_id}")
-    available = float(stock[1] or 0)
-    if available < qty:
+    available = Decimal(str(stock[1] or 0))
+    if available < Decimal(str(qty)):
         raise HTTPException(400, detail=f"Insufficient stock: {item_id} has {available}, need {qty}")
-    new_qty = available - qty
+    new_qty = available - Decimal(str(qty))
     db.execute(text(f"UPDATE {stock_table} SET on_hand=:q WHERE id=:sid"),
                {"q": new_qty, "sid": stock[0]})
     return stock[0], float(stock[2] or 0)
@@ -207,12 +247,12 @@ def atomic_stock_receive(db: Session, tenant_id: str, item_id: str,
              f"WHERE tenant_id=:t AND {item_column}=:ic AND warehouse_id=:w FOR UPDATE"),
         {"t": tenant_id, "ic": item_id, "w": warehouse_id},
     ).fetchone()
-    total_cost = qty * price
+    total_cost = Decimal(str(qty)) * Decimal(str(price))
     if existing:
-        old_qty = float(existing[1] or 0)
-        new_qty = old_qty + qty
-        old_cost = float(existing[2] or 0)
-        new_cost = ((old_qty * old_cost) + total_cost) / new_qty if new_qty > 0 else price
+        old_qty = Decimal(str(existing[1] or 0))
+        new_qty = old_qty + Decimal(str(qty))
+        old_cost = Decimal(str(existing[2] or 0))
+        new_cost = ((old_qty * old_cost) + total_cost) / new_qty if new_qty > 0 else Decimal(str(price))
         db.execute(text(f"UPDATE {stock_table} SET on_hand=:q, unit_cost=:uc WHERE id=:sid"),
                    {"q": new_qty, "uc": new_cost, "sid": existing[0]})
         return existing[0]
@@ -231,19 +271,32 @@ def atomic_stock_receive(db: Session, tenant_id: str, item_id: str,
 # ═══════════════════════════════════════════════════
 
 def generate_sequence(db: Session, tenant_id: str, prefix: str, table: str,
-                      column: str = "number") -> str:
+                      column: str = "number", entity_type: str = None) -> str:
     """
     Generate a unique sequential number per tenant.
+
+    Fixed H7: Previously used COUNT(*)+1 which is racy under concurrency.
+    Now uses an atomic per-tenant counter in the number_sequences table so
+    concurrent callers never receive the same sequence number.
     E.g., SO-202608-A1B2C3 for Sales Orders.
     """
-    # Count existing records for this tenant to determine next sequence
-    count = db.execute(
-        text(f"SELECT COUNT(*) FROM {table} WHERE tenant_id=:t"),
-        {"t": tenant_id},
-    ).fetchone()[0]
-    seq = count + 1
+    seq_name = f"{prefix}-{entity_type or table}"
+    # Atomic increment of the per-tenant counter
+    row = db.execute(
+        text(
+            "INSERT INTO number_sequences "
+            "(id, tenant_id, name, prefix, current_number, increment_by, padding, entity_type, is_active) "
+            "VALUES (:id, :t, :name, :prefix, 1, 1, 0, :et, true) "
+            "ON CONFLICT (tenant_id, name) DO UPDATE "
+            "SET current_number = number_sequences.current_number + number_sequences.increment_by "
+            "RETURNING current_number, prefix"
+        ),
+        {"id": uid(), "t": tenant_id, "name": seq_name, "prefix": prefix, "et": entity_type or table},
+    ).fetchone()
+    seq = int(row[0]) if row else 1
+    used_prefix = row[1] if row and row[1] else prefix
     suffix = uid()[:6].upper()
-    return f"{prefix}-{now().strftime('%Y%m')}-{suffix}"
+    return f"{used_prefix}-{now().strftime('%Y%m')}-{seq}-{suffix}"
 
 
 # ═══════════════════════════════════════════════════

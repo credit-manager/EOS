@@ -72,10 +72,13 @@ async def create_gateway(body: GatewayCreate, user: dict = Depends(get_current_u
 async def create_transaction(body: TransactionCreate, user: dict = Depends(get_current_user)):
     db = SessionLocal()
     try:
-        result = PaymentGatewayEngine(db).create_transaction(
-            user["tenant_id"], body.amount, body.currency, body.transaction_type,
-            body.reference_type, body.reference_id, body.customer_id, body.payment_method
-        )
+        try:
+            result = PaymentGatewayEngine(db).create_transaction(
+                user["tenant_id"], body.amount, body.currency, body.transaction_type,
+                body.reference_type, body.reference_id, body.customer_id, body.payment_method
+            )
+        except ValueError as e:
+            raise HTTPException(400, detail={"status": "error", "error": {"code": "INVALID", "message": str(e)}})
         return {"status": "success", "data": result}
     finally:
         db.close()
@@ -96,7 +99,7 @@ async def list_transactions(status: Optional[str] = None, limit: int = 50,
 async def get_transaction(transaction_id: str, user: dict = Depends(get_current_user)):
     db = SessionLocal()
     try:
-        data = PaymentGatewayEngine(db).get_transaction(transaction_id)
+        data = PaymentGatewayEngine(db).get_transaction(transaction_id, user["tenant_id"])
         if not data:
             raise HTTPException(404, detail="Transaction not found")
         return {"status": "success", "data": data}
@@ -108,7 +111,9 @@ async def get_transaction(transaction_id: str, user: dict = Depends(get_current_
 async def complete_transaction(transaction_id: str, user: dict = Depends(get_current_user)):
     db = SessionLocal()
     try:
-        result = PaymentGatewayEngine(db).complete_transaction(transaction_id)
+        result = PaymentGatewayEngine(db).complete_transaction(transaction_id, user["tenant_id"])
+        if isinstance(result, dict) and result.get("error"):
+            raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": result["error"]}})
         return {"status": "success", "data": result}
     finally:
         db.close()
@@ -118,7 +123,9 @@ async def complete_transaction(transaction_id: str, user: dict = Depends(get_cur
 async def fail_transaction(transaction_id: str, reason: str = "", user: dict = Depends(get_current_user)):
     db = SessionLocal()
     try:
-        result = PaymentGatewayEngine(db).fail_transaction(transaction_id, reason)
+        result = PaymentGatewayEngine(db).fail_transaction(transaction_id, user["tenant_id"], reason)
+        if isinstance(result, dict) and result.get("error"):
+            raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": result["error"]}})
         return {"status": "success", "data": result}
     finally:
         db.close()
@@ -128,7 +135,12 @@ async def fail_transaction(transaction_id: str, reason: str = "", user: dict = D
 async def refund_transaction(transaction_id: str, body: RefundRequest, user: dict = Depends(get_current_user)):
     db = SessionLocal()
     try:
-        result = PaymentGatewayEngine(db).refund_transaction(transaction_id, body.amount)
+        result = PaymentGatewayEngine(db).refund_transaction(transaction_id, user["tenant_id"], body.amount)
+        if isinstance(result, dict) and result.get("error"):
+            err = result["error"]
+            if err == "Transaction not found":
+                raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": err}})
+            raise HTTPException(400, detail={"status": "error", "error": {"code": "REFUND_FAILED", "message": err}})
         return {"status": "success", "data": result}
     finally:
         db.close()
@@ -138,9 +150,12 @@ async def refund_transaction(transaction_id: str, body: RefundRequest, user: dic
 async def bank_transfer(body: BankTransferRequest, user: dict = Depends(get_current_user)):
     db = SessionLocal()
     try:
-        result = PaymentGatewayEngine(db).process_bank_transfer(
-            user["tenant_id"], body.amount, body.bank_name, body.account_number, body.reference
-        )
+        try:
+            result = PaymentGatewayEngine(db).process_bank_transfer(
+                user["tenant_id"], body.amount, body.bank_name, body.account_number, body.reference
+            )
+        except ValueError as e:
+            raise HTTPException(400, detail={"status": "error", "error": {"code": "INVALID", "message": str(e)}})
         return {"status": "success", "data": result}
     finally:
         db.close()
@@ -150,7 +165,10 @@ async def bank_transfer(body: BankTransferRequest, user: dict = Depends(get_curr
 async def cash_payment(amount: float, user: dict = Depends(get_current_user)):
     db = SessionLocal()
     try:
-        result = PaymentGatewayEngine(db).process_cash(user["tenant_id"], amount)
+        try:
+            result = PaymentGatewayEngine(db).process_cash(user["tenant_id"], amount)
+        except ValueError as e:
+            raise HTTPException(400, detail={"status": "error", "error": {"code": "INVALID", "message": str(e)}})
         return {"status": "success", "data": result}
     finally:
         db.close()
@@ -160,10 +178,13 @@ async def cash_payment(amount: float, user: dict = Depends(get_current_user)):
 async def create_payment_link(body: PaymentLinkCreate, user: dict = Depends(get_current_user)):
     db = SessionLocal()
     try:
-        result = PaymentGatewayEngine(db).create_payment_link(
-            user["tenant_id"], body.amount, body.description,
-            body.customer_email, body.expires_hours
-        )
+        try:
+            result = PaymentGatewayEngine(db).create_payment_link(
+                user["tenant_id"], body.amount, body.description,
+                body.customer_email, body.expires_hours
+            )
+        except ValueError as e:
+            raise HTTPException(400, detail={"status": "error", "error": {"code": "INVALID", "message": str(e)}})
         return {"status": "success", "data": result}
     finally:
         db.close()

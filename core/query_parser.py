@@ -321,8 +321,8 @@ class QueryParser:
         
         Returns validated QueryFilter.
         """
-        filters = self.parse_filters(filters_str) if filters_str else []
-        sorts = self.parse_sort(sort_str) if sort_str else []
+        filters = self.parse_filters(filters_str)
+        sorts = self.parse_sort(sort_str)
         limit, offset = self.parse_pagination(limit, offset)
         
         return QueryFilter(

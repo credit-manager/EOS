@@ -1,0 +1,116 @@
+# ═══════════════════════════════════════════════
+# EOS Platform — Coverage Configuration
+# Phase 1: Code Coverage Tracking
+# ═══════════════════════════════════════════════
+
+[run]
+# Source code to measure
+source = .
+branch = True
+
+# Files/directories to omit
+omit =
+    # Tests themselves
+    tests/*
+    test_*
+    
+    # Virtual environments
+    venv/*
+    .venv/*
+    env/*
+    
+    # Migrations (auto-generated)
+    alembic/*
+    
+    # Frontend build artifacts
+    */build/*
+    */dist/*
+    */node_modules/*
+    
+    # Documentation
+    docs/*
+    *.md
+    
+    # Configuration files
+    .env*
+    *.ini
+    *.cfg
+    *.toml
+    
+    # Scripts
+    scripts/*
+    
+    # Temporary files
+    tmp/*
+    temp/*
+    *.tmp
+    
+    # Legacy/Deprecated code (if any)
+    */legacy/*
+    */deprecated/*
+
+[report]
+# Precision for coverage percentages
+precision = 2
+
+# Output format
+show_missing = True
+skip_covered = False
+skip_empty = True
+
+# Exclude patterns
+exclude_lines =
+    # Have to re-enable the standard pragma
+    pragma: no cover
+    
+    # Don't complain about missing debug-only code
+    def __repr__
+    if self\.debug
+    if settings\.DEBUG
+    
+    # Don't complain if tests can't find imports
+    raise ImportError
+    except ImportError
+    
+    # Don't complain if abstract methods aren't implemented
+    raise NotImplementedError
+    @abstractmethod
+    
+    # Don't complain about non-code sections
+    if __name__ == .__main__.:
+    
+    # Type checking blocks
+    if TYPE_CHECKING:
+    
+    # Platform-specific code
+    if sys\.platform
+    
+    # Fallback imports
+    except ModuleNotFoundError:
+    
+    # Mock/stub implementations
+    pass
+    \.\.\.
+    
+    # CLI help messages
+    --help
+    
+    # Logging statements (optional)
+    logger\.
+    log\.
+    print\(
+
+[html]
+# HTML report output directory
+directory = htmlcov
+
+# Title for HTML report
+title = EOS Platform Coverage Report
+
+[xml]
+# XML report output (for CI integration)
+output = coverage.xml
+
+[json]
+# JSON report output (for programmatic access)
+output = coverage.json

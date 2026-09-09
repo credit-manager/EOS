@@ -62,20 +62,24 @@ class HREngine:
                  "employment_status": r[7],
                  "salary": float(r[8]) if r[8] is not None else 0} for r in rows]
 
-    def update_employee(self, employee_id: str, **kw) -> Dict[str, Any]:
+    def update_employee(self, employee_id: str, tenant_id: str = None, **kw) -> Dict[str, Any]:
         fields = {k: v for k, v in kw.items() if k in self.EMPLOYEE_FIELDS and v is not None}
         if not fields:
             return {"success": False, "error": "No valid fields to update"}
+        params: Dict[str, Any] = {"eid": employee_id}
+        tscope = ""
+        if tenant_id:
+            tscope = " AND tenant_id = :tid"
+            params["tid"] = tenant_id
         exists = self.db.execute(text(
-            "SELECT id FROM dbp_employees WHERE id = :eid"
-        ), {"eid": employee_id}).fetchone()
+            "SELECT id FROM dbp_employees WHERE id = :eid" + tscope
+        ), params).fetchone()
         if not exists:
             return {"success": False, "error": "Employee not found"}
         sets = ", ".join(f"{k} = :{k}" for k in fields)
-        params: Dict[str, Any] = dict(fields)
-        params["eid"] = employee_id
+        params.update(fields)
         self.db.execute(text(
-            f"UPDATE dbp_employees SET {sets} WHERE id = :eid"
+            f"UPDATE dbp_employees SET {sets} WHERE id = :eid" + tscope
         ), params)
         self.db.flush()
         return {"success": True}
@@ -94,18 +98,23 @@ class HREngine:
         self.db.flush()
         return lid
 
-    def approve_leave_request(self, request_id: str, approved_by: str) -> Dict[str, Any]:
+    def approve_leave_request(self, request_id: str, approved_by: str, tenant_id: str = None) -> Dict[str, Any]:
+        params: Dict[str, Any] = {"rid": request_id}
+        tscope = ""
+        if tenant_id:
+            tscope = " AND tenant_id = :tid"
+            params["tid"] = tenant_id
         row = self.db.execute(text(
-            "SELECT status FROM dbp_leave_requests WHERE id = :rid"
-        ), {"rid": request_id}).fetchone()
+            "SELECT status FROM dbp_leave_requests WHERE id = :rid" + tscope
+        ), params).fetchone()
         if not row:
             return {"success": False, "error": "Leave request not found"}
         if row[0] != "pending":
             return {"success": False, "error": f"Cannot approve request in status '{row[0]}'"}
         self.db.execute(text(
             "UPDATE dbp_leave_requests SET status = 'approved', approved_by = :ab "
-            "WHERE id = :rid"
-        ), {"ab": approved_by, "rid": request_id})
+            "WHERE id = :rid" + tscope
+        ), {"ab": approved_by, "rid": request_id, "tid": tenant_id})
         self.db.flush()
         return {"success": True, "request_id": request_id, "status": "approved"}
 
@@ -219,8 +228,8 @@ class HREngine:
                          bonus: float = 0, deductions: float = 0,
                          tax: float = 0) -> str:
         run = self.db.execute(text(
-            "SELECT id FROM dbp_payroll_runs WHERE id = :rid"
-        ), {"rid": run_id}).fetchone()
+            "SELECT id FROM dbp_payroll_runs WHERE id = :rid AND tenant_id = :tid"
+        ), {"rid": run_id, "tid": tenant_id}).fetchone()
         if not run:
             raise ValueError("Payroll run not found")
         net_pay = float(basic_salary) + float(allowances) + float(bonus) \
@@ -243,12 +252,17 @@ class HREngine:
         self.db.flush()
         return lid
 
-    def get_payroll_run(self, run_id: str) -> Optional[Dict]:
+    def get_payroll_run(self, run_id: str, tenant_id: str = None) -> Optional[Dict]:
+        params: Dict[str, Any] = {"rid": run_id}
+        tscope = ""
+        if tenant_id:
+            tscope = " AND tenant_id = :tid"
+            params["tid"] = tenant_id
         row = self.db.execute(text(
             "SELECT id, tenant_id, company_id, run_number, pay_period_start, "
             "pay_period_end, status, total_gross, total_deductions, total_net, "
-            "processed_by, created_at FROM dbp_payroll_runs WHERE id = :rid"
-        ), {"rid": run_id}).fetchone()
+            "processed_by, created_at FROM dbp_payroll_runs WHERE id = :rid" + tscope
+        ), params).fetchone()
         if not row:
             return None
         lines = self.db.execute(text(

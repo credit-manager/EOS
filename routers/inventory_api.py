@@ -423,9 +423,53 @@ async def create_purchase_order(body: dict, user: dict = Depends(get_current_use
 
 @router.post("/purchase-orders/{po_id}/receive")
 async def receive_purchase_order(po_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    existing = db.execute(text("SELECT id, status FROM purchase_orders WHERE id = :id"), {"id": po_id}).fetchone()
+    tid = user.get("tenant_id")
+    existing = db.execute(
+        text("SELECT id, status, tenant_id FROM purchase_orders WHERE id = :id AND tenant_id = :tid"),
+        {"id": po_id, "tid": tid},
+    ).fetchone()
     if not existing:
         raise HTTPException(404, detail="Purchase order not found")
+    if existing[1] == "received":
+        return {"message": "Purchase order already received", "id": po_id}
+
+    # Fixed H16: Receive stock for each PO line. Previously the endpoint
+    # only flipped status and never updated inventory, so received goods
+    # never appeared in stock levels.
+    lines = db.execute(
+        text("SELECT product_id, quantity, COALESCE(received_quantity,0) "
+             "FROM purchase_order_lines WHERE purchase_order_id = :pid"),
+        {"pid": po_id},
+    ).fetchall()
+
+    received_details = []
+    for line in lines:
+        product_id = line[0]
+        qty = int(line[1] or 0)
+        already_received = int(line[2] or 0)
+
+        if product_id is None or qty <= 0:
+            continue
+
+        # Update the product's on-hand stock
+        updated = db.execute(
+            text("UPDATE products SET current_stock = current_stock + :q, "
+                 "updated_at = :now WHERE id = :pid "
+                 "RETURNING current_stock"),
+            {"q": qty - already_received, "pid": product_id, "now": datetime.now(timezone.utc)},
+        ).fetchone()
+        if updated is None:
+            raise HTTPException(404, detail=f"Product not found for line: {product_id}")
+
+        # Mark the line as fully received
+        db.execute(
+            text("UPDATE purchase_order_lines SET received_quantity = :q "
+                 "WHERE purchase_order_id = :pid AND product_id = :prod"),
+            {"q": qty, "pid": po_id, "prod": product_id},
+        )
+        received_details.append({"product_id": product_id, "quantity": qty - already_received})
+
     db.execute(text("UPDATE purchase_orders SET status = 'received' WHERE id = :id"), {"id": po_id})
     db.commit()
-    return {"message": "Purchase order received"}
+    return {"message": "Purchase order received and stock updated", "id": po_id,
+            "lines_received": received_details}

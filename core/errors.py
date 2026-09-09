@@ -130,7 +130,7 @@ def create_error_response(
     
     messages = get_error_message(code, **kwargs)
     
-    error_body: dict[str, Any] = {
+    error_body = {
         "code": code,
         "message": messages["message"],
         "message_en": messages["message_en"],

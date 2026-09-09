@@ -64,11 +64,16 @@ class ProcurementEngine:
         self.db.flush()
         return sid
 
-    def list_suppliers(self, company_id: str) -> List[Dict]:
+    def list_suppliers(self, company_id: str, tenant_id: str = None) -> List[Dict]:
+        params: Dict[str, Any] = {"cid": company_id}
+        tenant_filter = ""
+        if tenant_id:
+            tenant_filter = " AND tenant_id = :tid"
+            params["tid"] = tenant_id
         rows = self.db.execute(text(
-            "SELECT id, code, name, contact_name, email, phone, payment_terms, currency_code, is_active "
-            "FROM dbp_suppliers WHERE company_id = :cid ORDER BY name"
-        ), {"cid": company_id}).fetchall()
+            f"SELECT id, code, name, contact_name, email, phone, payment_terms, currency_code, is_active "
+            f"FROM dbp_suppliers WHERE company_id = :cid{tenant_filter} ORDER BY name"
+        ), params).fetchall()
         return [{"id": r[0], "code": r[1], "name": r[2], "contact_name": r[3],
                  "email": r[4], "phone": r[5], "payment_terms": r[6],
                  "currency_code": r[7], "is_active": bool(r[8])} for r in rows]
@@ -89,10 +94,15 @@ class ProcurementEngine:
         self.db.flush()
         return rid
 
-    def approve_purchase_request(self, request_id: str, approved_by: str) -> Dict[str, Any]:
+    def approve_purchase_request(self, request_id: str, approved_by: str, tenant_id: str = None) -> Dict[str, Any]:
+        params: Dict[str, Any] = {"rid": request_id}
+        tscope = ""
+        if tenant_id:
+            tscope = " AND tenant_id = :tid"
+            params["tid"] = tenant_id
         row = self.db.execute(text(
-            "SELECT status FROM dbp_purchase_requests WHERE id = :rid"
-        ), {"rid": request_id}).fetchone()
+            "SELECT status FROM dbp_purchase_requests WHERE id = :rid" + tscope
+        ), params).fetchone()
         if not row:
             return {"success": False, "error": "Request not found"}
         if row[0] != "pending_approval":
@@ -103,9 +113,12 @@ class ProcurementEngine:
         self.db.flush()
         return {"success": True, "status": "approved"}
 
-    def list_purchase_requests(self, company_id: str, status: Optional[str] = None) -> List[Dict]:
+    def list_purchase_requests(self, company_id: str, status: Optional[str] = None, tenant_id: str = None) -> List[Dict]:
         conditions = ["company_id = :cid"]
         params: Dict[str, Any] = {"cid": company_id}
+        if tenant_id:
+            conditions.append("tenant_id = :tid")
+            params["tid"] = tenant_id
         if status:
             conditions.append("status = :st")
             params["st"] = status
@@ -153,12 +166,17 @@ class ProcurementEngine:
         self.db.flush()
         return oid
 
-    def get_purchase_order(self, order_id: str) -> Optional[Dict]:
+    def get_purchase_order(self, order_id: str, tenant_id: str = None) -> Optional[Dict]:
+        params: Dict[str, Any] = {"oid": order_id}
+        tscope = ""
+        if tenant_id:
+            tscope = " AND o.tenant_id = :tid"
+            params["tid"] = tenant_id
         row = self.db.execute(text(
             "SELECT o.id, o.order_number, o.supplier_id, s.name, o.order_date, o.expected_date, "
             "o.status, o.total_amount, o.tax_amount, o.currency_code, o.notes "
-            "FROM dbp_purchase_orders o LEFT JOIN dbp_suppliers s ON o.supplier_id = s.id WHERE o.id = :oid"
-        ), {"oid": order_id}).fetchone()
+            "FROM dbp_purchase_orders o LEFT JOIN dbp_suppliers s ON o.supplier_id = s.id WHERE o.id = :oid" + tscope
+        ), params).fetchone()
         if not row:
             return None
         lines = self.db.execute(text(
@@ -180,10 +198,15 @@ class ProcurementEngine:
                        "tax_rate": float(l[9]) if l[9] else 0} for l in lines]
         }
 
-    def approve_purchase_order(self, order_id: str, approved_by: str) -> Dict[str, Any]:
+    def approve_purchase_order(self, order_id: str, approved_by: str, tenant_id: str = None) -> Dict[str, Any]:
+        params: Dict[str, Any] = {"oid": order_id}
+        tscope = ""
+        if tenant_id:
+            tscope = " AND tenant_id = :tid"
+            params["tid"] = tenant_id
         row = self.db.execute(text(
-            "SELECT status FROM dbp_purchase_orders WHERE id = :oid"
-        ), {"oid": order_id}).fetchone()
+            "SELECT status FROM dbp_purchase_orders WHERE id = :oid" + tscope
+        ), params).fetchone()
         if not row:
             return {"success": False, "error": "Order not found"}
         if row[0] != "submitted":
@@ -194,9 +217,12 @@ class ProcurementEngine:
         self.db.flush()
         return {"success": True, "status": "approved"}
 
-    def list_purchase_orders(self, company_id: str, status: Optional[str] = None) -> List[Dict]:
+    def list_purchase_orders(self, company_id: str, status: Optional[str] = None, tenant_id: str = None) -> List[Dict]:
         conditions = ["o.company_id = :cid"]
         params: Dict[str, Any] = {"cid": company_id}
+        if tenant_id:
+            conditions.append("o.tenant_id = :tid")
+            params["tid"] = tenant_id
         if status:
             conditions.append("o.status = :st")
             params["st"] = status
@@ -214,10 +240,15 @@ class ProcurementEngine:
     # ── GRN (Goods Received Note) ──
 
     def receive_goods(self, order_id: str, line_id: str, quantity: float,
-                      received_date: str, received_by: str, notes: str = None) -> Dict[str, Any]:
+                      received_date: str, received_by: str, tenant_id: str = None, notes: str = None) -> Dict[str, Any]:
+        oparams: Dict[str, Any] = {"oid": order_id}
+        oscope = ""
+        if tenant_id:
+            oscope = " AND tenant_id = :tid"
+            oparams["tid"] = tenant_id
         order = self.db.execute(text(
-            "SELECT status FROM dbp_purchase_orders WHERE id = :oid"
-        ), {"oid": order_id}).fetchone()
+            "SELECT status FROM dbp_purchase_orders WHERE id = :oid" + oscope
+        ), oparams).fetchone()
         if not order:
             return {"success": False, "error": "Order not found"}
         if order[0] not in ("approved", "partially_received"):

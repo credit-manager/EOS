@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - eos_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile.v2
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      EOS_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      EOS_SECRET_KEY: ${EOS_SECRET_KEY:?set EOS_SECRET_KEY}
+      EOS_ALLOWED_HOSTS: ${EOS_ALLOWED_HOSTS:?set EOS_ALLOWED_HOSTS}
+      EOS_CORS_ORIGINS: ${EOS_CORS_ORIGINS:?set EOS_CORS_ORIGINS}
+      EOS_AI_BASE_URL: ${EOS_AI_BASE_URL:-}
+      EOS_AI_API_KEY: ${EOS_AI_API_KEY:-}
+      EOS_AI_MODEL: ${EOS_AI_MODEL:-}
+      EOS_AI_TIMEOUT_SECONDS: ${EOS_AI_TIMEOUT_SECONDS:-30}
+    ports:
+      - "8000:8000"
+
+volumes:
+  eos_pgdata:

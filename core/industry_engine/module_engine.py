@@ -19,6 +19,7 @@ class ModuleCategory(str, Enum):
     RETAIL = "retail"
     RESTAURANT = "restaurant"
     MANUFACTURING = "manufacturing"
+    TOURISM = "tourism"
     INTELLIGENCE = "intelligence"
 
 
@@ -261,6 +262,26 @@ class ModuleEngine:
                 entities=["fixed_asset", "depreciation_entry", "maintenance_log"],
                 permissions=["assets.view", "assets.create", "assets.dispose"],
                 dependencies=["accounting"],
+            ),
+            ModuleDefinition(
+                code="tourism", name="Tourism Management", name_ar="إدارة السياحة",
+                category=ModuleCategory.TOURISM, icon="CloudOutlined",
+                description="Tour packages, bookings, hotels, flights, passengers, visas, guides",
+                capabilities=[
+                    ModuleCapability("tour_packages", "Tour Packages"),
+                    ModuleCapability("bookings", "Booking Management"),
+                    ModuleCapability("hotels", "Hotel Management"),
+                    ModuleCapability("flights", "Flight Management"),
+                    ModuleCapability("passengers", "Passenger Management"),
+                    ModuleCapability("visas", "Visa Processing"),
+                    ModuleCapability("guides", "Guide Management"),
+                    ModuleCapability("transfers", "Transfer Services"),
+                ],
+                entities=["tour_package", "booking", "hotel", "flight", "passenger", "visa", "guide", "transfer"],
+                permissions=["tourism.view", "tourism.create", "tourism.book", "tourism.approve"],
+                menu_items=[{"label": "Tourism", "labelAr": "السياحة", "path": "/tourism", "icon": "CloudOutlined"}],
+                dashboard_widgets=["total_bookings", "booking_value", "occupancy_rate", "revenue_per_passenger", "visa_success_rate"],
+                dependencies=["accounting", "crm"],
             ),
         ]
 

@@ -1,91 +1,82 @@
-# ──────────────────────────────────────────────────────────────
-# EOS .gitignore — Security & Best Practices
-# ──────────────────────────────────────────────────────────────
-
-# ── Environment & Secrets ──────────────────────────────────
-.env
-.env.*
-!.env.example
-*.pem
-*.key
-*.cert
-*.p12
-*.pfx
-secrets/
-credentials/
-
-# ── Python ─────────────────────────────────────────────────
+```
+# Dependencies
+node_modules/
+.venv/
+venv/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.egg-info/
-*.egg
+.Python
+env/
+.venv/
+venv/
+ENV/
+
+# Build artifacts
 dist/
 build/
-.eggs/
-*.whl
+*.egg-info/
+.installed.cfg
+*.egg
 
-# ── Virtual Environments ───────────────────────────────────
-venv/
-.venv/
-ENV/
-env/
+# Logs
+*.log
+logs/
 
-# ── IDE & Editor ───────────────────────────────────────────
+# Environment variables
+.env
+.env.local
+.env.*
+
+# IDE specific
 .vscode/
 .idea/
 *.swp
 *.swo
-*.swn
 *~
-.project
-.settings/
 
-# ── OS ─────────────────────────────────────────────────────
+# OS generated
 .DS_Store
 Thumbs.db
-Desktop.ini
-ehthumbs.db
 
-# ── Logs ───────────────────────────────────────────────────
-*.log
-logs/
-
-# ── Database ───────────────────────────────────────────────
-*.db
-*.sqlite3
-*.sqlite
-
-# ── Backups ────────────────────────────────────────────────
-backups/
-*.bak
-*.backup
-*.old
-
-# ── Security Review ────────────────────────────────────────
-security-review*
-token*
-*.token
-
-# ── Node.js (frontend) ────────────────────────────────────
-node_modules/
-npm-debug.log*
-yarn-error.log*
-.pnp.*
-.yarn/
-
-# ── Testing ────────────────────────────────────────────────
+# Coverage
 .coverage
 htmlcov/
+.coverage.*
+
+# Testing
 .pytest_cache/
+.mypy_cache/
+
+# Alembic
+alembic/versions/*.py
+
+# Docker
+.dockerenv
+
+# Python virtual environments
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Coverage generated file
+.coverage.*
+
+# profiling
+profile.log
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# mypy
+.mypy_cache/
+
+# pytest
+.pytest_cache/
+
+# tox
 .tox/
-.nox/
 
-# ── Docker ─────────────────────────────────────────────────
-docker-compose.override.yml
-
-# ── Misc ───────────────────────────────────────────────────
-*.tmp
-*.temp
-.cache/
+# coverage
+.coverage*
+```

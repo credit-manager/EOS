@@ -2,145 +2,123 @@
 AUTH MODULE
 ============
 
-This module provides:
-1. Test authentication functions (for verification/testing)
-2. Delegation to auth_adapter for get_current_user
-
-The auth_adapter switches between test and production auth
-based on EOS_AUTH_MODE environment variable.
+Authentication helpers and authorization dependencies.
 """
 
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from jose import JWTError, jwt
+from dotenv import load_dotenv
+import jwt
+from jwt import InvalidTokenError
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPBearer
 
-# Test-only secret key — from env or generated
-# NEVER use a real production key here
-TEST_SECRET_KEY = os.getenv(
-    "EOS_TEST_SECRET_KEY",
-    "test-verification-key-do-not-use-in-production"
-)
+load_dotenv()
+
+# Kept for backwards compatibility with callers importing this symbol. JWT
+# signing/verification below resolves the environment value at call time so
+# test application imports cannot retain a stale secret from an earlier env.
+TEST_SECRET_KEY = os.getenv("EOS_TEST_SECRET_KEY", "")
 TEST_ALGORITHM = "HS256"
 TEST_TOKEN_EXPIRE_MINUTES = 60
-
-# Bearer Token extractor
 security = HTTPBearer()
 
 
-def create_test_token(
-    tenant_id: str,
-    user_id: str = "test-user",
-    email: str = "test@example.com",
-    roles: Optional[list] = None,
-    expires_delta: Optional[timedelta] = None
-) -> str:
-    """
-    Create a test JWT token.
+def _get_test_secret_key() -> str:
+    secret = os.getenv("EOS_TEST_SECRET_KEY", "").strip()
+    if not secret:
+        raise HTTPException(status_code=500, detail="EOS_TEST_SECRET_KEY is not configured")
+    return secret
 
-    This is for verification/testing only.
-    The tenant_id embedded in the token is the
-    AUTHENTICATED TENANT — the source of truth
-    for tenant isolation.
-    """
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(
-            minutes=TEST_TOKEN_EXPIRE_MINUTES
-        )
 
+def _jwt_issuer() -> str:
+    return os.getenv("EOS_JWT_ISSUER", "eos-dbp").strip() or "eos-dbp"
+
+
+def _jwt_audience() -> str:
+    return os.getenv("EOS_JWT_AUDIENCE", "eos-api").strip() or "eos-api"
+
+
+def create_test_token(tenant_id: str, user_id: str = "test-user", email: str = "test@example.com", roles: Optional[list] = None, expires_delta: Optional[timedelta] = None) -> str:
+    secret_key = _get_test_secret_key()
+    now = datetime.now(timezone.utc)
+    expire = now + (expires_delta or timedelta(minutes=TEST_TOKEN_EXPIRE_MINUTES))
     payload = {
         "sub": user_id,
         "exp": expire,
-        "iat": datetime.now(timezone.utc),
+        "iat": now,
         "type": "access",
         "tenant_id": tenant_id.lower(),
         "email": email,
         "roles": roles or ["user"],
+        "iss": _jwt_issuer(),
+        "aud": _jwt_audience(),
     }
-
-    return jwt.encode(payload, TEST_SECRET_KEY, algorithm=TEST_ALGORITHM)
+    return jwt.encode(payload, secret_key, algorithm=TEST_ALGORITHM)
 
 
 def verify_test_token(token: str) -> dict:
-    """
-    Verify and decode a test JWT token.
-
-    Returns the full payload including tenant_id.
-    Raises HTTPException on invalid/expired token.
-    """
+    secret_key = _get_test_secret_key()
     try:
-        payload = jwt.decode(
+        return jwt.decode(
             token,
-            TEST_SECRET_KEY,
-            algorithms=[TEST_ALGORITHM]
+            secret_key,
+            algorithms=[TEST_ALGORITHM],
+            issuer=_jwt_issuer(),
+            audience=_jwt_audience(),
         )
-        return payload
-    except JWTError:
-        # Never expose JWT error details to client
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    except InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token", headers={"WWW-Authenticate": "Bearer"})
 
 
-# Delegate to auth_adapter for get_current_user
-# This allows switching between test and production auth
-# via EOS_AUTH_MODE environment variable
 from core.auth_adapter import get_current_user, optional_get_current_user
 
-__all__ = [
-    "create_test_token",
-    "verify_test_token",
-    "get_current_user",
-    "optional_get_current_user",
-    "require_permission",
-    "TEST_SECRET_KEY",
-    "TEST_ALGORITHM",
-]
+__all__ = ["create_test_token", "verify_test_token", "get_current_user", "optional_get_current_user", "require_permission", "require_admin_role", "require_platform_owner", "TEST_SECRET_KEY", "TEST_ALGORITHM"]
+
+
+def _roles(user: Optional[dict]) -> set[str]:
+    """Normalize role strings while tolerating legacy dict-shaped role entries."""
+    if not user:
+        return set()
+    result = {str(r) for r in user.get("roles", []) if isinstance(r, str)}
+    result.update(str(r.get("permission")) for r in user.get("roles", []) if isinstance(r, dict) and r.get("permission"))
+    return result
 
 
 def require_permission(module: str, action: str):
-    """
-    Dependency factory: require a specific permission.
-    
-    Usage:
-        @router.post("/accounts", dependencies=[Depends(require_permission("dynamic", "create"))])
-    """
     async def _check(current_user: Optional[dict] = Depends(optional_get_current_user)):
-        # Allow unauthenticated access for NONE entities
-        # (endpoint logic will handle NONE/SCOPED distinction)
         if current_user is None:
-            return
-        
+            raise HTTPException(status_code=401, detail="Authentication required", headers={"WWW-Authenticate": "Bearer"})
         required = f"{module}:{action}"
-        
-        # Check if user has wildcard permission
-        if "*:*" in current_user.get("permissions", []):
-            return
-        
-        # Check direct permissions
-        if required in current_user.get("permissions", []):
-            return
-        
-        # Check roles for permission (test mode fallback)
-        roles = current_user.get("roles", [])
-        for role in roles:
-            if role == "admin":
-                return
-            if role == "dynamic_manager":
-                return
-            if role == "dynamic_operator" and action in ("read", "create", "update"):
-                return
-            if role == "dynamic_viewer" and action == "read":
-                return
-        
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions",
-        )
+        permissions = current_user.get("permissions", [])
+        roles = _roles(current_user)
+        if "*:*" in permissions or required in permissions or "admin" in roles or "dynamic_manager" in roles:
+            return current_user
+        if "dynamic_operator" in roles and action in ("read", "create", "update"):
+            return current_user
+        if "dynamic_viewer" in roles and action == "read":
+            return current_user
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
     return _check
+
+
+async def require_admin_role(user: dict = Depends(get_current_user)) -> dict:
+    """Require tenant administrator privileges for security-sensitive user management."""
+    if not ({"admin", "platform_owner"} & _roles(user)):
+        raise HTTPException(status_code=403, detail="Administrator privileges required")
+    return user
+
+
+def _designated_platform_owners() -> set:
+    raw = os.getenv("EOS_PLATFORM_OWNER_EMAILS", "")
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
+async def require_platform_owner(user: dict = Depends(get_current_user)) -> dict:
+    if "platform_owner" in _roles(user):
+        return user
+    email = (user.get("email") or "").strip().lower()
+    if email and email in _designated_platform_owners():
+        return user
+    raise HTTPException(status_code=403, detail="Platform owner privileges required")

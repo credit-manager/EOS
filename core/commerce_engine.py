@@ -20,6 +20,7 @@ Design:
   - Returns dicts consistently (not raw Row objects)
 """
 import json
+from decimal import Decimal
 from typing import Optional, List, Dict, Any
 
 from fastapi import HTTPException
@@ -279,12 +280,12 @@ def atomic_stock_receive(db: Session, tenant_id: str, item_id: str,
              "WHERE tenant_id=:t AND item_id=:item AND warehouse_id=:wh FOR UPDATE"),
         {"t": tenant_id, "item": item_id, "wh": warehouse_id},
     ).fetchone()
-    total_cost = qty * price
+    total_cost = Decimal(str(qty)) * Decimal(str(price))
     if existing:
-        old_qty = float(existing[1] or 0)
-        new_qty = old_qty + qty
-        old_cost = float(existing[2] or 0)
-        new_cost = ((old_qty * old_cost) + total_cost) / new_qty if new_qty > 0 else price
+        old_qty = Decimal(str(existing[1] or 0))
+        new_qty = old_qty + Decimal(str(qty))
+        old_cost = Decimal(str(existing[2] or 0))
+        new_cost = ((old_qty * old_cost) + total_cost) / new_qty if new_qty > 0 else Decimal(str(price))
         db.execute(
             text(f"UPDATE {T_STOCK} SET on_hand=:q, unit_cost=:uc, updated_at=:now WHERE id=:sid"),
             {"q": new_qty, "uc": new_cost, "sid": existing[0], "now": now()},

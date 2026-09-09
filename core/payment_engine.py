@@ -3,6 +3,7 @@ EOS Payment Gateway Engine
 Supports: Stripe, Mada, STC Pay, Bank Transfer, Cash
 """
 import uuid, json, secrets
+from decimal import Decimal
 from datetime import datetime
 from sqlalchemy import text
 
@@ -58,6 +59,8 @@ class PaymentGatewayEngine:
 
     def create_transaction(self, tenant_id, amount, currency="SAR", tx_type="payment",
                            ref_type=None, ref_id=None, customer_id=None, method=None):
+        if amount is None or float(amount) <= 0:
+            raise ValueError("Payment amount must be positive")
         tid = str(uuid.uuid4())
         ref_number = f"TXN-{secrets.token_hex(4).upper()}"
         self.db.execute(text(
@@ -71,30 +74,71 @@ class PaymentGatewayEngine:
         self.db.commit()
         return {"transaction_id": tid, "ref_number": ref_number, "status": "pending"}
 
-    def complete_transaction(self, transaction_id, gateway_response=None):
+    def complete_transaction(self, transaction_id, tenant_id, gateway_response=None):
+        row = self.db.execute(text(
+            "SELECT id FROM dbp_payment_transactions WHERE id = :id AND tenant_id = :t"
+        ), {"id": transaction_id, "t": tenant_id}).fetchone()
+        if not row:
+            return {"error": "Transaction not found"}
         self.db.execute(text(
             "UPDATE dbp_payment_transactions SET status='completed', completed_at=NOW(), "
-            "gateway_response = gateway_response || :resp WHERE id = :id"
-        ), {"id": transaction_id, "resp": json.dumps(gateway_response or {})})
+            "gateway_response = gateway_response || :resp WHERE id = :id AND tenant_id = :t"
+        ), {"id": transaction_id, "t": tenant_id,
+            "resp": json.dumps(gateway_response or {})})
         self.db.commit()
         return {"status": "completed", "transaction_id": transaction_id}
 
-    def fail_transaction(self, transaction_id, reason=""):
+    def fail_transaction(self, transaction_id, tenant_id, reason=""):
+        row = self.db.execute(text(
+            "SELECT id FROM dbp_payment_transactions WHERE id = :id AND tenant_id = :t"
+        ), {"id": transaction_id, "t": tenant_id}).fetchone()
+        if not row:
+            return {"error": "Transaction not found"}
         self.db.execute(text(
             "UPDATE dbp_payment_transactions SET status='failed', "
-            "gateway_response = gateway_response || :resp WHERE id = :id"
-        ), {"id": transaction_id, "resp": json.dumps({"failure_reason": reason})})
+            "gateway_response = gateway_response || :resp WHERE id = :id AND tenant_id = :t"
+        ), {"id": transaction_id, "t": tenant_id,
+            "resp": json.dumps({"failure_reason": reason})})
         self.db.commit()
         return {"status": "failed", "transaction_id": transaction_id}
 
-    def refund_transaction(self, transaction_id, amount=None):
+    def refund_transaction(self, transaction_id, tenant_id, amount=None):
+        # Fixed H9: lock the transaction row against concurrent refunds,
+        # preventing double-refund race conditions.
+        # P80.5D FIX: scope every refund read/write to the caller's tenant so a
+        # tenant cannot refund another tenant's transactions or drain its refundable.
         row = self.db.execute(text(
-            "SELECT * FROM dbp_payment_transactions WHERE id = :id"
-        ), {"id": transaction_id}).fetchone()
+            "SELECT * FROM dbp_payment_transactions WHERE id = :id AND tenant_id = :t FOR UPDATE"
+        ), {"id": transaction_id, "t": tenant_id}).fetchone()
         if not row:
             return {"error": "Transaction not found"}
         row_dict = dict(row._mapping)
-        refund_amount = float(amount) if amount else float(row_dict["amount"])
+
+        if row_dict["transaction_type"] == "refund":
+            return {"error": "Cannot refund a refund transaction"}
+
+        original_amount = row_dict["amount"]
+
+        # Fixed H10: validate refund amount against the original transaction,
+        # and subtract any amounts already refunded for this transaction to
+        # prevent over-refunding.
+        already_refunded = self.db.execute(text(
+            "SELECT COALESCE(SUM(amount),0) FROM dbp_payment_transactions "
+            "WHERE reference_type='payment' AND reference_id=:ref AND "
+            "transaction_type='refund' AND tenant_id = :t"
+        ), {"ref": transaction_id, "t": tenant_id}).fetchone()[0]
+
+        refundable = Decimal(str(original_amount or 0)) - Decimal(str(already_refunded or 0))
+        if amount is None:
+            refund_amount = refundable
+        else:
+            refund_amount = Decimal(str(amount))
+
+        if refund_amount <= 0:
+            return {"error": "Nothing left to refund"}
+        if refund_amount > refundable:
+            return {"error": f"Refund amount {refund_amount} exceeds refundable {refundable} for this transaction"}
+
         refund_id = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_payment_transactions "
@@ -103,7 +147,7 @@ class PaymentGatewayEngine:
         ), {"id": refund_id, "t": row_dict["tenant_id"], "amt": refund_amount,
              "cur": row_dict["currency"], "ref": transaction_id})
         self.db.commit()
-        return {"refund_id": refund_id, "amount": refund_amount, "status": "completed"}
+        return {"refund_id": refund_id, "amount": float(refund_amount), "status": "completed"}
 
     def list_transactions(self, tenant_id, status=None, limit=50):
         query = "SELECT * FROM dbp_payment_transactions WHERE tenant_id = :t"
@@ -116,13 +160,15 @@ class PaymentGatewayEngine:
         rows = self.db.execute(text(query), params).fetchall()
         return [dict(r._mapping) for r in rows]
 
-    def get_transaction(self, transaction_id):
+    def get_transaction(self, transaction_id, tenant_id):
         row = self.db.execute(text(
-            "SELECT * FROM dbp_payment_transactions WHERE id = :id"
-        ), {"id": transaction_id}).fetchone()
+            "SELECT * FROM dbp_payment_transactions WHERE id = :id AND tenant_id = :t"
+        ), {"id": transaction_id, "t": tenant_id}).fetchone()
         return dict(row._mapping) if row else None
 
     def create_payment_link(self, tenant_id, amount, description=None, email=None, expires_hours=24):
+        if amount is None or float(amount) <= 0:
+            raise ValueError("Payment amount must be positive")
         link_id = str(uuid.uuid4())
         token = secrets.token_urlsafe(32)
         self.db.execute(text(

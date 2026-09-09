@@ -38,7 +38,16 @@ class CustomerPortalEngine:
         self.db.commit()
 
     def _hash_password(self, password):
-        return hashlib.sha256(password.encode()).hexdigest()
+        salt = secrets.token_hex(16)
+        h = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
+        return f"{salt}${h.hex()}"
+
+    def _verify_password(self, password, stored):
+        if '$' not in stored:
+            return hashlib.sha256(password.encode()).hexdigest() == stored
+        salt, h = stored.split('$', 1)
+        new_h = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
+        return secrets.compare_digest(new_h.hex(), h)
 
     def register_portal_user(self, tenant_id, customer_id, email, password, full_name=None):
         uid = str(uuid.uuid4())
@@ -57,7 +66,7 @@ class CustomerPortalEngine:
         if not row:
             return {"error": "Invalid credentials"}
         rd = dict(row._mapping)
-        if rd["password_hash"] != self._hash_password(password):
+        if not self._verify_password(password, rd["password_hash"]):
             return {"error": "Invalid credentials"}
         token = secrets.token_urlsafe(32)
         session_id = str(uuid.uuid4())

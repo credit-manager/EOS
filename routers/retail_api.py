@@ -20,6 +20,7 @@ from core.industry_security import (
     verify_tenant_access, audit_log, post_journal,
     atomic_stock_receive, atomic_stock_issue,
     success_response, list_response, error_response,
+    get_tenant_config,
 )
 from core.commerce_engine import (
     get_item as _ce_get_item,
@@ -223,7 +224,8 @@ def create_pos_sale(body: POSSaleCreate, user: dict = Depends(get_current_user),
         subtotal += line_total
         total_discount += line_discount
 
-    tax_rate = 14.0
+    # Fixed H11: VAT rate is now configurable per tenant (default 15%).
+    tax_rate = float(get_tenant_config(db, t, "vat_rate", 15.0))
     total_tax = subtotal * (tax_rate / 100)
     grand_total = subtotal + total_tax
 

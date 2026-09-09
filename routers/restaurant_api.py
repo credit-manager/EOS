@@ -20,6 +20,7 @@ from core.industry_security import (
     audit_log, post_journal,
     atomic_stock_receive, atomic_stock_issue,
     success_response, list_response, error_response,
+    get_tenant_config,
 )
 from core.commerce_engine import (
     get_item as _ce_get_item,
@@ -741,7 +742,9 @@ def create_order(body: OrderCreate, user: dict = Depends(get_current_user), db=D
             line_total -= line_total * l.discount_pct / 100
         subtotal += line_total
 
-    tax = subtotal * 0.15
+    # Fixed H12: VAT rate is now configurable per tenant (default 15%).
+    tax_rate = float(get_tenant_config(db, t, "vat_rate", 15.0))
+    tax = subtotal * (tax_rate / 100)
     total = subtotal + tax
 
     db.execute(text("INSERT INTO dbp_restaurant_orders "

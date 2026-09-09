@@ -44,7 +44,7 @@ async def create_employee(cid: str, body: dict, user: dict = Depends(get_current
 async def update_employee(eid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     if not body:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": "At least one field required"}})
-    result = HREngine(db).update_employee(eid, **body)
+    result = HREngine(db).update_employee(eid, tenant_id=user.get("tenant_id"), **body)
     if not result["success"]:
         if result["error"] == "Employee not found":
             raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Employee not found"}})
@@ -74,7 +74,7 @@ async def create_leave_request(cid: str, body: dict, user: dict = Depends(get_cu
 
 @router.post("/leave-requests/{rid}/approve", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def approve_leave_request(rid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    result = HREngine(db).approve_leave_request(rid, user.get("id") or "admin")
+    result = HREngine(db).approve_leave_request(rid, user.get("id") or "admin", user.get("tenant_id"))
     if not result["success"]:
         if result["error"] == "Leave request not found":
             raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Leave request not found"}})
@@ -123,7 +123,7 @@ async def create_payroll_run(cid: str, body: dict, user: dict = Depends(get_curr
 
 @router.get("/payroll-runs/{rid}", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_payroll_run(rid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    run = HREngine(db).get_payroll_run(rid)
+    run = HREngine(db).get_payroll_run(rid, user.get("tenant_id"))
     if not run:
         raise HTTPException(404, detail={"status": "error", "error": {"code": "NOT_FOUND", "message": "Payroll run not found"}})
     return {"status": "success", "data": run}

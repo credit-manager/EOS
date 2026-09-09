@@ -41,7 +41,7 @@ async def create_model(cid: str, body: dict,
 @router.get("/ai-models/{mid}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_model(mid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    model = AIEngine(db).get_model(mid)
+    model = AIEngine(db).get_model(mid, user["tenant_id"])
     if not model:
         raise HTTPException(404, detail={"status": "error",
             "error": {"code": "NOT_FOUND", "message": "Model not found"}})
@@ -53,12 +53,12 @@ async def get_model(mid: str, user: dict = Depends(get_current_user), db: Sessio
 async def update_model(mid: str, body: dict,
                       user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     eng = AIEngine(db)
-    existing = eng.get_model(mid)
+    existing = eng.get_model(mid, user["tenant_id"])
     if not existing:
         raise HTTPException(404, detail={"status": "error",
             "error": {"code": "NOT_FOUND", "message": "Model not found"}})
     kw = {k: v for k, v in body.items() if v is not None}
-    result = eng.update_model(mid, **kw)
+    result = eng.update_model(mid, user["tenant_id"], **kw)
     db.commit()
     return {"status": "success", "data": result}
 
@@ -85,7 +85,7 @@ async def create_prediction(cid: str, body: dict,
             raise HTTPException(400, detail={"status": "error",
                 "error": {"code": "MISSING", "message": f"{f} required"}})
     eng = AIEngine(db)
-    if not eng.get_model(body["model_id"]):
+    if not eng.get_model(body["model_id"], user["tenant_id"]):
         raise HTTPException(400, detail={"status": "error",
             "error": {"code": "BAD_REQUEST", "message": "Invalid model_id"}})
     pid = eng.create_prediction(
@@ -103,7 +103,7 @@ async def create_prediction(cid: str, body: dict,
 @router.get("/ai-predictions/{pid}",
             dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_prediction(pid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    pred = AIEngine(db).get_prediction(pid)
+    pred = AIEngine(db).get_prediction(pid, user["tenant_id"])
     if not pred:
         raise HTTPException(404, detail={"status": "error",
             "error": {"code": "NOT_FOUND", "message": "Prediction not found"}})
@@ -118,11 +118,11 @@ async def acknowledge_prediction(pid: str, body: dict,
         raise HTTPException(400, detail={"status": "error",
             "error": {"code": "MISSING", "message": "actual_value required"}})
     eng = AIEngine(db)
-    pred = eng.get_prediction(pid)
+    pred = eng.get_prediction(pid, user["tenant_id"])
     if not pred:
         raise HTTPException(404, detail={"status": "error",
             "error": {"code": "NOT_FOUND", "message": "Prediction not found"}})
-    result = eng.acknowledge_prediction(pid, body["actual_value"])
+    result = eng.acknowledge_prediction(pid, body["actual_value"], user["tenant_id"])
     db.commit()
     return {"status": "success", "data": result}
 
@@ -164,12 +164,12 @@ async def acknowledge_recommendation(rid: str, user: dict = Depends(get_current_
                                     db: Session = Depends(get_db)):
     eng = AIEngine(db)
     row = db.execute(
-        text("SELECT id FROM dbp_ai_recommendations WHERE id=:id"), {"id": rid}
+        text("SELECT id FROM dbp_ai_recommendations WHERE id=:id AND tenant_id=:t"), {"id": rid, "t": user["tenant_id"]}
     ).first()
     if not row:
         raise HTTPException(404, detail={"status": "error",
             "error": {"code": "NOT_FOUND", "message": "Recommendation not found"}})
-    result = eng.acknowledge_recommendation(rid, user.get("sub", "user"))
+    result = eng.acknowledge_recommendation(rid, user.get("sub", "user"), user["tenant_id"])
     db.commit()
     return {"status": "success", "data": result}
 
@@ -208,12 +208,12 @@ async def create_anomaly(cid: str, body: dict,
 async def resolve_anomaly(aid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     eng = AIEngine(db)
     row = db.execute(
-        text("SELECT id FROM dbp_ai_anomalies WHERE id=:id"), {"id": aid}
+        text("SELECT id FROM dbp_ai_anomalies WHERE id=:id AND tenant_id=:t"), {"id": aid, "t": user["tenant_id"]}
     ).first()
     if not row:
         raise HTTPException(404, detail={"status": "error",
             "error": {"code": "NOT_FOUND", "message": "Anomaly not found"}})
-    result = eng.resolve_anomaly(aid, user.get("sub", "user"))
+    result = eng.resolve_anomaly(aid, user.get("sub", "user"), user["tenant_id"])
     db.commit()
     return {"status": "success", "data": result}
 

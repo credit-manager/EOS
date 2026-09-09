@@ -15,8 +15,8 @@ router = APIRouter(prefix="/api/v1/dynamic", tags=["Finance & Treasury"])
 
 
 @router.get("/companies/{cid}/bank-accounts", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_bank_accounts(cid: str, db: Session = Depends(get_db)):
-    return {"status": "success", "data": FinanceEngine(db).get_bank_accounts(cid)}
+async def list_bank_accounts(cid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return {"status": "success", "data": FinanceEngine(db).get_bank_accounts(cid, user.get("tenant_id"))}
 
 
 @router.post("/companies/{cid}/bank-accounts", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
@@ -32,8 +32,8 @@ async def create_bank_account(cid: str, body: dict, user: dict = Depends(get_cur
 
 
 @router.get("/companies/{cid}/payments", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_payments(cid: str, payment_type: Optional[str] = None, status: Optional[str] = None, db: Session = Depends(get_db)):
-    return {"status": "success", "data": FinanceEngine(db).list_payments(cid, payment_type=payment_type, status=status)}
+async def list_payments(cid: str, payment_type: Optional[str] = None, status: Optional[str] = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return {"status": "success", "data": FinanceEngine(db).list_payments(cid, user.get("tenant_id"), payment_type=payment_type, status=status)}
 
 
 @router.post("/companies/{cid}/payments", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
@@ -56,7 +56,7 @@ async def create_payment(cid: str, body: dict, user: dict = Depends(get_current_
 
 @router.post("/payments/{pid}/approve", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def approve_payment(pid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    result = FinanceEngine(db).approve_payment(pid, user.get("id") or user.get("user_id"))
+    result = FinanceEngine(db).approve_payment(pid, user.get("id") or user.get("user_id"), user.get("tenant_id"))
     if not result["success"]:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "APPROVE_FAILED", "message": result["error"]}})
     db.commit()
@@ -91,13 +91,13 @@ async def convert_amount(body: dict, db: Session = Depends(get_db)):
 
 
 @router.get("/companies/{cid}/budgets", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_budgets(cid: str, fiscal_year_id: Optional[str] = None, db: Session = Depends(get_db)):
-    return {"status": "success", "data": FinanceEngine(db).get_budgets(cid, fiscal_year_id=fiscal_year_id)}
+async def list_budgets(cid: str, fiscal_year_id: Optional[str] = None, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return {"status": "success", "data": FinanceEngine(db).get_budgets(cid, user.get("tenant_id"), fiscal_year_id=fiscal_year_id)}
 
 
 @router.get("/companies/{cid}/budgets/utilization", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def budget_utilization(cid: str, db: Session = Depends(get_db)):
-    return {"status": "success", "data": FinanceEngine(db).get_budget_utilization(cid)}
+async def budget_utilization(cid: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return {"status": "success", "data": FinanceEngine(db).get_budget_utilization(cid, user.get("tenant_id"))}
 
 
 @router.post("/companies/{cid}/budgets", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])

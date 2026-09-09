@@ -50,8 +50,8 @@ async def get_company(company_id: str, user: dict = Depends(get_current_user), d
 
 
 @router.put("/companies/{company_id}", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
-async def update_company(company_id: str, body: dict, db: Session = Depends(get_db)):
-    ok = ERPFoundationEngine(db).update_company(company_id, body)
+async def update_company(company_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    ok = ERPFoundationEngine(db).update_company(company_id, body, _tenant(user))
     if not ok:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "NO_CHANGES", "message": "No valid fields to update"}})
     db.commit()
@@ -61,8 +61,8 @@ async def update_company(company_id: str, body: dict, db: Session = Depends(get_
 # ── BRANCHES ──
 
 @router.get("/companies/{company_id}/branches", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_branches(company_id: str, db: Session = Depends(get_db)):
-    return {"status": "success", "data": ERPFoundationEngine(db).get_branches(company_id)}
+async def list_branches(company_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return {"status": "success", "data": ERPFoundationEngine(db).get_branches(company_id, _tenant(user))}
 
 
 @router.post("/companies/{company_id}/branches", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
@@ -80,13 +80,13 @@ async def create_branch(company_id: str, body: dict, user: dict = Depends(get_cu
 # ── DEPARTMENTS ──
 
 @router.get("/companies/{company_id}/departments", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_departments(company_id: str, db: Session = Depends(get_db)):
-    return {"status": "success", "data": ERPFoundationEngine(db).get_departments(company_id)}
+async def list_departments(company_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return {"status": "success", "data": ERPFoundationEngine(db).get_departments(company_id, _tenant(user))}
 
 
 @router.get("/companies/{company_id}/departments/tree", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def get_department_tree(company_id: str, db: Session = Depends(get_db)):
-    return {"status": "success", "data": ERPFoundationEngine(db).get_department_tree(company_id)}
+async def get_department_tree(company_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return {"status": "success", "data": ERPFoundationEngine(db).get_department_tree(company_id, _tenant(user))}
 
 
 @router.post("/companies/{company_id}/departments", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
@@ -103,8 +103,8 @@ async def create_department(company_id: str, body: dict, user: dict = Depends(ge
 # ── FISCAL YEARS ──
 
 @router.get("/companies/{company_id}/fiscal-years", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_fiscal_years(company_id: str, db: Session = Depends(get_db)):
-    return {"status": "success", "data": ERPFoundationEngine(db).get_fiscal_years(company_id)}
+async def list_fiscal_years(company_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return {"status": "success", "data": ERPFoundationEngine(db).get_fiscal_years(company_id, _tenant(user))}
 
 
 @router.post("/companies/{company_id}/fiscal-years", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
@@ -121,7 +121,7 @@ async def create_fiscal_year(company_id: str, body: dict, user: dict = Depends(g
 
 @router.post("/fiscal-years/{fy_id}/close", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
 async def close_fiscal_year(fy_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    ok = ERPFoundationEngine(db).close_fiscal_year(fy_id)
+    ok = ERPFoundationEngine(db).close_fiscal_year(fy_id, _tenant(user))
     if not ok:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "NOT_CLOSEABLE", "message": "Year not found or already closed"}})
     db.commit()
@@ -138,8 +138,8 @@ async def list_currencies(user: dict = Depends(get_current_user), db: Session = 
 # ── COST CENTERS ──
 
 @router.get("/companies/{company_id}/cost-centers", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
-async def list_cost_centers(company_id: str, db: Session = Depends(get_db)):
-    return {"status": "success", "data": ERPFoundationEngine(db).get_cost_centers(company_id)}
+async def list_cost_centers(company_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return {"status": "success", "data": ERPFoundationEngine(db).get_cost_centers(company_id, _tenant(user))}
 
 
 @router.post("/companies/{company_id}/cost-centers", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])

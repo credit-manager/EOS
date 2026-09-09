@@ -142,25 +142,25 @@ class SystemEngine:
         self.db.commit()
         return iid
 
-    def update_data_import(self, import_id: str, **kw) -> Dict:
+    def update_data_import(self, import_id: str, tenant_id: str, **kw) -> Dict:
         row = self.db.execute(
-            text("SELECT * FROM dbp_data_imports WHERE id=:id"),
-            {"id": import_id},
+            text("SELECT * FROM dbp_data_imports WHERE id=:id AND tenant_id=:tenant_id"),
+            {"id": import_id, "tenant_id": tenant_id},
         ).mappings().first()
         if not row:
             return None
         sets = []
-        params: dict = {"id": import_id}
+        params: dict = {"id": import_id, "tenant_id": tenant_id}
         for field in ("success_count", "error_count", "status", "errors", "completed_at"):
             if field in kw and kw[field] is not None:
                 val = json.dumps(kw[field]) if field == "errors" else kw[field]
                 sets.append(f"{field}=:{field}")
                 params[field] = val
         if sets:
-            self.db.execute(text(f"UPDATE dbp_data_imports SET {', '.join(sets)} WHERE id=:id"), params)
+            self.db.execute(text(f"UPDATE dbp_data_imports SET {', '.join(sets)} WHERE id=:id AND tenant_id=:tenant_id"), params)
             self.db.commit()
         updated = self.db.execute(
-            text("SELECT * FROM dbp_data_imports WHERE id=:id"), {"id": import_id},
+            text("SELECT * FROM dbp_data_imports WHERE id=:id AND tenant_id=:tenant_id"), {"id": import_id, "tenant_id": tenant_id},
         ).mappings().first()
         return self._serialize(updated)
 

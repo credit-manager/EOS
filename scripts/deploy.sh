@@ -1,131 +1,71 @@
 #!/bin/bash
-# EOS Production Deployment Script
-# Usage: ./scripts/deploy.sh [domain] [email]
+# EOS DBP - Production Deployment Script
+# Run this on the VPS after uploading EOS-Release-1.0
 
 set -e
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+echo "=== EOS DBP Deployment ==="
+echo "Time: $(date)"
 
 # Configuration
-DOMAIN=${1:-${DOMAIN}}
-EMAIL=${2:-${LETSENCRYPT_EMAIL}}
+APP_DIR="/home/eos/eos-dbp"
+DB_NAME="eos_main"
+DB_USER="eos"
 
-if [ -z "$DOMAIN" ]; then
-    echo -e "${RED}Error: DOMAIN not provided${NC}"
-    echo "Usage: ./scripts/deploy.sh your-domain.com admin@your-domain.com"
-    exit 1
+# Step 1: Setup application directory
+echo "[1/8] Setting up application directory..."
+mkdir -p $APP_DIR
+cp -r . $APP_DIR/
+cd $APP_DIR
+
+# Step 2: Create environment file
+echo "[2/8] Creating environment file..."
+if [ ! -f .env ]; then
+    cat > .env << EOF
+DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}
+SECRET_KEY=$(openssl rand -hex 32)
+ENCRYPTION_KEY=$(openssl rand -hex 32)
+CORS_ORIGINS=https://app.yourdomain.com
+ALLOWED_HOSTS=api.yourdomain.com,localhost
+EOF
+    echo "Created .env file"
+else
+    echo ".env already exists"
 fi
 
-if [ -z "$EMAIL" ]; then
-    echo -e "${RED}Error: Email for Let's Encrypt not provided${NC}"
-    echo "Usage: ./scripts/deploy.sh your-domain.com admin@your-domain.com"
-    exit 1
+# Step 3: Install dependencies
+echo "[3/8] Installing dependencies..."
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Step 4: Setup PostgreSQL
+echo "[4/8] Setting up PostgreSQL..."
+sudo -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" || true
+sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" || true
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};" || true
+
+# Step 5: Restore database
+echo "[5/8] Restoring database..."
+if [ -f backups/eos_production_backup.sql ]; then
+    PGPASSWORD=$DB_PASSWORD psql -h localhost -U $DB_USER -d $DB_NAME < backups/eos_production_backup.sql
+    echo "Database restored"
+else
+    echo "No backup found, skipping restore"
 fi
 
-# Load environment
-if [ -f .env.production ]; then
-    export $(cat .env.production | grep -v '^#' | xargs)
-fi
+# Step 6: Run migrations
+echo "[6/8] Running migrations..."
+alembic upgrade head || true
 
-echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║       EOS Dynamic Business Platform — Deployment             ║${NC}"
-echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════╝${NC}"
-echo ""
-echo "Domain: $DOMAIN"
-echo "Email:  $EMAIL"
-echo ""
+# Step 7: Build Docker image
+echo "[7/8] Building Docker image..."
+docker build -t eos-dbp .
 
-# ═══════════════════════════════════════════════
-# 1. Validate production config
-# ═══════════════════════════════════════════════
-echo -e "${YELLOW}▶ Validating production configuration...${NC}"
-python core/production_config.py || {
-    echo -e "${RED}Production config validation failed${NC}"
-    exit 1
-}
-echo -e "${GREEN}✓ Configuration valid${NC}"
-echo ""
+# Step 8: Start services
+echo "[8/8] Starting services..."
+docker-compose up -d
 
-# ═══════════════════════════════════════════════
-# 2. Build and start containers
-# ═══════════════════════════════════════════════
-echo -e "${YELLOW}▶ Building Docker images...${NC}"
-docker-compose build --no-cache api
-
-echo -e "${YELLOW}▶ Starting database...${NC}"
-docker-compose up -d db
-
-echo -e "${YELLOW}▶ Waiting for database to be healthy...${NC}"
-timeout=60
-while ! docker-compose exec -T db pg_isready -U $POSTGRES_USER -d $POSTGRES_DB >/dev/null 2>&1; do
-    sleep 2
-    timeout=$((timeout - 2))
-    if [ $timeout -le 0 ]; then
-        echo -e "${RED}Database startup timeout${NC}"
-        exit 1
-    fi
-done
-echo -e "${GREEN}✓ Database ready${NC}"
-
-echo -e "${YELLOW}▶ Starting API...${NC}"
-docker-compose up -d api
-
-echo -e "${YELLOW}▶ Waiting for API to be healthy...${NC}"
-timeout=60
-while ! curl -sf http://localhost:8000/health >/dev/null 2>&1; do
-    sleep 2
-    timeout=$((timeout - 2))
-    if [ $timeout -le 0 ]; then
-        echo -e "${RED}API startup timeout${NC}"
-        docker-compose logs api
-        exit 1
-    fi
-done
-echo -e "${GREEN}✓ API ready${NC}"
-
-# ═══════════════════════════════════════════════
-# 3. Obtain SSL certificate
-# ═══════════════════════════════════════════════
-echo -e "${YELLOW}▶ Obtaining Let's Encrypt certificate for $DOMAIN...${NC}"
-
-# Start nginx with HTTP-only config first
-docker-compose up -d nginx
-
-# Wait for nginx
-sleep 5
-
-# Get certificate
-docker run --rm \
-    -v "$(pwd)/certbot/conf:/etc/letsencrypt" \
-    -v "$(pwd)/certbot/www:/var/www/certbot" \
-    certbot/certbot certonly \
-    --webroot -w /var/www/certbot \
-    --email $EMAIL \
-    --agree-tos \
-    --no-eff-email \
-    -d $DOMAIN \
-    -d www.$DOMAIN || {
-    echo -e "${RED}Certificate generation failed${NC}"
-    echo "Make sure DNS is pointing to this server"
-    exit 1
-}
-
-echo -e "${GREEN}✓ Certificate obtained${NC}"
-
-# ═══════════════════════════════════════════════
-# 4. Reload nginx with SSL config
-# ═══════════════════════════════════════════════
-echo -e "${YELLOW}▶ Reloading nginx with SSL...${NC}"
-docker-compose exec nginx nginx -s reload
-
-echo -e "${GREEN}✓ Deployment complete!${NC}"
-echo ""
-echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}EOS is now running at: https://$DOMAIN${NC}"
-echo -e "${GREEN}API docs: https://$DOMAIN/docs${NC}"
-echo -e "${GREEN}Landing:  https://$DOMAIN/app${NC}"
-echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
+echo "=== Deployment Complete ==="
+echo "API: http://localhost:8000"
+echo "Health: http://localhost:8000/health"

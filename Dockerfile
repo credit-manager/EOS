@@ -1,64 +1,31 @@
 # EOS Dynamic Business Platform — Production Dockerfile
-# Multi-stage build for smaller production image
+# Multi-stage build: React frontend + Python runtime
 
-# ═══════════════════════════════════════════════
-# Stage 1: Build dependencies
-# ═══════════════════════════════════════════════
-FROM python:3.14-slim AS builder
+FROM node:20-bookworm-slim AS frontend-builder
+WORKDIR /frontend
+COPY erp-system/frontend/package.json ./package.json
+RUN npm install --no-audit --no-fund
+COPY erp-system/frontend/ ./
+RUN npm run build
 
+FROM python:3.12-slim AS python-builder
 WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
-# ═══════════════════════════════════════════════
-# Stage 2: Production runtime
-# ═══════════════════════════════════════════════
-FROM python:3.14-slim
-
+FROM python:3.12-slim
 WORKDIR /app
-
-# Create non-root user
 RUN groupadd -r eos && useradd -r -g eos eos
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy Python packages from builder
-COPY --from=builder /root/.local /home/eos/.local
-
-# Copy application code
+RUN apt-get update && apt-get install -y --no-install-recommends libpq5 curl && rm -rf /var/lib/apt/lists/*
+COPY --from=python-builder /root/.local /home/eos/.local
 COPY --chown=eos:eos . .
-
-# Switch to non-root user
+RUN rm -rf /app/erp-system/frontend/dist
+COPY --from=frontend-builder --chown=eos:eos /frontend/dist /app/erp-system/frontend/dist
+RUN chmod 0755 /app/docker/entrypoint.sh
 USER eos
-
-# Add local packages to PATH
 ENV PATH=/home/eos/.local/bin:$PATH
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Expose port
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 CMD curl -f http://localhost:8000/health || exit 1
 EXPOSE 8000
-
-# Run with gunicorn for production
-CMD ["gunicorn", "main:app", \
-     "--workers", "4", \
-     "--worker-class", "uvicorn.workers.UvicornWorker", \
-     "--bind", "0.0.0.0:8000", \
-     "--timeout", "120", \
-     "--keep-alive", "5", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-"]
+ENTRYPOINT ["/app/docker/entrypoint.sh"]

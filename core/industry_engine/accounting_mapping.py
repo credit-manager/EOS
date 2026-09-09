@@ -243,6 +243,121 @@ class AccountingMappingEngine:
         )
         self._mappings["trading"] = trading_mappings
 
+        # Tourism accounting mappings
+        tourism_mappings = IndustryAccountingMapping(
+            industry="tourism",
+            mappings=[
+                # Booking Payment (Customer Deposit)
+                AccountMapping(
+                    code="BOOKING_DEPOSIT", name="Booking Deposit", name_ar="دفعة حجز",
+                    event="booking_deposit", journal_type=JournalType.RECEIPT,
+                    debit_account="1100",  # Cash/Bank
+                    credit_account="2150",  # Customer Deposits (Liability)
+                    amount_field="deposit_amount",
+                    description_template="Deposit for booking {booking_number}",
+                    posting_trigger=PostingTrigger.ON_CREATE,
+                ),
+                # Booking Confirmation (Revenue Recognition)
+                AccountMapping(
+                    code="BOOKING_REVENUE", name="Booking Revenue", name_ar="إيراد الحجز",
+                    event="booking_confirmed", journal_type=JournalType.SALES,
+                    debit_account="1200",  # Accounts Receivable
+                    credit_account="4100",  # Tourism Revenue
+                    amount_field="total_amount",
+                    description_template="Booking revenue: {booking_number}",
+                    posting_trigger=PostingTrigger.ON_APPROVE,
+                ),
+                # Hotel Cost
+                AccountMapping(
+                    code="HOTEL_COST", name="Hotel Cost", name_ar="تكلفة الفندق",
+                    event="hotel_booking_cost", journal_type=JournalType.PURCHASE,
+                    debit_account="5100",  # Hotel Costs
+                    credit_account="2100",  # Accounts Payable (Hotel)
+                    amount_field="hotel_cost",
+                    cost_center_field="booking_id",
+                    description_template="Hotel cost for booking: {booking_number}",
+                ),
+                # Flight Cost
+                AccountMapping(
+                    code="FLIGHT_COST", name="Flight Cost", name_ar="تكلفة الطيران",
+                    event="flight_ticket_cost", journal_type=JournalType.PURCHASE,
+                    debit_account="5110",  # Flight Costs
+                    credit_account="2100",  # Accounts Payable (Airline)
+                    amount_field="flight_cost",
+                    cost_center_field="booking_id",
+                    description_template="Flight cost for booking: {booking_number}",
+                ),
+                # Commission Revenue
+                AccountMapping(
+                    code="COMMISSION_REVENUE", name="Commission Revenue", name_ar="إيراد العمولة",
+                    event="commission_received", journal_type=JournalType.SALES,
+                    debit_account="1200",  # Receivable (from supplier)
+                    credit_account="4200",  # Commission Revenue
+                    amount_field="commission_amount",
+                    description_template="Commission on booking: {booking_number}",
+                ),
+                # Visa Fee Revenue
+                AccountMapping(
+                    code="VISA_FEE", name="Visa Fee", name_ar="رسوم التأشيرة",
+                    event="visa_fee_collected", journal_type=JournalType.SALES,
+                    debit_account="1200",  # Receivable
+                    credit_account="4300",  # Service Fees Revenue
+                    amount_field="visa_fee",
+                    description_template="Visa fee: {visa_number} - {passenger_name}",
+                ),
+                # Transfer Service Revenue
+                AccountMapping(
+                    code="TRANSFER_REVENUE", name="Transfer Revenue", name_ar="إيراد الانتقال",
+                    event="transfer_service", journal_type=JournalType.SALES,
+                    debit_account="1200",  # Receivable
+                    credit_account="4400",  # Transfer Services Revenue
+                    amount_field="transfer_amount",
+                    description_template="Transfer service: {transfer_number}",
+                ),
+                # Tour Guide Payment
+                AccountMapping(
+                    code="GUIDE_PAYMENT", name="Guide Payment", name_ar="دفع للمرشد",
+                    event="guide_payment", journal_type=JournalType.PAYMENT,
+                    debit_account="5120",  # Guide Costs
+                    credit_account="1100",  # Cash/Bank
+                    amount_field="guide_fee",
+                    description_template="Guide payment: {guide_name} - {booking_number}",
+                ),
+                # Cancellation Refund
+                AccountMapping(
+                    code="CANCELLATION_REFUND", name="Cancellation Refund", name_ar="استرداد الإلغاء",
+                    event="booking_cancelled", journal_type=JournalType.PAYMENT,
+                    debit_account="4150",  # Sales Returns & Allowances
+                    credit_account="1100",  # Cash/Bank
+                    amount_field="refund_amount",
+                    description_template="Refund for cancelled booking: {booking_number}",
+                ),
+            ],
+            account_patterns={
+                "cash": "1110",
+                "bank": "1120",
+                "receivable": "1200",
+                "customer_deposits": "2150",
+                "payable_hotel": "2110",
+                "payable_airline": "2120",
+                "tourism_revenue": "4100",
+                "commission_revenue": "4200",
+                "service_fees": "4300",
+                "transfer_revenue": "4400",
+                "sales_returns": "4150",
+                "hotel_costs": "5100",
+                "flight_costs": "5110",
+                "guide_costs": "5120",
+                "visa_costs": "5130",
+                "transport_costs": "5140",
+            },
+            tax_config={
+                "vat_rate": 0.15,  # 15% VAT for tourism services
+                "tax_exempt_services": ["umrah", "hajj"],  # Religious tourism may be exempt
+            },
+        )
+        self._mappings["tourism"] = tourism_mappings
+
     def register(self, mapping: IndustryAccountingMapping):
         """Register industry accounting mappings."""
         self._mappings[mapping.industry] = mapping

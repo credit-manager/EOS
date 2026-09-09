@@ -59,14 +59,14 @@ class AIEngine:
         rows = self.db.execute(text(sql), params).mappings().all()
         return [self._serialize(r) for r in rows]
 
-    def get_model(self, model_id: str) -> Optional[Dict]:
+    def get_model(self, model_id: str, tenant_id: str) -> Optional[Dict]:
         row = self.db.execute(
-            text("SELECT * FROM dbp_ai_models WHERE id=:id"), {"id": model_id}
+            text("SELECT * FROM dbp_ai_models WHERE id=:id AND tenant_id=:tenant_id"), {"id": model_id, "tenant_id": tenant_id}
         ).mappings().first()
         return self._serialize(row) if row else None
 
-    def update_model(self, model_id: str, **kw) -> Dict:
-        sets, params = [], {"id": model_id}
+    def update_model(self, model_id: str, tenant_id: str, **kw) -> Dict:
+        sets, params = [], {"id": model_id, "tenant_id": tenant_id}
         for field in ("name", "model_type", "target_entity", "status", "accuracy_score", "trained_at"):
             if field in kw:
                 sets.append(f"{field}=:{field}")
@@ -76,10 +76,10 @@ class AIEngine:
             params["config"] = json.dumps(kw["config"]) if kw["config"] is not None else None
         if sets:
             self.db.execute(
-                text(f"UPDATE dbp_ai_models SET {','.join(sets)} WHERE id=:id"), params
+                text(f"UPDATE dbp_ai_models SET {','.join(sets)} WHERE id=:id AND tenant_id=:tenant_id"), params
             )
             self.db.commit()
-        return self.get_model(model_id)
+        return self.get_model(model_id, tenant_id)
 
     # ------------------------------------------------------------------ predictions
     def create_prediction(
@@ -117,9 +117,9 @@ class AIEngine:
         self.db.commit()
         return pid
 
-    def get_prediction(self, prediction_id: str) -> Optional[Dict]:
+    def get_prediction(self, prediction_id: str, tenant_id: str) -> Optional[Dict]:
         row = self.db.execute(
-            text("SELECT * FROM dbp_ai_predictions WHERE id=:id"), {"id": prediction_id}
+            text("SELECT * FROM dbp_ai_predictions WHERE id=:id AND tenant_id=:tenant_id"), {"id": prediction_id, "tenant_id": tenant_id}
         ).mappings().first()
         return self._serialize(row) if row else None
 
@@ -148,18 +148,19 @@ class AIEngine:
         rows = self.db.execute(text(sql), params).mappings().all()
         return [self._serialize(r) for r in rows]
 
-    def acknowledge_prediction(self, prediction_id: str, actual_value) -> Dict:
+    def acknowledge_prediction(self, prediction_id: str, actual_value, tenant_id: str) -> Dict:
         self.db.execute(
             text(
-                "UPDATE dbp_ai_predictions SET actual_value=:av, status='verified' WHERE id=:id"
+                "UPDATE dbp_ai_predictions SET actual_value=:av, status='verified' WHERE id=:id AND tenant_id=:tenant_id"
             ),
             {
                 "av": json.dumps(actual_value) if not isinstance(actual_value, str) else actual_value,
                 "id": prediction_id,
+                "tenant_id": tenant_id,
             },
         )
         self.db.commit()
-        return self.get_prediction(prediction_id)
+        return self.get_prediction(prediction_id, tenant_id)
 
     # ------------------------------------------------------------------ recommendations
     def create_recommendation(
@@ -214,20 +215,20 @@ class AIEngine:
         rows = self.db.execute(text(sql), params).mappings().all()
         return [self._serialize(r) for r in rows]
 
-    def acknowledge_recommendation(self, rec_id: str, acknowledged_by: str) -> Dict:
+    def acknowledge_recommendation(self, rec_id: str, acknowledged_by: str, tenant_id: str) -> Dict:
         self.db.execute(
             text(
                 "UPDATE dbp_ai_recommendations SET status='acknowledged', "
-                "acknowledged_by=:ab, acknowledged_at=now() WHERE id=:id"
+                "acknowledged_by=:ab, acknowledged_at=now() WHERE id=:id AND tenant_id=:tenant_id"
             ),
-            {"ab": acknowledged_by, "id": rec_id},
+            {"ab": acknowledged_by, "id": rec_id, "tenant_id": tenant_id},
         )
         self.db.commit()
-        return self._get_recommendation(rec_id)
+        return self._get_recommendation(rec_id, tenant_id)
 
-    def _get_recommendation(self, rec_id: str) -> Optional[Dict]:
+    def _get_recommendation(self, rec_id: str, tenant_id: str) -> Optional[Dict]:
         row = self.db.execute(
-            text("SELECT * FROM dbp_ai_recommendations WHERE id=:id"), {"id": rec_id}
+            text("SELECT * FROM dbp_ai_recommendations WHERE id=:id AND tenant_id=:tenant_id"), {"id": rec_id, "tenant_id": tenant_id}
         ).mappings().first()
         return self._serialize(row) if row else None
 
@@ -290,20 +291,20 @@ class AIEngine:
         rows = self.db.execute(text(sql), params).mappings().all()
         return [self._serialize(r) for r in rows]
 
-    def resolve_anomaly(self, anomaly_id: str, resolved_by: str) -> Dict:
+    def resolve_anomaly(self, anomaly_id: str, resolved_by: str, tenant_id: str) -> Dict:
         self.db.execute(
             text(
                 "UPDATE dbp_ai_anomalies SET status='resolved', "
-                "resolved_by=:rb, resolved_at=now() WHERE id=:id"
+                "resolved_by=:rb, resolved_at=now() WHERE id=:id AND tenant_id=:tenant_id"
             ),
-            {"rb": resolved_by, "id": anomaly_id},
+            {"rb": resolved_by, "id": anomaly_id, "tenant_id": tenant_id},
         )
         self.db.commit()
-        return self._get_anomaly(anomaly_id)
+        return self._get_anomaly(anomaly_id, tenant_id)
 
-    def _get_anomaly(self, anomaly_id: str) -> Optional[Dict]:
+    def _get_anomaly(self, anomaly_id: str, tenant_id: str) -> Optional[Dict]:
         row = self.db.execute(
-            text("SELECT * FROM dbp_ai_anomalies WHERE id=:id"), {"id": anomaly_id}
+            text("SELECT * FROM dbp_ai_anomalies WHERE id=:id AND tenant_id=:tenant_id"), {"id": anomaly_id, "tenant_id": tenant_id}
         ).mappings().first()
         return self._serialize(row) if row else None
 
