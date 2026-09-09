@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
-from core.auth import require_permission, get_current_user
+from core.auth import require_permission, get_current_user, require_platform_owner
 from core.rate_limit import read_limiter, write_limiter
 from core.subscription_engine import SubscriptionEngine
 
@@ -166,7 +166,7 @@ async def list_licenses(status: str = None, limit: int = 50, user: dict = Depend
 
 @router.post(
     "/licenses",
-    dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)],
+    dependencies=[Depends(require_platform_owner), Depends(write_limiter.check)],
 )
 async def create_license(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     required = ["license_key", "license_type"]
@@ -198,7 +198,7 @@ async def get_license(license_id: str, user: dict = Depends(get_current_user), d
 
 @router.put(
     "/licenses/{license_id}",
-    dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)],
+    dependencies=[Depends(require_platform_owner), Depends(write_limiter.check)],
 )
 async def update_license(license_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
