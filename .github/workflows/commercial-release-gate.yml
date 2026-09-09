@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_ALEMBIC_HEAD: 20260909_builder_ddl_security
+  EXPECTED_ALEMBIC_HEAD: 20260910_builder_ddl_hardening
   AUTH_DEFINER_ROLE: eos_auth_definer
   RUNTIME_ROLE: eos_runtime
 
@@ -101,7 +101,6 @@ jobs:
             tests/test_financial_authorization_regressions.py \
             tests/test_builder_authorization_regressions.py \
             tests/test_builder_engine_regressions.py \
-            tests/test_marketplace_regressions.py \
             tests/test_marketplace_regressions.py \
             --tb=short
 
@@ -200,6 +199,27 @@ jobs:
                AND has_table_privilege('${AUTH_DEFINER_ROLE}','public.dbp_refresh_tokens','SELECT')
               THEN 'PASS' ELSE 'FAIL' END;
           " | grep -Fx PASS
+      - name: Prove runtime cannot perform arbitrary DDL
+        env:
+          PGPASSWORD: eos
+        run: |
+          if psql -h 127.0.0.1 -U eos -d eos_contract -v ON_ERROR_STOP=1 -Atc "SET ROLE ${RUNTIME_ROLE}; CREATE TABLE public.ci_runtime_ddl_must_fail (id integer);"; then
+            echo 'Runtime role unexpectedly created a table'
+            exit 1
+          else
+            echo 'Runtime arbitrary DDL boundary: PASS'
+          fi
+          psql -h 127.0.0.1 -U eos -d eos_contract -v ON_ERROR_STOP=1 -Atc "
+            BEGIN;
+            SET ROLE ${RUNTIME_ROLE};
+            SELECT set_config('app.tenant_id','ci-tenant',true);
+            SELECT public.eos_create_builder_table('bld_ci_gate', '[{\"code\":\"name\",\"sql_type\":\"VARCHAR(255)\",\"not_null\":true}]'::jsonb);
+            SELECT CASE
+              WHEN EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='bld_ci_gate')
+               AND (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='bld_ci_gate')
+              THEN 'BUILDER_DDL_PASS' ELSE 'BUILDER_DDL_FAIL' END;
+            ROLLBACK;
+          " | grep -Fx BUILDER_DDL_PASS
       - name: Verify dynamic RLS DDL guard
         env:
           PGPASSWORD: eos
@@ -256,7 +276,7 @@ jobs:
           mkdir -p .ci/eos-tls
           openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
             -subj /CN=example.com \
-            -addext 'subjectAltName=DNS:example.com,DNS:www.example.com' \
+            -addext 'subjectAltName=DNS:example.com' \
             -keyout .ci/eos-tls/privkey.pem \
             -out .ci/eos-tls/fullchain.pem
           docker build -f docker/nginx.Dockerfile -t eos-nginx:gate .
