@@ -90,7 +90,7 @@ services:
     expose: ["8000"]
 
   nginx:
-    image: nginx:alpine
+    image: nginx:stable-alpine3.24
     container_name: eos-nginx
     restart: unless-stopped
     environment:
@@ -111,7 +111,7 @@ services:
     networks: [eos-network]
 
   certbot:
-    image: certbot/certbot
+    image: certbot/certbot:v5.8.0
     container_name: eos-certbot
     volumes:
       - ./certbot/conf:/etc/letsencrypt
