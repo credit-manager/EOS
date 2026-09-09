@@ -1,0 +1,157 @@
+"""Finalize tenant RLS after the complete canonical schema exists.
+
+Revision ID: 20260909_finalize_tenant_rls
+Revises: 20260909_merge_release_heads
+
+Several legacy RLS migrations run before later schema-restoration migrations.
+This final idempotent pass closes that ordering gap and makes the release head
+self-consistent on both fresh and upgraded databases.
+"""
+
+from alembic import op
+
+revision = "20260909_finalize_tenant_rls"
+down_revision = "20260909_merge_release_heads"
+branch_labels = None
+depends_on = None
+
+TENANT_SCOPED_TABLES = (
+    "dbp_entities",
+    "dbp_fields",
+    "dbp_relationships",
+    "dbp_entity_versions",
+    "dbp_row_rules",
+    "dbp_events",
+    "dbp_webhooks",
+    "dbp_webhook_deliveries",
+    "dbp_notifications",
+    "dbp_notification_templates",
+    "dbp_notification_preferences",
+    "dbp_dashboards",
+    "dbp_dashboard_widgets",
+    "dbp_kpis",
+    "dbp_workflow_definitions",
+    "dbp_workflow_states",
+    "dbp_workflow_transitions",
+    "dbp_workflow_instances",
+    "dbp_workflow_actions",
+    "dbp_data_jobs",
+    "dbp_validation_rules",
+    "dbp_companies",
+    "dbp_branches",
+    "dbp_departments",
+    "dbp_fiscal_years",
+    "dbp_currencies",
+    "dbp_cost_centers",
+    "dbp_accounts",
+    "dbp_journal_entries",
+    "dbp_journal_lines",
+    "dbp_tenant_lifecycle_events",
+    "dbp_tenant_data_exports",
+    "dbp_tenant_invitations",
+    "dbp_tenant_activity_logs",
+    "dbp_tenant_notifications",
+    "dbp_construction_projects",
+    "dbp_construction_daily_reports",
+    "dbp_construction_materials",
+    "dbp_construction_equipment",
+    "dbp_construction_workers",
+    "dbp_construction_safety",
+    "dbp_construction_subcontractors",
+    "dbp_trading_customers",
+    "dbp_trading_items",
+    "dbp_trading_stock",
+    "dbp_trading_suppliers",
+    "dbp_trading_warehouses",
+    "dbp_retail_stores",
+    "dbp_retail_products",
+    "dbp_retail_transactions",
+    "dbp_restaurant_menu",
+    "dbp_restaurant_orders",
+    "dbp_restaurant_tables",
+    "dbp_manufacturing_bom",
+    "dbp_manufacturing_work_orders",
+    "dbp_manufacturing_operations",
+    "dbp_services_catalog",
+    "dbp_services_orders",
+    "dbp_saas_features",
+    "dbp_saas_usage",
+    "dbp_notify_channels",
+    "dbp_approve_workflows",
+    "dbp_docs_categories",
+    "dbp_docs_files",
+    "dbp_custom_configs",
+)
+
+
+def upgrade() -> None:
+    tables_sql = ", ".join("%r" % table for table in TENANT_SCOPED_TABLES)
+    op.execute(
+        f"""
+        DO $$
+        DECLARE
+            table_name text;
+            policy_name text;
+        BEGIN
+            FOREACH table_name IN ARRAY ARRAY[{tables_sql}]::text[]
+            LOOP
+                IF to_regclass(format('public.%I', table_name)) IS NULL THEN
+                    CONTINUE;
+                END IF;
+
+                policy_name := 'tenant_isolation_' || table_name;
+
+                -- Normalize both policy naming conventions used by earlier
+                -- migrations to avoid permissive-policy OR behavior.
+                EXECUTE format(
+                    'DROP POLICY IF EXISTS %I ON public.%I',
+                    'tenant_isolation', table_name
+                );
+                EXECUTE format(
+                    'DROP POLICY IF EXISTS %I ON public.%I',
+                    policy_name, table_name
+                );
+
+                EXECUTE format(
+                    'ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',
+                    table_name
+                );
+                EXECUTE format(
+                    'ALTER TABLE public.%I NO FORCE ROW LEVEL SECURITY',
+                    table_name
+                );
+                EXECUTE format(
+                    'CREATE POLICY %I ON public.%I '
+                    'USING (tenant_id::text = current_setting(''app.tenant_id'', true) '
+                    'OR tenant_id IS NULL) '
+                    'WITH CHECK (tenant_id::text = current_setting(''app.tenant_id'', true))',
+                    policy_name, table_name
+                );
+            END LOOP;
+        END $$;
+        """
+    )
+
+
+def downgrade() -> None:
+    tables_sql = ", ".join("%r" % table for table in TENANT_SCOPED_TABLES)
+    op.execute(
+        f"""
+        DO $$
+        DECLARE
+            table_name text;
+            policy_name text;
+        BEGIN
+            FOREACH table_name IN ARRAY ARRAY[{tables_sql}]::text[]
+            LOOP
+                IF to_regclass(format('public.%I', table_name)) IS NULL THEN
+                    CONTINUE;
+                END IF;
+                policy_name := 'tenant_isolation_' || table_name;
+                EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', policy_name, table_name);
+                EXECUTE format('ALTER TABLE public.%I NO FORCE ROW LEVEL SECURITY', table_name);
+                EXECUTE format('ALTER TABLE public.%I DISABLE ROW LEVEL SECURITY', table_name);
+            END LOOP;
+        END $$;
+        """
+    )
