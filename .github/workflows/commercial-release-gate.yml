@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
   production-contract:
@@ -140,6 +141,8 @@ jobs:
           POSTGRES_DB: eos
           EOS_DB_RUNTIME_USER: eos_runtime
           EOS_DB_RUNTIME_PASSWORD: runtime-password-contract
+          EOS_DB_EXPORTER_USER: eos_exporter
+          EOS_DB_EXPORTER_PASSWORD: exporter-password-contract
           EOS_SECRET_KEY: production-contract-secret-key-1234567890abcdef
           EOS_SMTP_HOST: smtp.example.com
           EOS_SMTP_USERNAME: contract-user
@@ -155,8 +158,38 @@ jobs:
           docker compose -f docker-compose.yml config --quiet
           rendered="$(docker compose -f docker-compose.yml config)"
           printf '%s\n' "$rendered" | grep -F 'eos_runtime:runtime-password-contract@db:5432/eos'
+          printf '%s\n' "$rendered" | grep -F 'eos_exporter:exporter-password-contract@db:5432/eos'
           printf '%s\n' "$rendered" | grep -F 'service_completed_successfully'
           printf '%s\n' "$rendered" | grep -F '/app/docker/migrate-entrypoint.sh'
+          printf '%s\n' "$rendered" | grep -F 'prometheuscommunity/postgres-exporter:v0.20.1'
+
+  container-security:
+    name: Container vulnerability and SBOM gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build production image
+        run: docker build --pull -t eos:ci .
+      - name: Scan image for HIGH/CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: eos:ci
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: eos:ci
+          artifact-name: eos-sbom.spdx.json
+          output-file: eos-sbom.spdx.json
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eos-sbom
+          path: eos-sbom.spdx.json
+          if-no-files-found: error
 
   frontend-contract:
     name: Canonical frontend commercial build
