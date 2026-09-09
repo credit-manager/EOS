@@ -114,11 +114,19 @@ BEGIN
                OR NEW.company_id <> OLD.company_id THEN
                 RAISE EXCEPTION 'Only the status transition posted -> reversed is allowed';
             END IF;
+            NEW.is_posted := false;
         END IF;
     END IF;
 
     IF NEW.total_debit < 0 OR NEW.total_credit < 0 THEN
         RAISE EXCEPTION 'Journal totals must be non-negative';
+    END IF;
+
+    IF NEW.status = 'reversed' THEN
+        IF NEW.is_posted IS DISTINCT FROM false THEN
+            NEW.is_posted := false;
+        END IF;
+        RETURN NEW;
     END IF;
 
     IF NEW.status = 'posted' OR NEW.is_posted THEN
@@ -175,43 +183,38 @@ def upgrade() -> None:
     op.execute(_ENTRY_FUNCTION)
     op.execute(_ACCOUNT_DELETE_FUNCTION)
 
-    op.execute(
-        "DROP TRIGGER IF EXISTS trg_eos_validate_journal_line ON public.dbp_journal_lines"
-    )
+    op.execute("DROP TRIGGER IF EXISTS trg_eos_validate_journal_line ON public.dbp_journal_lines")
     op.execute(
         "CREATE TRIGGER trg_eos_validate_journal_line "
         "BEFORE INSERT OR UPDATE ON public.dbp_journal_lines "
         "FOR EACH ROW EXECUTE FUNCTION public.eos_validate_journal_line()"
     )
 
-    op.execute(
-        "DROP TRIGGER IF EXISTS trg_eos_validate_journal_line_delete ON public.dbp_journal_lines"
-    )
+    op.execute("DROP TRIGGER IF EXISTS trg_eos_validate_journal_line_delete ON public.dbp_journal_lines")
     op.execute(
         "CREATE TRIGGER trg_eos_validate_journal_line_delete "
         "BEFORE DELETE ON public.dbp_journal_lines "
         "FOR EACH ROW EXECUTE FUNCTION public.eos_validate_journal_line_delete()"
     )
 
-    op.execute(
-        "DROP TRIGGER IF EXISTS trg_eos_validate_journal_entry ON public.dbp_journal_entries"
-    )
+    op.execute("DROP TRIGGER IF EXISTS trg_eos_validate_journal_entry ON public.dbp_journal_entries")
     op.execute(
         "CREATE TRIGGER trg_eos_validate_journal_entry "
         "BEFORE INSERT OR UPDATE ON public.dbp_journal_entries "
         "FOR EACH ROW EXECUTE FUNCTION public.eos_validate_journal_entry()"
     )
 
-    op.execute(
-        "DROP TRIGGER IF EXISTS trg_eos_prevent_account_delete_if_referenced ON public.dbp_accounts"
-    )
+    op.execute("DROP TRIGGER IF EXISTS trg_eos_prevent_account_delete_if_referenced ON public.dbp_accounts")
     op.execute(
         "CREATE TRIGGER trg_eos_prevent_account_delete_if_referenced "
         "BEFORE DELETE ON public.dbp_accounts "
         "FOR EACH ROW EXECUTE FUNCTION public.eos_prevent_account_delete_if_referenced()"
     )
 
-    op.execute("CREATE INDEX IF NOT EXISTS ix_dbp_journal_lines_entry_account ON public.dbp_journal_lines (journal_entry_id, account_id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_dbp_journal_lines_entry_account "
+        "ON public.dbp_journal_lines (journal_entry_id, account_id)"
+    )
 
 
 def downgrade() -> None:
