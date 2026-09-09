@@ -1,0 +1,87 @@
+name: EOS Infrastructure Security
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eos-infrastructure-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  infrastructure-security:
+    name: Nginx / TLS / runtime infrastructure
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate shell scripts
+        run: |
+          sh -n docker/nginx-entrypoint.sh
+          sh -n docker/certbot-entrypoint.sh
+          sh -n docker/migrate-entrypoint.sh
+
+      - name: Validate production compose interpolation
+        env:
+          POSTGRES_USER: eos_admin
+          POSTGRES_PASSWORD: admin-password-contract
+          POSTGRES_DB: eos
+          EOS_DB_RUNTIME_USER: eos_runtime
+          EOS_DB_RUNTIME_PASSWORD: runtime-password-contract
+          EOS_DB_EXPORTER_USER: eos_exporter
+          EOS_DB_EXPORTER_PASSWORD: exporter-password-contract
+          EOS_SECRET_KEY: production-contract-secret-key-1234567890abcdef
+          EOS_ALGORITHM: HS256
+          EOS_JWT_PRIVATE_KEY: ''
+          EOS_JWT_PUBLIC_KEY: ''
+          EOS_SMTP_HOST: smtp.example.com
+          EOS_SMTP_USERNAME: contract-user
+          EOS_SMTP_PASSWORD: contract-password
+          EOS_FROM_EMAIL: noreply@example.com
+          EOS_STRIPE_SECRET_KEY: sk_live_ci_9f7a6c3b2e1d4a8c
+          EOS_FRONTEND_URL: https://app.example.com
+          EOS_CORS_ORIGINS: '["https://app.example.com"]'
+          EOS_ALLOWED_HOSTS: app.example.com,api.example.com
+          DOMAIN: example.com
+          ACME_EMAIL: ops@example.com
+          GRAFANA_PASSWORD: grafana-password-contract
+        run: docker compose -f docker-compose.yml config --quiet
+
+      - name: Build hardened Nginx image
+        run: docker build --pull -f docker/nginx.Dockerfile -t eos-nginx:ci .
+
+      - name: Verify Nginx TLS bootstrap tooling
+        run: docker run --rm eos-nginx:ci sh -c 'command -v openssl >/dev/null && command -v sha256sum >/dev/null && nginx -V 2>&1 | grep -F "http_ssl_module"'
+
+      - name: Validate Nginx template with bootstrap certificate
+        env:
+          DOMAIN: example.com
+        run: |
+          mkdir -p .ci/eos-tls
+          openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+            -subj /CN=example.com \
+            -addext 'subjectAltName=DNS:example.com,DNS:www.example.com' \
+            -keyout .ci/eos-tls/privkey.pem \
+            -out .ci/eos-tls/fullchain.pem
+          docker run --rm \
+            -e DOMAIN="$DOMAIN" \
+            -v "$PWD/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
+            -v "$PWD/nginx/conf.d/eos.conf:/etc/nginx/eos.conf.template:ro" \
+            -v "$PWD/.ci/eos-tls:/etc/eos-tls:ro" \
+            eos-nginx:ci \
+            sh -c "envsubst '\${DOMAIN}' < /etc/nginx/eos.conf.template > /etc/nginx/conf.d/eos.conf && nginx -t -c /etc/nginx/nginx.conf"
+
+      - name: Scan Nginx image for HIGH/CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: eos-nginx:ci
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
