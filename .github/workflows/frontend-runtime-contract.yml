@@ -1,0 +1,44 @@
+name: EOS Frontend Runtime Contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app_server.py'
+      - 'Dockerfile'
+      - 'erp-system/frontend/**'
+      - 'tests/test_frontend_runtime_contract.py'
+      - '.github/workflows/frontend-runtime-contract.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'app_server.py'
+      - 'Dockerfile'
+      - 'erp-system/frontend/**'
+      - 'tests/test_frontend_runtime_contract.py'
+      - '.github/workflows/frontend-runtime-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Canonical frontend runtime contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Run frontend runtime contract tests
+        run: pytest -q tests/test_frontend_runtime_contract.py --tb=short
+      - name: Build canonical React frontend
+        working-directory: erp-system/frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Verify production artifact
+        run: |
+          test -f erp-system/frontend/dist/index.html
+          test -d erp-system/frontend/dist/assets
