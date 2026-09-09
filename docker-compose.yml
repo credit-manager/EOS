@@ -111,7 +111,7 @@ services:
     container_name: eos-certbot
     volumes:
       - ./certbot/conf:/etc/letsencrypt
-      - ./certbot/www:/var/www/certbot
+      - ./certbot/www:/var/www/certbot:ro
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done'"
 
   prometheus:
@@ -217,8 +217,6 @@ services:
 volumes:
   postgres_data:
   prometheus_data:
-  grafana_data:
-  alertmanager_data:
   grafana_data:
   alertmanager_data:
   loki_data:
