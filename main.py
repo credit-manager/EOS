@@ -1,7 +1,7 @@
 """
 EOS Dynamic Business Platform — FastAPI Application (P13 hardened)
 """
-from fastapi import FastAPI, Request, Response, Depends, HTTPException
+from fastapi import FastAPI, Request, Response, Depends, HTTPException, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -328,6 +328,33 @@ async def validate_configuration():
         f"hosts={ALLOWED_HOSTS}, trusted_hosts={AUTH_MODE == 'production' or TRUSTED_HOSTS_ENABLED}, "
         f"metrics={METRICS_ENABLED}, docs={DOCS_ENABLED}"
     )
+
+
+health_router = APIRouter(tags=["Health"])
+
+
+@health_router.get("/health/live", include_in_schema=False)
+async def health_live():
+    """Liveness probe: confirms the process is serving requests."""
+    return {"status": "ok"}
+
+
+@health_router.get("/health/ready", include_in_schema=False)
+async def health_ready():
+    """Readiness probe: verifies the database is reachable before serving traffic."""
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise HTTPException(status_code=503, detail="Database configuration unavailable")
+
+    try:
+        from sqlalchemy import text
+        from database import engine
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    return {"status": "ok"}
 
 
 app.include_router(health_router)
