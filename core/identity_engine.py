@@ -6,10 +6,21 @@ from typing import Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
+from core.secret_store import encrypt_json
+
 
 class IdentityEngine:
     def __init__(self, db: Session):
         self.db = db
+
+    @staticmethod
+    def _encrypt_secret(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value)
+        if not normalized:
+            return None
+        return encrypt_json({"value": normalized})
 
     # -------------------------------------------------- SSO providers
     def create_provider(self, tenant_id, provider_name, provider_type,
@@ -21,7 +32,7 @@ class IdentityEngine:
             "VALUES (:id,:tid,:pn,:pt,:ci,:cs,:mu,NOW())"
         ), {"id": pid, "tid": tenant_id, "pn": provider_name,
             "pt": provider_type, "ci": client_id,
-            "cs": client_secret, "mu": metadata_url})
+            "cs": self._encrypt_secret(client_secret), "mu": metadata_url})
         return pid
 
     def list_providers(self, tenant_id, is_active=None):
@@ -38,8 +49,16 @@ class IdentityEngine:
     def update_provider(self, tenant_id, provider_id, **kwargs):
         if not kwargs:
             return None
-        sets = [f"{k}=:{k}" for k in kwargs]
-        params = {"id": provider_id, "tid": tenant_id, **kwargs}
+        allowed = {"provider_name", "provider_type", "client_id", "client_secret", "metadata_url", "is_active"}
+        unknown = set(kwargs) - allowed
+        if unknown:
+            raise ValueError(f"unsupported provider fields: {sorted(unknown)}")
+        params = {"id": provider_id, "tid": tenant_id}
+        sets = []
+        for key, value in kwargs.items():
+            column = "client_secret_enc" if key == "client_secret" else key
+            params[key] = self._encrypt_secret(value) if key == "client_secret" else value
+            sets.append(f"{column}=:{key}")
         self.db.execute(text(
             f"UPDATE dbp_sso_providers SET {', '.join(sets)} WHERE id=:id AND tenant_id=:tid"
         ), params)
@@ -79,7 +98,7 @@ class IdentityEngine:
             "(id, tenant_id, user_id, mfa_type, secret_enc, is_enabled, created_at) "
             "VALUES (:id,:tid,:ui,:mt,:se,false,NOW())"
         ), {"id": mid, "tid": tenant_id, "ui": user_id,
-            "mt": mfa_type, "se": secret})
+            "mt": mfa_type, "se": self._encrypt_secret(secret)})
         return {"id": mid, "secret": secret}
 
     def enable_mfa(self, tenant_id, mfa_id):
@@ -124,7 +143,7 @@ class IdentityEngine:
         if provider_id:
             q += " AND provider_id=:pi"
             params["pi"] = provider_id
-        rows = self.db.execute(text(q), params).fetchall()
+        rows = self.db.execute(text(q, params)).fetchall()
         return [{"id": r[0], "provider_id": r[1], "external_role": r[2],
                  "internal_role": r[3],
                  "created_at": str(r[4]) if r[4] else None} for r in rows]
@@ -148,7 +167,9 @@ class IdentityEngine:
             "kh": key_hash,
             "pe": __import__('json').dumps(permissions) if permissions else None,
             "ea": expires_at})
-        return {"id": kid, "key": raw_key, "key_hash": key_hash}
+        # The clear-text key is returned exactly once for provisioning. The
+        # persistent store keeps only a one-way hash.
+        return {"id": kid, "key": raw_key}
 
     def list_api_keys(self, tenant_id, is_active=None):
         q = "SELECT id, key_name, key_hash, permissions, is_active, last_used_at, expires_at, created_at FROM dbp_api_keys WHERE tenant_id=:tid"
@@ -156,8 +177,8 @@ class IdentityEngine:
         if is_active is not None:
             q += " AND is_active=:ia"
             params["ia"] = is_active
-        rows = self.db.execute(text(q), params).fetchall()
-        return [{"id": r[0], "key_name": r[1], "key_hash": r[2][:16] + "...",
+        rows = self.db.execute(text(q, params)).fetchall()
+        return [{"id": r[0], "key_name": r[1],
                  "permissions": r[3], "is_active": r[4],
                  "last_used_at": str(r[5]) if r[5] else None,
                  "expires_at": str(r[6]) if r[6] else None,
