@@ -66,32 +66,41 @@ def _get_audience() -> str:
     return os.getenv("EOS_JWT_AUDIENCE", "eos-api").strip() or "eos-api"
 
 
-def create_access_token(
-    subject: str,
-    expires_delta: Optional[timedelta] = None,
-    extra_data: Optional[dict] = None,
-) -> str:
-    """Create a signed access token using the configured production algorithm."""
-    algorithm = _get_algorithm()
+def _create_signed_token(subject: str, token_type: str, expires_delta: timedelta, extra_data: Optional[dict] = None) -> str:
     now = datetime.now(timezone.utc)
-    expire = now + (expires_delta or timedelta(minutes=30))
+    expire = now + expires_delta
     payload = {
         "sub": subject,
         "exp": expire,
         "iat": now,
-        "type": "access",
+        "type": token_type,
         "iss": _get_issuer(),
         "aud": _get_audience(),
         "jti": str(uuid.uuid4()),
     }
     if extra_data:
         payload.update({k: v for k, v in extra_data.items() if k not in _RESERVED_CLAIMS})
-    return jwt.encode(payload, _get_signing_key(), algorithm=algorithm)
+    return jwt.encode(payload, _get_signing_key(), algorithm=_get_algorithm())
 
 
-def verify_token(token: str) -> dict:
+def create_access_token(subject: str, expires_delta: Optional[timedelta] = None, extra_data: Optional[dict] = None) -> str:
+    """Create a signed access token using the configured production algorithm."""
+    return _create_signed_token(subject, "access", expires_delta or timedelta(minutes=30), extra_data)
+
+
+def create_mfa_challenge_token(subject: str, tenant_id: str, expires_delta: Optional[timedelta] = None) -> str:
+    """Create a short-lived non-authorizing token used only to complete MFA."""
+    return _create_signed_token(
+        subject,
+        "mfa_pre_auth",
+        expires_delta or timedelta(minutes=5),
+        {"tenant_id": str(tenant_id).lower(), "purpose": "mfa"},
+    )
+
+
+def verify_token(token: str, expected_type: str = "access") -> dict:
     try:
-        return jwt.decode(
+        payload = jwt.decode(
             token,
             _get_verification_key(),
             algorithms=[_get_algorithm()],
@@ -99,6 +108,9 @@ def verify_token(token: str) -> dict:
             audience=_get_audience(),
             options={"require": ["exp", "iat", "sub", "iss", "aud", "type", "jti"]},
         )
+        if payload.get("type") != expected_type:
+            raise InvalidTokenError("unexpected token type")
+        return payload
     except (InvalidTokenError, ValueError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -107,12 +119,15 @@ def verify_token(token: str) -> dict:
         )
 
 
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> dict:
-    payload = verify_token(credentials.credentials)
-    if payload.get("type") != "access":
-        raise HTTPException(status_code=401, detail="Invalid token type")
+def verify_mfa_challenge_token(token: str) -> dict:
+    payload = verify_token(token, expected_type="mfa_pre_auth")
+    if payload.get("purpose") != "mfa" or not payload.get("tenant_id"):
+        raise HTTPException(status_code=401, detail="Invalid MFA challenge")
+    return payload
+
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    payload = verify_token(credentials.credentials, expected_type="access")
     user_id = payload.get("sub")
     tenant_id = payload.get("tenant_id")
     if user_id is None:
