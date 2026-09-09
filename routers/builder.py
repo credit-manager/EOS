@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
-from core.auth import require_permission, get_current_user
+from core.auth import get_current_user, require_builder_publish, require_permission
 from core.rate_limit import read_limiter, write_limiter
 from core.builder_engine import BuilderEngine
 
@@ -20,12 +20,7 @@ async def create_project(body: dict, user: dict = Depends(get_current_user), db:
     name = body.get("name")
     if not name:
         raise _err(400, "MISSING", "name required")
-    result = BuilderEngine(db).create_project(
-        user.get("tenant_id"),
-        name,
-        composer_session_id=body.get("composer_session_id"),
-        initial_config=body.get("initial_config"),
-    )
+    result = BuilderEngine(db).create_project(user.get("tenant_id"), name, composer_session_id=body.get("composer_session_id"), initial_config=body.get("initial_config"))
     if not result["success"]:
         raise _err(400, "CREATE_FAILED", result["error"])
     db.commit()
@@ -126,21 +121,15 @@ async def preview(pid: str, user: dict = Depends(get_current_user), db: Session 
     return {"status": "success", "data": data}
 
 
-@router.post("/projects/{pid}/publish", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
+@router.post("/projects/{pid}/publish", dependencies=[Depends(require_builder_publish), Depends(write_limiter.check)])
 async def publish(pid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     result = BuilderEngine(db).publish(
-        user.get("tenant_id"),
-        pid,
-        published_by=user.get("id") or "admin",
-        confirmed=bool(body.get("confirmed")),
-        change_summary=body.get("change_summary", ""),
+        user.get("tenant_id"), pid, published_by=user.get("id") or "admin",
+        confirmed=bool(body.get("confirmed")), change_summary=body.get("change_summary", "")
     )
     if not result["success"]:
         code = "VALIDATION_FAILED" if result.get("validation") else "PUBLISH_FAILED"
-        raise HTTPException(
-            400,
-            detail={"status": "error", "error": {"code": code, "message": result["error"], "details": result.get("validation")}},
-        )
+        raise HTTPException(400, detail={"status": "error", "error": {"code": code, "message": result["error"], "details": result.get("validation")}})
     return {"status": "success", "data": result}
 
 
@@ -157,17 +146,12 @@ async def list_versions(pid: str, user: dict = Depends(get_current_user), db: Se
     return {"status": "success", "data": BuilderEngine(db).list_versions(user.get("tenant_id"), pid)}
 
 
-@router.post("/projects/{pid}/rollback", dependencies=[Depends(require_permission("dynamic", "update")), Depends(write_limiter.check)])
+@router.post("/projects/{pid}/rollback", dependencies=[Depends(require_builder_publish), Depends(write_limiter.check)])
 async def rollback(pid: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     version_id = body.get("version_id")
     if not version_id:
         raise _err(400, "MISSING", "version_id required")
-    result = BuilderEngine(db).rollback(
-        user.get("tenant_id"),
-        pid,
-        version_id,
-        rolled_back_by=user.get("id") or "admin",
-    )
+    result = BuilderEngine(db).rollback(user.get("tenant_id"), pid, version_id, rolled_back_by=user.get("id") or "admin")
     if not result["success"]:
         raise _err(400, "ROLLBACK_FAILED", result["error"])
     return {"status": "success", "data": result}
