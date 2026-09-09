@@ -168,7 +168,7 @@ class IdentityEngine:
             self._require_provider_tenant(tenant_id, provider_id)
             q += " AND provider_id=:pi"
             params["pi"] = provider_id
-        rows = self.db.execute(text(q, params)).fetchall()
+        rows = self.db.execute(text(q), params).fetchall()
         return [{"id": r[0], "provider_id": r[1], "external_role": r[2],
                  "internal_role": r[3], "created_at": str(r[4]) if r[4] else None} for r in rows]
 
@@ -210,7 +210,7 @@ class IdentityEngine:
         if is_active is not None:
             q += " AND is_active=:ia"
             params["ia"] = is_active
-        rows = self.db.execute(text(q, params)).fetchall()
+        rows = self.db.execute(text(q), params).fetchall()
         return [{"id": r[0], "key_name": r[1], "permissions": r[2], "is_active": r[3],
                  "last_used_at": str(r[4]) if r[4] else None,
                  "expires_at": str(r[5]) if r[5] else None,
