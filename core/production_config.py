@@ -38,7 +38,7 @@ def validate_production_config() -> List[Tuple[str, str, bool]]:
     if algorithm == "HS256":
         secret_key = os.getenv("EOS_SECRET_KEY", "")
         if _check(checks, "EOS_SECRET_KEY", secret_key, r".{32,}") and re.search(
-            r"(?:CHANGE_ME|test_secret_key|example|placeholder)", secret_key, re.IGNORECASE
+            r"(?:CHANGE_ME|test_secret_key|example|placeholder|contract)", secret_key, re.IGNORECASE
         ):
             checks.append(("EOS_SECRET_KEY", "INVALID FORMAT", True))
     elif algorithm == "RS256":
@@ -98,7 +98,13 @@ def validate_production_config() -> List[Tuple[str, str, bool]]:
     else:
         try:
             hosts = allowed_hosts()
-            if any(not host or host == "*" or host.startswith(".") for host in hosts):
+            if any(
+                not host
+                or host == "*"
+                or host.startswith(".")
+                or any(char.isspace() for char in host)
+                for host in hosts
+            ):
                 raise RuntimeConfigurationError("invalid trusted host")
             checks.append(("EOS_ALLOWED_HOSTS", "OK", True))
         except RuntimeConfigurationError:
