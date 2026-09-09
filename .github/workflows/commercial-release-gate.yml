@@ -1,0 +1,120 @@
+name: EOS Commercial Release Gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  production-contract:
+    name: Production configuration contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Verify dependency consistency
+        run: pip check
+      - name: Verify Python compilation
+        run: python -m compileall -q .
+      - name: Validate production configuration contract
+        env:
+          ENVIRONMENT: production
+          EOS_AUTH_MODE: production
+          EOS_SECRET_KEY: production-contract-secret-key-1234567890abcdef
+          DATABASE_URL: postgresql://eos:contract-password@127.0.0.1:5432/eos
+          EOS_EMAIL_PROVIDER: smtp
+          EOS_SMTP_HOST: smtp.example.com
+          EOS_SMTP_USERNAME: contract-user
+          EOS_SMTP_PASSWORD: contract-password
+          EOS_FROM_EMAIL: noreply@example.com
+          EOS_PAYMENT_MODE: stripe
+          EOS_STRIPE_SECRET_KEY: sk_live_contract_placeholder
+          EOS_FRONTEND_URL: https://app.example.com
+          EOS_CORS_ORIGINS: '["https://app.example.com"]'
+          EOS_ALLOWED_HOSTS: app.example.com,api.example.com
+          POSTGRES_USER: eos
+          POSTGRES_PASSWORD: contract-password
+          POSTGRES_DB: eos
+          DOMAIN: example.com
+        run: python -m core.production_config
+      - name: Run hardened runtime tests
+        env:
+          ENVIRONMENT: test
+        run: pytest -q tests/test_runtime_config.py tests/test_enterprise_hardening_primitives.py --tb=short
+
+  migration-contract:
+    name: PostgreSQL migration contract
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: eos
+          POSTGRES_PASSWORD: eos
+          POSTGRES_DB: eos_contract
+        options: >-
+          --health-cmd "pg_isready -U eos -d eos_contract"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install migration dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Upgrade database to Alembic head
+        env:
+          DATABASE_URL: postgresql://eos:eos@127.0.0.1:5432/eos_contract
+          SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          ENVIRONMENT: testing
+        run: alembic upgrade head
+      - name: Require exactly one Alembic head
+        run: |
+          test "$(alembic heads | grep -c '^20260906_accounting_integrity')" -eq 1
+      - name: Verify migration idempotency
+        env:
+          DATABASE_URL: postgresql://eos:eos@127.0.0.1:5432/eos_contract
+          SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          ENVIRONMENT: testing
+        run: alembic upgrade head
+
+  frontend-contract:
+    name: Canonical frontend commercial build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: erp-system/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: erp-system/frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run test -- --run
+      - run: npm run build
+      - name: Verify production artifact
+        working-directory: .
+        run: |
+          test -f erp-system/frontend/dist/index.html
+          test -n "$(find erp-system/frontend/dist/assets -type f | head -1)"
