@@ -170,6 +170,7 @@ jobs:
           printf '%s\n' "$rendered" | grep -F '/etc/nginx/eos.conf.template:ro'
           printf '%s\n' "$rendered" | grep -F '/usr/local/bin/eos-nginx-entrypoint.sh:ro'
           printf '%s\n' "$rendered" | grep -F 'prometheuscommunity/postgres-exporter:v0.20.1'
+          printf '%s\n' "$rendered" | grep -F 'prom/alertmanager:v0.34.0'
       - name: Validate Nginx template rendering and syntax
         env:
           DOMAIN: example.com
