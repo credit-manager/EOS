@@ -1,4 +1,4 @@
-# EOS Dynamic Business Platform — Docker Compose for Production
+# EOS Dynamic Business Platform — Production Docker Compose
 # Usage: docker compose -f docker-compose.yml up -d
 
 services:
@@ -7,9 +7,9 @@ services:
     container_name: eos-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
@@ -32,29 +32,31 @@ services:
       db:
         condition: service_healthy
     environment:
+      ENVIRONMENT: production
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       EOS_AUTH_MODE: production
-      EOS_SECRET_KEY: ${EOS_SECRET_KEY}
+      EOS_SECRET_KEY: ${EOS_SECRET_KEY:?EOS_SECRET_KEY is required}
       EOS_ALGORITHM: ${EOS_ALGORITHM:-HS256}
       EOS_TOKEN_EXPIRE_MINUTES: ${EOS_TOKEN_EXPIRE_MINUTES:-30}
-      EOS_EMAIL_PROVIDER: ${EOS_EMAIL_PROVIDER:-console}
-      EOS_SMTP_HOST: ${EOS_SMTP_HOST:-}
+      EOS_EMAIL_PROVIDER: ${EOS_EMAIL_PROVIDER:-smtp}
+      EOS_SMTP_HOST: ${EOS_SMTP_HOST:?EOS_SMTP_HOST is required}
       EOS_SMTP_PORT: ${EOS_SMTP_PORT:-587}
-      EOS_SMTP_USERNAME: ${EOS_SMTP_USERNAME:-}
-      EOS_SMTP_PASSWORD: ${EOS_SMTP_PASSWORD:-}
-      EOS_FROM_EMAIL: ${EOS_FROM_EMAIL:-noreply@eos-dbp.com}
+      EOS_SMTP_USERNAME: ${EOS_SMTP_USERNAME:?EOS_SMTP_USERNAME is required}
+      EOS_SMTP_PASSWORD: ${EOS_SMTP_PASSWORD:?EOS_SMTP_PASSWORD is required}
+      EOS_FROM_EMAIL: ${EOS_FROM_EMAIL:?EOS_FROM_EMAIL is required}
       EOS_FROM_NAME: ${EOS_FROM_NAME:-EOS Platform}
-      EOS_PAYMENT_MODE: ${EOS_PAYMENT_MODE:-simulated}
-      EOS_STRIPE_SECRET_KEY: ${EOS_STRIPE_SECRET_KEY:-}
-      EOS_FRONTEND_URL: ${EOS_FRONTEND_URL}
-      EOS_CORS_ORIGINS: ${EOS_CORS_ORIGINS}
-      EOS_ALLOWED_HOSTS: ${EOS_ALLOWED_HOSTS}
+      EOS_PAYMENT_MODE: ${EOS_PAYMENT_MODE:-stripe}
+      EOS_STRIPE_SECRET_KEY: ${EOS_STRIPE_SECRET_KEY:?EOS_STRIPE_SECRET_KEY is required}
+      EOS_FRONTEND_URL: ${EOS_FRONTEND_URL:?EOS_FRONTEND_URL is required}
+      EOS_CORS_ORIGINS: ${EOS_CORS_ORIGINS:?EOS_CORS_ORIGINS is required}
+      EOS_ALLOWED_HOSTS: ${EOS_ALLOWED_HOSTS:?EOS_ALLOWED_HOSTS is required}
+      EOS_METRICS_ENABLED: ${EOS_METRICS_ENABLED:-false}
+      EOS_ENABLE_DOCS: ${EOS_ENABLE_DOCS:-false}
       EOS_LOG_LEVEL: ${EOS_LOG_LEVEL:-info}
       EOS_LOG_FORMAT: ${EOS_LOG_FORMAT:-json}
-      DOMAIN: ${DOMAIN}
-      PROMETHEUS_ENABLED: "true"
+      DOMAIN: ${DOMAIN:?DOMAIN is required}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -111,7 +113,7 @@ services:
       - "127.0.0.1:3000:3000"
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is required}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SERVER_ROOT_URL: ${GRAFANA_URL:-http://localhost:3000}
     volumes:
