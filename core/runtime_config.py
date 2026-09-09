@@ -24,11 +24,11 @@ def environment_name() -> str:
 
 
 def resolve_auth_mode() -> str:
-    """Resolve authentication mode without a production unsafe default.
+    """Resolve authentication mode without a production-unsafe secret fallback.
 
-    An explicit ``EOS_AUTH_MODE`` always wins. When omitted, test authentication is
-    allowed only in a known local/test environment or when the test-only secret is
-    explicitly present. Every other deployment uses production authentication.
+    An explicit ``EOS_AUTH_MODE`` wins. When it is omitted, test authentication is
+    allowed only for known local/test environments. A test-only secret must never
+    silently switch an otherwise production deployment into test authentication.
     """
     configured = os.getenv("EOS_AUTH_MODE")
     if configured:
@@ -39,7 +39,7 @@ def resolve_auth_mode() -> str:
             )
         return mode
 
-    if environment_name() in LOCAL_ENVIRONMENTS or os.getenv("EOS_TEST_SECRET_KEY"):
+    if environment_name() in LOCAL_ENVIRONMENTS:
         return "test"
     return "production"
 
