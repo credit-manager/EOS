@@ -1,7 +1,7 @@
 """
 P47 Identity Federation & SSO Engine
 """
-import uuid, hashlib, secrets
+import uuid, hashlib, secrets, json
 from typing import Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -143,7 +143,7 @@ class IdentityEngine:
         if provider_id:
             q += " AND provider_id=:pi"
             params["pi"] = provider_id
-        rows = self.db.execute(text(q, params)).fetchall()
+        rows = self.db.execute(text(q), params).fetchall()
         return [{"id": r[0], "provider_id": r[1], "external_role": r[2],
                  "internal_role": r[3],
                  "created_at": str(r[4]) if r[4] else None} for r in rows]
@@ -156,6 +156,17 @@ class IdentityEngine:
 
     # ----------------------------------------------------- API keys
     def create_api_key(self, tenant_id, key_name, permissions=None, expires_at=None):
+        if permissions is not None and not isinstance(permissions, (list, tuple)):
+            raise ValueError("permissions must be a list")
+        allowed_permissions = {
+            "dynamic:read", "dynamic:create", "dynamic:update", "dynamic:delete",
+            "payments:read", "reports:read", "inventory:read", "sales:read",
+        }
+        normalized_permissions = sorted({str(p).strip() for p in (permissions or []) if str(p).strip()})
+        invalid = set(normalized_permissions) - allowed_permissions
+        if invalid:
+            raise ValueError(f"unsupported API key permissions: {sorted(invalid)}")
+
         kid = str(uuid.uuid4())
         raw_key = f"dbp_{secrets.token_hex(32)}"
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
@@ -165,24 +176,22 @@ class IdentityEngine:
             "VALUES (:id,:tid,:kn,:kh,:pe,:ea,NOW())"
         ), {"id": kid, "tid": tenant_id, "kn": key_name,
             "kh": key_hash,
-            "pe": __import__('json').dumps(permissions) if permissions else None,
+            "pe": json.dumps(normalized_permissions) if normalized_permissions else None,
             "ea": expires_at})
-        # The clear-text key is returned exactly once for provisioning. The
-        # persistent store keeps only a one-way hash.
-        return {"id": kid, "key": raw_key}
+        return {"id": kid, "key": raw_key, "permissions": normalized_permissions}
 
     def list_api_keys(self, tenant_id, is_active=None):
-        q = "SELECT id, key_name, key_hash, permissions, is_active, last_used_at, expires_at, created_at FROM dbp_api_keys WHERE tenant_id=:tid"
+        q = "SELECT id, key_name, permissions, is_active, last_used_at, expires_at, created_at FROM dbp_api_keys WHERE tenant_id=:tid"
         params: Dict[str, Any] = {"tid": tenant_id}
         if is_active is not None:
             q += " AND is_active=:ia"
             params["ia"] = is_active
-        rows = self.db.execute(text(q, params)).fetchall()
+        rows = self.db.execute(text(q), params).fetchall()
         return [{"id": r[0], "key_name": r[1],
-                 "permissions": r[3], "is_active": r[4],
-                 "last_used_at": str(r[5]) if r[5] else None,
-                 "expires_at": str(r[6]) if r[6] else None,
-                 "created_at": str(r[7]) if r[7] else None} for r in rows]
+                 "permissions": r[2], "is_active": r[3],
+                 "last_used_at": str(r[4]) if r[4] else None,
+                 "expires_at": str(r[5]) if r[5] else None,
+                 "created_at": str(r[6]) if r[6] else None} for r in rows]
 
     def revoke_api_key(self, tenant_id, key_id):
         self.db.execute(text(
