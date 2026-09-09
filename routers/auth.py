@@ -5,7 +5,7 @@ password reset, rotating refresh sessions and tenant user administration.
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from database import get_db
+from database import get_db, RLS_CONTEXT_PARAM
 from core.auth import get_current_user, require_permission, require_admin_role
 from core.user_engine import UserEngine
 from core.email_adapter import get_email_service, EmailTemplateEngine
@@ -69,6 +69,7 @@ async def register(body: dict, request: Request, db: Session = Depends(get_db)):
         tenant_id = f"tenant_{secrets.token_hex(8)}"
         company_name = body["company_name"]
         company_id = str(uuid.uuid4())
+        db2.execute(text(f"SET LOCAL {RLS_CONTEXT_PARAM} = :tid"), {"tid": tenant_id})
         db2.execute(text("INSERT INTO dbp_companies (id, tenant_id, code, name_en, name_ar) VALUES (:id, :tid, :code, :name, :name)"),
                     {"id": company_id, "tid": tenant_id, "code": company_name.lower().replace(" ", "_")[:30], "name": company_name})
         engine = UserEngine(db2)
@@ -125,6 +126,7 @@ async def login(body: dict, db: Session = Depends(get_db)):
     if not result["success"]:
         raise _err(403 if result.get("requires_verification") else 401, "LOGIN_FAILED", result["error"])
     try:
+        db.execute(text(f"SET LOCAL {RLS_CONTEXT_PARAM} = :tid"), {"tid": result["tenant_id"]})
         token = _issue_access_token(result)
         refresh_token = _issue_refresh_token(db, result["user_id"], result["tenant_id"])
         company = db.execute(text("SELECT id FROM dbp_companies WHERE tenant_id = :tenant_id ORDER BY id LIMIT 1"),

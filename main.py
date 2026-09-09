@@ -293,6 +293,30 @@ async def validate_configuration():
     print(f"Security: CORS={bool(cors_origins)}, body_limit={MAX_BODY_BYTES}, hosts={allowed_hosts}, trusted_hosts={auth_mode == 'production' or trusted_hosts_enabled}")
 
 
+@app.on_event("shutdown")
+async def graceful_shutdown():
+    """Dispose DB pool, log shutdown, and allow in-flight requests to drain."""
+    import logging as _log
+    _log.getLogger("eos.shutdown").info("Shutting down EOS platform — disposing DB pool...")
+    try:
+        from database import engine as _engine
+        _engine.dispose()
+    except Exception as exc:
+        _log.getLogger("eos.shutdown").warning(f"Error disposing engine: {exc}")
+    audit_logger.log_event(event="platform_shutdown", details={"version": "1.0.0"})
+    _log.getLogger("eos.shutdown").info("EOS shutdown complete")
+
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from core.metrics import metrics_middleware as _metrics_fn
+
+class _MetricsMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        return await _metrics_fn(request, call_next)
+
+app.add_middleware(_MetricsMiddleware)
+
+
 app.include_router(health_router)
 
 
