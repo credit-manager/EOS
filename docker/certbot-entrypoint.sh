@@ -19,7 +19,9 @@ sync_certificates() {
         chmod 0600 "$TLS_DIR/privkey.pem.tmp"
         mv "$TLS_DIR/fullchain.pem.tmp" "$TLS_DIR/fullchain.pem"
         mv "$TLS_DIR/privkey.pem.tmp" "$TLS_DIR/privkey.pem"
+        return 0
     fi
+    return 1
 }
 
 request_certificate() {
@@ -35,13 +37,17 @@ request_certificate() {
         -d "www.$DOMAIN"
 }
 
-if ! request_certificate; then
-    echo "WARNING: initial Let's Encrypt issuance failed; continuing with bootstrap TLS" >&2
-fi
-sync_certificates
+while ! sync_certificates; do
+    if ! request_certificate; then
+        echo "WARNING: Let's Encrypt issuance failed; retrying in 15 minutes" >&2
+        sleep 15m
+    fi
+done
+
+echo "EOS: trusted TLS certificate is active."
 
 while :; do
     sleep 12h
     certbot renew --non-interactive || echo "WARNING: certbot renewal attempt failed" >&2
-    sync_certificates
+    sync_certificates || true
 done
