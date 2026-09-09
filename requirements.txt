@@ -1,8 +1,8 @@
 # EOS Dynamic Business Platform — Production Dependencies
 fastapi==0.141.1
 starlette==1.6.0
-uvicorn[standard]==0.30.1
-gunicorn==23.0.0
+uvicorn[standard]==0.52.1
+gunicorn==26.2.0
 sqlalchemy==2.0.52
 psycopg2-binary==2.9.12
 PyJWT==2.13.0
@@ -11,7 +11,7 @@ bcrypt==4.2.0
 python-dotenv==1.2.2
 httpx==0.28.1
 pydantic==2.9.2
-pydantic-settings==2.3.3
+pydantic-settings==2.3.0
 python-multipart==0.0.31
 jinja2==3.1.6
 email-validator==2.3.0
@@ -23,6 +23,9 @@ prometheus-fastapi-instrumentator==6.1.0
 # System monitoring and Excel support (Phase 0)
 psutil==5.9.8
 openpyxl==3.1.2
+
+# Authentication / MFA
+pyotp==2.10.0
 
 # Testing and Quality Assurance (Phase 1)
 pytest==9.0.3
@@ -42,7 +45,7 @@ flake8==6.1.0
 alembic==1.12.1
 
 # Internationalization (Phase 5)
-Babel==2.13.1
+Babel==2.13.0
 
 # Load Testing (Phase 5)
 locust==2.20.0
