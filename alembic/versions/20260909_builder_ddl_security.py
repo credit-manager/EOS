@@ -32,11 +32,12 @@ DECLARE
     v_type text;
     v_sql text;
     v_table text;
+    v_code text;
+    v_is_new boolean;
 BEGIN
     IF p_table_name IS NULL OR p_table_name !~ '^bld_[a-z][a-z0-9_]{0,99}$' THEN
         RAISE EXCEPTION 'Invalid builder table name';
     END IF;
-
     IF jsonb_typeof(COALESCE(p_columns, '[]'::jsonb)) <> 'array' THEN
         RAISE EXCEPTION 'Builder columns must be a JSON array';
     END IF;
@@ -56,19 +57,15 @@ BEGIN
             'id VARCHAR(36) PRIMARY KEY,' ||
             'tenant_id VARCHAR(100) NOT NULL,' ||
             'created_at TIMESTAMP DEFAULT NOW()' ||
-            ')',
-            v_table
+            ')', v_table
         );
     ELSE
         IF NOT EXISTS (
-            SELECT 1
-              FROM pg_attribute a
-              JOIN pg_class c ON c.oid=a.attrelid
-              JOIN pg_namespace n ON n.oid=c.relnamespace
-             WHERE n.nspname='public'
-               AND c.relname=v_table
-               AND a.attname='tenant_id'
-               AND NOT a.attisdropped
+            SELECT 1 FROM pg_attribute a
+            JOIN pg_class c ON c.oid=a.attrelid
+            JOIN pg_namespace n ON n.oid=c.relnamespace
+            WHERE n.nspname='public' AND c.relname=v_table
+              AND a.attname='tenant_id' AND NOT a.attisdropped
         ) THEN
             RAISE EXCEPTION 'Existing builder table lacks tenant_id';
         END IF;
@@ -76,32 +73,50 @@ BEGIN
 
     FOR col IN SELECT * FROM jsonb_array_elements(COALESCE(p_columns, '[]'::jsonb))
     LOOP
-        IF jsonb_typeof(col.value) <> 'object' THEN
+        IF jsonb_typeof(col.value) <> 'object' OR NOT (col.value ? 'code') OR NOT (col.value ? 'sql_type') THEN
             RAISE EXCEPTION 'Invalid builder column definition';
         END IF;
-        IF NOT (col.value ? 'code') OR NOT (col.value ? 'sql_type') THEN
-            RAISE EXCEPTION 'Builder column requires code and sql_type';
-        END IF;
-        IF (col.value->>'code') !~ '^[a-z][a-z0-9_]{0,62}$' THEN
+        v_code := col.value->>'code';
+        IF v_code !~ '^[a-z][a-z0-9_]{0,62}$' THEN
             RAISE EXCEPTION 'Invalid builder column code';
+        END IF;
+        IF v_code IN ('id', 'tenant_id', 'created_at') THEN
+            RAISE EXCEPTION 'Reserved builder column code';
         END IF;
         v_type := col.value->>'sql_type';
         IF v_type NOT IN ('VARCHAR(255)','TEXT','INTEGER','DOUBLE PRECISION','BOOLEAN','DATE','TIMESTAMP','VARCHAR(50)','JSONB') THEN
             RAISE EXCEPTION 'Unsupported builder SQL type';
         END IF;
-        v_sql := format(
-            'ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS %I %s',
-            v_table,
-            col.value->>'code',
-            v_type
-        );
-        EXECUTE v_sql;
-        IF COALESCE((col.value->>'not_null')::boolean, false) THEN
-            EXECUTE format(
-                'ALTER TABLE public.%I ALTER COLUMN %I SET NOT NULL',
-                v_table,
-                col.value->>'code'
-            );
+
+        SELECT NOT EXISTS (
+            SELECT 1
+              FROM pg_attribute a
+              JOIN pg_class c ON c.oid=a.attrelid
+              JOIN pg_namespace n ON n.oid=c.relnamespace
+             WHERE n.nspname='public' AND c.relname=v_table
+               AND a.attname=v_code AND NOT a.attisdropped
+        ) INTO v_is_new;
+
+        IF v_is_new THEN
+            v_sql := format('ALTER TABLE public.%I ADD COLUMN %I %s', v_table, v_code, v_type);
+            EXECUTE v_sql;
+            -- New tables are empty at publication time, so required metadata can
+            -- safely become physical NOT NULL. Existing populated tables keep the
+            -- column nullable until a data migration/backfill makes it safe.
+            IF COALESCE((col.value->>'not_null')::boolean, false) THEN
+                EXECUTE format('ALTER TABLE public.%I ALTER COLUMN %I SET NOT NULL', v_table, v_code);
+            END IF;
+        ELSE
+            SELECT format_type(a.atttypid, a.atttypmod)
+              INTO v_type
+              FROM pg_attribute a
+              JOIN pg_class c ON c.oid=a.attrelid
+              JOIN pg_namespace n ON n.oid=c.relnamespace
+             WHERE n.nspname='public' AND c.relname=v_table
+               AND a.attname=v_code AND NOT a.attisdropped;
+            IF v_type IS NULL THEN
+                RAISE EXCEPTION 'Unable to inspect existing builder column';
+            END IF;
         END IF;
     END LOOP;
 END;
@@ -113,7 +128,6 @@ def upgrade() -> None:
     runtime_role = os.getenv("EOS_DB_RUNTIME_USER", "").strip()
     if runtime_role and not SAFE_ROLE.fullmatch(runtime_role):
         raise RuntimeError("EOS_DB_RUNTIME_USER must be a simple PostgreSQL role identifier")
-
     op.execute(_CREATE_FUNCTION)
     op.execute("ALTER FUNCTION public.eos_create_builder_table(text,jsonb) OWNER TO CURRENT_USER")
     op.execute("REVOKE ALL ON FUNCTION public.eos_create_builder_table(text,jsonb) FROM PUBLIC")
