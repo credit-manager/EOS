@@ -113,11 +113,30 @@ def main() -> None:
             harden_role(cur, exporter_user, {"pg_monitor"})
             verify_auth_definer_role(cur)
 
+            # Existing functions must not accidentally inherit ambient EXECUTE;
+            # explicitly scoped migration functions grant only the permissions
+            # they require. Keep the runtime/exporter roles least-privileged.
+            cur.execute("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC")
+            cur.execute(
+                sql.SQL("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM {}")
+                .format(sql.Identifier(runtime_user))
+            )
+            cur.execute(
+                sql.SQL("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM {}")
+                .format(sql.Identifier(exporter_user))
+            )
+            for role_name in (runtime_user, exporter_user):
+                cur.execute(
+                    sql.SQL(
+                        "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
+                        "REVOKE EXECUTE ON FUNCTIONS FROM {}"
+                    ).format(sql.Identifier(migration_user), sql.Identifier(role_name))
+                )
             cur.execute(
                 sql.SQL(
                     "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
-                    "REVOKE EXECUTE ON FUNCTIONS FROM {}"
-                ).format(sql.Identifier(migration_user), sql.Identifier(exporter_user))
+                    "REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC"
+                ).format(sql.Identifier(migration_user))
             )
 
             cur.execute(
