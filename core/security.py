@@ -126,14 +126,8 @@ class RowSecurity:
     """Enforces row-level filtering based on user attributes."""
 
     @staticmethod
-    def get_user_row_filter(
-        db: Session,
-        entity_id: str,
-        user_roles: List[str],
-        user_attrs: Dict[str, str],
-    ) -> Optional[str]:
-        """Return a SQL WHERE fragment without allowing metadata to inject SQL identifiers."""
-        rows = db.execute(
+    def _load_rules(db: Session, entity_id: str):
+        return db.execute(
             text(
                 "SELECT filter_column, filter_type, filter_value, allowed_roles "
                 "FROM dbp_row_rules "
@@ -143,33 +137,46 @@ class RowSecurity:
             {"eid": entity_id},
         ).fetchall()
 
+    @staticmethod
+    def get_user_row_filter(
+        db: Session,
+        entity_id: str,
+        user_roles: List[str],
+        user_attrs: Dict[str, str],
+    ) -> Optional[str]:
+        """Return a fail-closed SQL WHERE fragment for metadata row rules."""
+        rows = RowSecurity._load_rules(db, entity_id)
         if not rows:
             return None
 
         conditions = []
+        applicable_rules = 0
         for row in rows:
-            col, ftype, fval, allowed_roles = row[0], row[1], row[2], row[3] or []
-            col = _safe_identifier(col)
+            raw_col, ftype, fval, allowed_roles = row[0], row[1], row[2], row[3] or []
+            col = _safe_identifier(raw_col)
             if col is None:
-                continue
+                return "FALSE"
             if allowed_roles and not _role_matches(user_roles, allowed_roles):
                 continue
 
+            applicable_rules += 1
             attr_value = user_attrs.get(col)
             if attr_value is None:
-                continue
+                return "FALSE"
 
             if ftype == "equals":
                 conditions.append(f'{col} = :rls_{col}')
             elif ftype == "in":
-                values = fval.split(",") if fval else []
-                if attr_value in values:
-                    conditions.append(f'{col} = :rls_{col}')
+                values = {item.strip() for item in (fval or "").split(",") if item.strip()}
+                if attr_value not in values:
+                    return "FALSE"
+                conditions.append(f'{col} = :rls_{col}')
+            else:
+                return "FALSE"
 
-        if not conditions:
+        if not applicable_rules:
             return None
-
-        return " AND ".join(conditions)
+        return " AND ".join(conditions) if conditions else "FALSE"
 
     @staticmethod
     def get_rls_params(
@@ -179,23 +186,13 @@ class RowSecurity:
         user_attrs: Dict[str, str],
     ) -> Dict[str, str]:
         """Return bind parameters for the validated RLS WHERE fragment."""
-        rows = db.execute(
-            text(
-                "SELECT filter_column, filter_type, filter_value, allowed_roles "
-                "FROM dbp_row_rules "
-                "WHERE entity_id = :eid AND is_active = true "
-                "ORDER BY priority ASC"
-            ),
-            {"eid": entity_id},
-        ).fetchall()
-
+        rows = RowSecurity._load_rules(db, entity_id)
         params = {}
+
         for row in rows:
-            col, ftype, fval, allowed_roles = row[0], row[1], row[2], row[3] or []
-            col = _safe_identifier(col)
-            if col is None:
-                continue
-            if allowed_roles and not _role_matches(user_roles, allowed_roles):
+            raw_col, ftype, fval, allowed_roles = row[0], row[1], row[2], row[3] or []
+            col = _safe_identifier(raw_col)
+            if col is None or (allowed_roles and not _role_matches(user_roles, allowed_roles)):
                 continue
 
             attr_value = user_attrs.get(col)
@@ -205,7 +202,7 @@ class RowSecurity:
             if ftype == "equals":
                 params[f"rls_{col}"] = attr_value
             elif ftype == "in":
-                values = fval.split(",") if fval else []
+                values = {item.strip() for item in (fval or "").split(",") if item.strip()}
                 if attr_value in values:
                     params[f"rls_{col}"] = attr_value
 
