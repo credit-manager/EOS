@@ -109,16 +109,29 @@ def main() -> None:
                 ).format(sql.Identifier(migration_user), sql.Identifier(runtime_user))
             )
 
+            # PostgreSQL grants EXECUTE on newly created functions to PUBLIC by
+            # default. Close that ambient authority for both existing and future
+            # functions; narrowly scoped migrations must explicitly grant EXECUTE.
+            cur.execute("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC")
+            cur.execute("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM %s".replace("%s", sql.Identifier(runtime_user).as_string(cur)))
+            cur.execute("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM %s".replace("%s", sql.Identifier(exporter_user).as_string(cur)))
             cur.execute(
-                sql.SQL("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM {}").format(
-                    sql.Identifier(runtime_user)
-                )
+                sql.SQL(
+                    "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
+                    "REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC"
+                ).format(sql.Identifier(migration_user))
             )
             cur.execute(
                 sql.SQL(
                     "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
-                    "REVOKE ALL ON FUNCTIONS FROM {}"
+                    "REVOKE EXECUTE ON FUNCTIONS FROM {}"
                 ).format(sql.Identifier(migration_user), sql.Identifier(runtime_user))
+            )
+            cur.execute(
+                sql.SQL(
+                    "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
+                    "REVOKE EXECUTE ON FUNCTIONS FROM {}"
+                ).format(sql.Identifier(migration_user), sql.Identifier(exporter_user))
             )
 
             cur.execute(sql.SQL("GRANT pg_monitor TO {}").format(sql.Identifier(exporter_user)))
