@@ -7,6 +7,8 @@ import os
 import psycopg2
 from psycopg2 import sql
 
+AUTH_DEFINER_ROLE = "eos_auth_definer"
+
 
 def require(name: str) -> str:
     value = os.getenv(name, "").strip()
@@ -51,6 +53,44 @@ def harden_role(cur, role_name: str, allowed_memberships: set[str] | None = None
         raise SystemExit(f"Unsafe PostgreSQL role flags for {role_name!r}: {flags}")
 
 
+def verify_auth_definer_role(cur) -> None:
+    cur.execute(
+        "SELECT rolsuper, rolcreaterole, rolcreatedb, rolcanlogin, "
+        "rolreplication, rolbypassrls, rolinherit FROM pg_roles WHERE rolname = %s",
+        (AUTH_DEFINER_ROLE,),
+    )
+    flags = cur.fetchone()
+    if flags != (False, False, False, False, False, True, False):
+        raise SystemExit(
+            f"Unsafe authentication definer role flags for {AUTH_DEFINER_ROLE!r}: {flags}"
+        )
+
+    cur.execute(
+        "SELECT parent.rolname "
+        "FROM pg_auth_members m "
+        "JOIN pg_roles parent ON parent.oid = m.roleid "
+        "JOIN pg_roles member ON member.oid = m.member "
+        "WHERE member.rolname = %s",
+        (AUTH_DEFINER_ROLE,),
+    )
+    memberships = [row[0] for row in cur.fetchall()]
+    if memberships:
+        raise SystemExit(
+            f"Authentication definer role must not inherit memberships: {memberships}"
+        )
+
+    cur.execute(
+        "SELECT has_table_privilege(%s, 'public.dbp_users', 'SELECT'), "
+        "has_table_privilege(%s, 'public.dbp_refresh_tokens', 'SELECT')",
+        (AUTH_DEFINER_ROLE, AUTH_DEFINER_ROLE),
+    )
+    table_access = cur.fetchone()
+    if table_access != (True, True):
+        raise SystemExit(
+            f"Authentication definer lacks required auth-table SELECT privileges: {table_access}"
+        )
+
+
 def main() -> None:
     database_url = require("DATABASE_URL")
     runtime_user = require("EOS_DB_RUNTIME_USER")
@@ -61,20 +101,18 @@ def main() -> None:
         with conn.cursor() as cur:
             cur.execute("SELECT current_database(), current_user")
             database_name, migration_user = cur.fetchone()
-            if migration_user in {runtime_user, exporter_user}:
-                raise SystemExit("Runtime roles must not be the migration/database-owner role")
+            if migration_user in {runtime_user, exporter_user, AUTH_DEFINER_ROLE}:
+                raise SystemExit("Production roles must not be the migration/database-owner role")
 
-            for role_name in (runtime_user, exporter_user):
+            for role_name in (runtime_user, exporter_user, AUTH_DEFINER_ROLE):
                 cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role_name,))
                 if cur.fetchone() is None:
                     raise SystemExit(f"Expected role {role_name!r} does not exist")
 
             harden_role(cur, runtime_user)
             harden_role(cur, exporter_user, {"pg_monitor"})
+            verify_auth_definer_role(cur)
 
-            # The exporter is a monitoring principal, not an application principal.
-            # Remove any legacy/default function EXECUTE grants that could survive
-            # a previous deployment and silently expand its authority later.
             cur.execute(
                 sql.SQL(
                     "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
