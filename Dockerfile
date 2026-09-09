@@ -1,7 +1,7 @@
 # EOS Dynamic Business Platform — Production Dockerfile
 # Multi-stage build: React frontend + Python runtime
 
-FROM node:20.20.2-bookworm-slim AS frontend-builder
+FROM node:24.20.0-bookworm-slim AS frontend-builder
 WORKDIR /frontend
 COPY erp-system/frontend/package.json erp-system/frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
