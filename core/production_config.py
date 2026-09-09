@@ -23,7 +23,12 @@ def validate_production_config() -> List[Tuple[str, str, bool]]:
         return True
 
     check("EOS_AUTH_MODE", os.getenv("EOS_AUTH_MODE", ""), r"^production$", critical=True)
-    check("EOS_SECRET_KEY", os.getenv("EOS_SECRET_KEY", ""), r"^.{32,}$", critical=True)
+    check("EOS_JWT_PRIVATE_KEY", os.getenv("EOS_JWT_PRIVATE_KEY", ""), r"^-----BEGIN (?:RSA )?PRIVATE KEY-----", critical=True)
+    check("EOS_JWT_PUBLIC_KEY", os.getenv("EOS_JWT_PUBLIC_KEY", ""), r"^-----BEGIN PUBLIC KEY-----", critical=True)
+    check("EOS_ALGORITHM", os.getenv("EOS_ALGORITHM", ""), r"^RS256$", critical=True)
+    check("EOS_JWT_KEY_ID", os.getenv("EOS_JWT_KEY_ID", ""), r"^[A-Za-z0-9._-]{1,128}$", critical=True)
+    check("EOS_JWT_ISSUER", os.getenv("EOS_JWT_ISSUER", ""), critical=True)
+    check("EOS_JWT_AUDIENCE", os.getenv("EOS_JWT_AUDIENCE", ""), critical=True)
     check("DATABASE_URL", os.getenv("DATABASE_URL", ""), r"^postgresql(?:\+\w+)?://.{10,}$", critical=True)
 
     # Development-only console mail is never accepted in production.
