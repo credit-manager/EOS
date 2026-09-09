@@ -4,8 +4,8 @@ Revision ID: 20260909_finalize_tenant_rls
 Revises: 20260909_merge_release_heads
 
 Several legacy RLS migrations run before later schema-restoration migrations.
-This final idempotent pass closes that ordering gap and makes the release head
-self-consistent on both fresh and upgraded databases.
+This final idempotent pass closes that ordering gap and only protects tables
+that actually expose a tenant_id column.
 """
 
 from alembic import op
@@ -99,10 +99,18 @@ def upgrade() -> None:
                     CONTINUE;
                 END IF;
 
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = table_name
+                      AND column_name = 'tenant_id'
+                ) THEN
+                    CONTINUE;
+                END IF;
+
                 policy_name := 'tenant_isolation_' || table_name;
 
-                -- Normalize both policy naming conventions used by earlier
-                -- migrations to avoid permissive-policy OR behavior.
                 EXECUTE format(
                     'DROP POLICY IF EXISTS %I ON public.%I',
                     'tenant_isolation', table_name
@@ -111,7 +119,6 @@ def upgrade() -> None:
                     'DROP POLICY IF EXISTS %I ON public.%I',
                     policy_name, table_name
                 );
-
                 EXECUTE format(
                     'ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',
                     table_name
@@ -145,6 +152,15 @@ def downgrade() -> None:
             FOREACH table_name IN ARRAY ARRAY[{tables_sql}]::text[]
             LOOP
                 IF to_regclass(format('public.%I', table_name)) IS NULL THEN
+                    CONTINUE;
+                END IF;
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = table_name
+                      AND column_name = 'tenant_id'
+                ) THEN
                     CONTINUE;
                 END IF;
                 policy_name := 'tenant_isolation_' || table_name;
