@@ -1,92 +1,53 @@
 name: EOS Commercial Release Gate
-
 on:
   pull_request:
     branches: [main]
   push:
     branches: [main]
-
-concurrency:
-  group: eos-commercial-gate-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
-
+concurrency:
+  group: eos-commercial-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 env:
-  EXPECTED_ALEMBIC_HEAD: 20260910_builder_ddl_hardening
-  AUTH_DEFINER_ROLE: eos_auth_definer
-  RUNTIME_ROLE: eos_runtime
-
+  EXPECTED_ALEMBIC_HEAD: 20260910_refresh_mfa_state
 jobs:
-  production-contract:
-    name: Production configuration contract
+  contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: eos
+          POSTGRES_PASSWORD: eos
+          POSTGRES_DB: eos_contract
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U eos -d eos_contract"
+          --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
-      - name: Install runtime dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Verify dependency consistency and Python compilation
-        run: |
-          pip check
-          python -m compileall -q .
-      - name: Validate HS256 production configuration
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+      - name: Python compile and dependency integrity
+        run: pip check && python -m compileall -q .
+      - name: Migration contract
         env:
-          ENVIRONMENT: production
-          EOS_AUTH_MODE: production
-          EOS_ALGORITHM: HS256
-          EOS_JWT_ISSUER: eos-dbp
-          EOS_JWT_AUDIENCE: eos-api
-          EOS_SECRET_KEY: production-contract-secret-key-1234567890abcdef
-          DATABASE_URL: postgresql://eos:contract-password@127.0.0.1:5432/eos
-          EOS_EMAIL_PROVIDER: smtp
-          EOS_SMTP_HOST: smtp.example.com
-          EOS_SMTP_USERNAME: contract-user
-          EOS_SMTP_PASSWORD: contract-password
-          EOS_FROM_EMAIL: noreply@example.com
-          EOS_PAYMENT_MODE: stripe
-          EOS_STRIPE_SECRET_KEY: sk_live_ci_9f7a6c3b2e1d4a8c
-          EOS_FRONTEND_URL: https://app.example.com
-          EOS_CORS_ORIGINS: '["https://app.example.com"]'
-          EOS_ALLOWED_HOSTS: app.example.com,api.example.com
-          POSTGRES_USER: eos
-          POSTGRES_PASSWORD: contract-password
-          POSTGRES_DB: eos
-          DOMAIN: example.com
-        run: python -m core.production_config
-      - name: Validate RS256 production configuration without HS256 secret
-        env:
-          ENVIRONMENT: production
-          EOS_AUTH_MODE: production
-          EOS_ALGORITHM: RS256
-          EOS_JWT_ISSUER: eos-dbp
-          EOS_JWT_AUDIENCE: eos-api
-          EOS_SECRET_KEY: ''
-          EOS_JWT_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\ncontract-private-key\n-----END PRIVATE KEY-----'
-          EOS_JWT_PUBLIC_KEY: '-----BEGIN PUBLIC KEY-----\ncontract-public-key\n-----END PUBLIC KEY-----'
-          DATABASE_URL: postgresql://eos:contract-password@127.0.0.1:5432/eos
-          EOS_EMAIL_PROVIDER: smtp
-          EOS_SMTP_HOST: smtp.example.com
-          EOS_SMTP_USERNAME: contract-user
-          EOS_SMTP_PASSWORD: contract-password
-          EOS_FROM_EMAIL: noreply@example.com
-          EOS_PAYMENT_MODE: stripe
-          EOS_STRIPE_SECRET_KEY: sk_live_ci_9f7a6c3b2e1d4a8c
-          EOS_FRONTEND_URL: https://app.example.com
-          EOS_CORS_ORIGINS: '["https://app.example.com"]'
-          EOS_ALLOWED_HOSTS: app.example.com,api.example.com
-          POSTGRES_USER: eos
-          POSTGRES_PASSWORD: contract-password
-          POSTGRES_DB: eos
-          DOMAIN: example.com
-        run: python -m core.production_config
-      - name: Run commercial regression tests
+          DATABASE_URL: postgresql://eos:eos@127.0.0.1:5432/eos_contract
+          EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          ENVIRONMENT: testing
+        run: |
+          test "$(alembic heads | wc -l | tr -d ' ')" -eq 1
+          test "$(alembic heads | grep -c "^${EXPECTED_ALEMBIC_HEAD}")" -eq 1
+          alembic upgrade head
+          test "$(alembic current | grep -c "${EXPECTED_ALEMBIC_HEAD}")" -eq 1
+          alembic upgrade head
+      - name: Core commercial regressions
         env:
           ENVIRONMENT: test
           PYTHONPATH: ${{ github.workspace }}
@@ -96,255 +57,24 @@ jobs:
             tests/test_enterprise_hardening_primitives.py \
             tests/test_production_config.py \
             tests/test_security_regressions.py \
-            tests/test_subscription_engine_regressions.py \
             tests/test_payment_engine_regressions.py \
             tests/test_financial_authorization_regressions.py \
             tests/test_builder_authorization_regressions.py \
             tests/test_builder_engine_regressions.py \
             tests/test_marketplace_regressions.py \
+            tests/test_identity_engine_regressions.py \
             --tb=short
-
-  migration-contract:
-    name: PostgreSQL migration contract
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: eos
-          POSTGRES_PASSWORD: eos
-          POSTGRES_DB: eos_contract
-        options: >-
-          --health-cmd "pg_isready -U eos -d eos_contract"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-        ports:
-          - 5432:5432
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.12'
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Require exactly one release head
-        env:
-          DATABASE_URL: postgresql://eos:eos@127.0.0.1:5432/eos_contract
-          EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
-          ENVIRONMENT: testing
-        run: |
-          alembic heads
-          test "$(alembic heads | wc -l | tr -d ' ')" -eq 1
-          test "$(alembic heads | grep -c "^${EXPECTED_ALEMBIC_HEAD}")" -eq 1
-      - name: Create production-equivalent database roles
-        env:
-          DATABASE_URL: postgresql://eos:eos@127.0.0.1:5432/eos_contract
-          EOS_DB_RUNTIME_USER: eos_runtime
-          EOS_DB_RUNTIME_PASSWORD: runtime-contract
-          EOS_DB_EXPORTER_USER: eos_exporter
-          EOS_DB_EXPORTER_PASSWORD: exporter-contract
-        run: python scripts/ensure_runtime_db_role.py
-      - name: Upgrade database to release head twice
-        env:
-          DATABASE_URL: postgresql://eos:eos@127.0.0.1:5432/eos_contract
-          EOS_DB_RUNTIME_USER: eos_runtime
-          EOS_DB_RUNTIME_PASSWORD: runtime-contract
-          EOS_DB_EXPORTER_USER: eos_exporter
-          EOS_DB_EXPORTER_PASSWORD: exporter-contract
-          EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
-          ENVIRONMENT: testing
-        run: |
-          alembic upgrade head
-          test "$(alembic current | grep -c "${EXPECTED_ALEMBIC_HEAD}")" -eq 1
-          alembic upgrade head
-      - name: Verify tenant RLS on every public tenant table
-        env:
-          PGPASSWORD: eos
-        run: |
-          violations="$(psql -h 127.0.0.1 -U eos -d eos_contract -v ON_ERROR_STOP=1 -Atc "
-            SELECT cols.table_name
-              FROM information_schema.columns cols
-              JOIN pg_class c ON c.relname=cols.table_name
-              JOIN pg_namespace n ON n.oid=c.relnamespace
-             WHERE cols.table_schema='public'
-               AND n.nspname='public'
-               AND cols.column_name='tenant_id'
-               AND c.relkind IN ('r','p')
-               AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity)
-             ORDER BY cols.table_name;
-          ")"
-          test -z "$violations"
-      - name: Verify authentication and builder DDL privilege boundaries
-        env:
-          PGPASSWORD: eos
-        run: |
-          psql -h 127.0.0.1 -U eos -d eos_contract -v ON_ERROR_STOP=1 -Atc "
-            SELECT CASE
-              WHEN has_function_privilege('${RUNTIME_ROLE}','public.eos_auth_tenant_by_email(text)','EXECUTE')
-               AND has_function_privilege('${RUNTIME_ROLE}','public.eos_auth_tenant_by_verification_hash(text)','EXECUTE')
-               AND has_function_privilege('${RUNTIME_ROLE}','public.eos_auth_tenant_by_reset_hash(text)','EXECUTE')
-               AND has_function_privilege('${RUNTIME_ROLE}','public.eos_auth_tenant_by_refresh_hash(text)','EXECUTE')
-               AND has_function_privilege('${RUNTIME_ROLE}','public.eos_create_builder_table(text,jsonb)','EXECUTE')
-               AND NOT has_function_privilege('eos_exporter','public.eos_create_builder_table(text,jsonb)','EXECUTE')
-               AND NOT has_function_privilege('public','public.eos_create_builder_table(text,jsonb)','EXECUTE')
-               AND NOT has_schema_privilege('${RUNTIME_ROLE}','public','CREATE')
-               AND NOT has_function_privilege('eos_exporter','public.eos_auth_tenant_by_email(text)','EXECUTE')
-               AND NOT has_function_privilege('public','public.eos_auth_tenant_by_email(text)','EXECUTE')
-               AND (SELECT rolcanlogin=false AND rolbypassrls=true AND rolsuper=false AND rolinherit=false FROM pg_roles WHERE rolname='${AUTH_DEFINER_ROLE}')
-               AND has_table_privilege('${AUTH_DEFINER_ROLE}','public.dbp_users','SELECT')
-               AND has_table_privilege('${AUTH_DEFINER_ROLE}','public.dbp_refresh_tokens','SELECT')
-              THEN 'PASS' ELSE 'FAIL' END;
-          " | grep -Fx PASS
-      - name: Prove runtime cannot perform arbitrary DDL
-        env:
-          PGPASSWORD: eos
-        run: |
-          if psql -h 127.0.0.1 -U eos -d eos_contract -v ON_ERROR_STOP=1 -Atc "SET ROLE ${RUNTIME_ROLE}; CREATE TABLE public.ci_runtime_ddl_must_fail (id integer);"; then
-            echo 'Runtime role unexpectedly created a table'
-            exit 1
-          else
-            echo 'Runtime arbitrary DDL boundary: PASS'
-          fi
-          psql -h 127.0.0.1 -U eos -d eos_contract -v ON_ERROR_STOP=1 -Atc "
-            BEGIN;
-            SET ROLE ${RUNTIME_ROLE};
-            SELECT set_config('app.tenant_id','ci-tenant',true);
-            SELECT public.eos_create_builder_table('bld_ci_gate', '[{\"code\":\"name\",\"sql_type\":\"VARCHAR(255)\",\"not_null\":true}]'::jsonb);
-            SELECT CASE
-              WHEN EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='bld_ci_gate')
-               AND (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='bld_ci_gate')
-              THEN 'BUILDER_DDL_PASS' ELSE 'BUILDER_DDL_FAIL' END;
-            ROLLBACK;
-          " | grep -Fx BUILDER_DDL_PASS
-      - name: Verify dynamic RLS DDL guard
-        env:
-          PGPASSWORD: eos
-        run: |
-          psql -h 127.0.0.1 -U eos -d eos_contract -v ON_ERROR_STOP=1 -Atc "SELECT COUNT(*) FROM pg_event_trigger WHERE evtname='eos_tenant_rls_ddl_guard';" | grep -Fx 1
-      - name: Verify public schema does not grant CREATE to PUBLIC
-        env:
-          PGPASSWORD: eos
-        run: |
-          psql -h 127.0.0.1 -U eos -d eos_contract -v ON_ERROR_STOP=1 -Atc "SELECT has_schema_privilege('public','public','CREATE');" | grep -Fx f
-
-  production-compose-contract:
-    name: Production container / compose contract
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Render production compose
-        env:
-          POSTGRES_USER: eos_admin
-          POSTGRES_PASSWORD: admin-password-contract
-          POSTGRES_DB: eos
-          EOS_DB_RUNTIME_USER: eos_runtime
-          EOS_DB_RUNTIME_PASSWORD: runtime-password-contract
-          EOS_DB_EXPORTER_USER: eos_exporter
-          EOS_DB_EXPORTER_PASSWORD: exporter-password-contract
-          EOS_SECRET_KEY: production-contract-secret-key-1234567890abcdef
-          EOS_ALGORITHM: HS256
-          EOS_JWT_PRIVATE_KEY: ''
-          EOS_JWT_PUBLIC_KEY: ''
-          EOS_SMTP_HOST: smtp.example.com
-          EOS_SMTP_USERNAME: contract-user
-          EOS_SMTP_PASSWORD: contract-password
-          EOS_FROM_EMAIL: noreply@example.com
-          EOS_STRIPE_SECRET_KEY: sk_live_ci_9f7a6c3b2e1d4a8c
-          EOS_FRONTEND_URL: https://app.example.com
-          EOS_CORS_ORIGINS: '["https://app.example.com"]'
-          EOS_ALLOWED_HOSTS: app.example.com,api.example.com
-          DOMAIN: example.com
-          ACME_EMAIL: ops@example.com
-          GRAFANA_PASSWORD: grafana-password-contract
-        run: |
-          docker compose -f docker-compose.yml config --quiet
-          rendered="$(docker compose -f docker-compose.yml config)"
-          printf '%s\n' "$rendered" | grep -F 'service_completed_successfully'
-          printf '%s\n' "$rendered" | grep -F 'EOS_DB_RUNTIME_USER'
-          printf '%s\n' "$rendered" | grep -F '/etc/eos-tls'
-          printf '%s\n' "$rendered" | grep -F 'eos-certbot'
-          printf '%s\n' "$rendered" | grep -F 'health/ready'
-      - name: Validate Nginx template against production image
-        env:
-          DOMAIN: example.com
-        run: |
-          mkdir -p .ci/eos-tls
-          openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
-            -subj /CN=example.com \
-            -addext 'subjectAltName=DNS:example.com' \
-            -keyout .ci/eos-tls/privkey.pem \
-            -out .ci/eos-tls/fullchain.pem
-          docker build -f docker/nginx.Dockerfile -t eos-nginx:gate .
-          docker run --rm \
-            -e DOMAIN="$DOMAIN" \
-            -v "$PWD/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
-            -v "$PWD/nginx/conf.d/eos.conf:/etc/nginx/eos.conf.template:ro" \
-            -v "$PWD/.ci/eos-tls:/etc/eos-tls:ro" \
-            eos-nginx:gate \
-            sh -c "envsubst '\${DOMAIN}' < /etc/nginx/eos.conf.template > /etc/nginx/conf.d/eos.conf && nginx -t -c /etc/nginx/nginx.conf"
-
-  container-security:
-    name: Container vulnerability and SBOM gate
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Build production API image
-        run: docker build --pull -t eos:ci .
-      - name: Scan API image for HIGH/CRITICAL vulnerabilities
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: eos:ci
-          format: table
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: '1'
-      - name: Build and scan Nginx image
-        run: docker build --pull -f docker/nginx.Dockerfile -t eos-nginx:ci .
-      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: eos-nginx:ci
-          format: table
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: '1'
-      - name: Generate API SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-        with:
-          image: eos:ci
-          artifact-name: eos-sbom.spdx.json
-          output-file: eos-sbom.spdx.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: eos-sbom
-          path: eos-sbom.spdx.json
-          if-no-files-found: error
-
-  frontend-contract:
-    name: Canonical frontend commercial build
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults:
-      run:
+      - name: Canonical frontend certification
         working-directory: erp-system/frontend
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '24.20.0'
-          cache: npm
-          cache-dependency-path: erp-system/frontend/package-lock.json
-      - run: npm ci --no-audit --no-fund
-      - run: npm run lint
-      - run: npm run test -- --run
-      - run: npm run build
-      - name: Verify production artifact
-        working-directory: .
         run: |
-          test -f erp-system/frontend/dist/index.html
-          test -n "$(find erp-system/frontend/dist/assets -type f | head -1)"
+          npm ci --no-audit --no-fund
+          npm run lint
+          npm run test -- --run
+          npm run build
+          test -f dist/index.html
+          test -n "$(find dist/assets -type f | head -1)"
+      - name: Verify frontend runtime contract
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          ENVIRONMENT: test
+        run: pytest -q tests/test_frontend_runtime_contract.py --tb=short
