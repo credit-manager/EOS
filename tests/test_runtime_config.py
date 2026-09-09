@@ -14,10 +14,18 @@ from core.runtime_config import (
 
 def test_auth_mode_defaults_to_test_only_for_explicit_local_environments(monkeypatch):
     monkeypatch.delenv("EOS_AUTH_MODE", raising=False)
+    monkeypatch.delenv("EOS_TEST_SECRET_KEY", raising=False)
     monkeypatch.setenv("ENVIRONMENT", "testing")
     assert resolve_auth_mode() == "test"
 
     monkeypatch.setenv("ENVIRONMENT", "production")
+    assert resolve_auth_mode() == "production"
+
+
+def test_test_secret_cannot_promote_production_to_test_auth(monkeypatch):
+    monkeypatch.delenv("EOS_AUTH_MODE", raising=False)
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("EOS_TEST_SECRET_KEY", "ci-only-test-secret")
     assert resolve_auth_mode() == "production"
 
 
