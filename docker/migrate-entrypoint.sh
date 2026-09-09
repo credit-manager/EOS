@@ -11,10 +11,17 @@ if [ -z "${EOS_DB_RUNTIME_USER:-}" ] || [ -z "${EOS_DB_RUNTIME_PASSWORD:-}" ]; t
   exit 1
 fi
 
+if [ -z "${EOS_DB_EXPORTER_USER:-}" ] || [ -z "${EOS_DB_EXPORTER_PASSWORD:-}" ]; then
+  echo "EOS_DB_EXPORTER_USER and EOS_DB_EXPORTER_PASSWORD are required" >&2
+  exit 1
+fi
+
 echo "EOS: applying database migrations..."
 alembic upgrade head
 echo "EOS: database migrations complete."
 
-echo "EOS: reconciling least-privilege runtime database role..."
+echo "EOS: reconciling least-privilege runtime and monitoring roles..."
 python scripts/ensure_runtime_db_role.py
-echo "EOS: runtime database role ready."
+echo "EOS: enforcing database role security invariants..."
+python scripts/enforce_runtime_db_role_security.py
+echo "EOS: database roles secured."
