@@ -40,6 +40,22 @@ def contains_secret(value: Any) -> bool:
     return False
 
 
+def encrypt_text(value: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError("secret value must be a non-empty string")
+    return Fernet(_key()).encrypt(value.encode("utf-8")).decode("ascii")
+
+
+def decrypt_text(token: str) -> str:
+    if not isinstance(token, str) or not token:
+        raise ValueError("encrypted secret must be a non-empty string")
+    try:
+        payload = Fernet(_key()).decrypt(token.encode("ascii"))
+    except (InvalidToken, ValueError, UnicodeDecodeError) as exc:
+        raise RuntimeError("Encrypted secret cannot be decrypted") from exc
+    return payload.decode("utf-8")
+
+
 def encrypt_json(value: Any) -> str:
     payload = json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
     return Fernet(_key()).encrypt(payload).decode("ascii")
@@ -48,6 +64,6 @@ def encrypt_json(value: Any) -> str:
 def decrypt_json(token: str) -> Any:
     try:
         payload = Fernet(_key()).decrypt(token.encode("ascii"))
-    except InvalidToken as exc:
+    except (InvalidToken, ValueError, UnicodeDecodeError) as exc:
         raise RuntimeError("Encrypted configuration cannot be decrypted") from exc
     return json.loads(payload.decode("utf-8"))
