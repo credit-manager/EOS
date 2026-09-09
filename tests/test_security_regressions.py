@@ -1,3 +1,9 @@
+import asyncio
+from types import SimpleNamespace
+
+import pytest
+from fastapi import HTTPException
+
 from core.security import RowSecurity, _role_matches
 
 
@@ -40,3 +46,27 @@ def test_row_security_uses_bind_parameter_for_matching_rule():
 def test_row_security_rejects_unsafe_metadata_identifier():
     db = _FakeDB([("department_id;DROP TABLE users", "equals", "x", [])])
     assert RowSecurity.get_user_row_filter(db, "entity", ["user"], {}) == "FALSE"
+
+
+def test_auth_adapter_rejects_non_access_token(monkeypatch):
+    monkeypatch.setenv("EOS_AUTH_MODE", "production")
+    from core import production_auth
+    from core.auth_adapter import get_current_user
+
+    monkeypatch.setattr(
+        production_auth,
+        "verify_token",
+        lambda _token: {
+            "sub": "user-1",
+            "tenant_id": "tenant-1",
+            "type": "refresh",
+            "iss": "eos-dbp",
+            "aud": "eos-api",
+        },
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(get_current_user(SimpleNamespace(credentials="not-an-access-token")))
+
+    assert exc.value.status_code == 401
+    assert exc.value.detail == "Invalid token type"
