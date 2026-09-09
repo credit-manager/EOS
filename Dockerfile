@@ -25,10 +25,10 @@ COPY --from=frontend-builder --chown=eos:eos /frontend/dist /app/erp-system/fron
 RUN chmod 0755 /app/docker/entrypoint.sh /app/docker/migrate-entrypoint.sh /app/docker/nginx-entrypoint.sh
 USER eos
 ENV PATH=/home/eos/.local/bin:$PATH
-
-# Runtime tuning can be supplied by the deployment platform.
 ENV WEB_CONCURRENCY=4
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 CMD curl -f http://localhost:8000/health/live || exit 1
+# Readiness verifies the application process and database connectivity before
+# dependent production services (Nginx) are allowed to start.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 CMD curl -f http://localhost:8000/health/ready || exit 1
 EXPOSE 8000
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
