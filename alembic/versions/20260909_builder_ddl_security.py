@@ -36,12 +36,23 @@ DECLARE
     v_table_exists boolean;
     v_column_exists boolean;
     v_policy_name text;
+    v_tenant text;
+    v_column_count integer;
 BEGIN
+    v_tenant := current_setting('app.tenant_id', true);
+    IF v_tenant IS NULL OR btrim(v_tenant) = '' THEN
+        RAISE EXCEPTION 'Tenant context is required for builder DDL';
+    END IF;
+
     IF p_table_name IS NULL OR p_table_name !~ '^bld_[a-z][a-z0-9_]{0,99}$' THEN
         RAISE EXCEPTION 'Invalid builder table name';
     END IF;
     IF jsonb_typeof(COALESCE(p_columns, '[]'::jsonb)) <> 'array' THEN
         RAISE EXCEPTION 'Builder columns must be a JSON array';
+    END IF;
+    v_column_count := jsonb_array_length(COALESCE(p_columns, '[]'::jsonb));
+    IF v_column_count > 100 THEN
+        RAISE EXCEPTION 'Builder tables are limited to 100 custom columns';
     END IF;
 
     v_table := p_table_name;
