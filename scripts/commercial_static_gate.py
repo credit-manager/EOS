@@ -25,10 +25,15 @@ def fail_if_present(path: Path, markers: tuple[str, ...]) -> list[str]:
 def main() -> int:
     violations: list[str] = []
 
-    for path in ROOT.joinpath("core").rglob("*.py"):
-        if path.name in {"payment_engine.py"}:
-            markers = fail_if_present(path, RUNTIME_DDL_MARKERS)
-            violations.extend(f"{path.relative_to(ROOT)}: runtime DDL marker {marker!r}" for marker in markers)
+    payment_engine = ROOT / "core" / "payment_engine.py"
+    if payment_engine.exists():
+        markers = fail_if_present(payment_engine, RUNTIME_DDL_MARKERS)
+        violations.extend(f"{payment_engine.relative_to(ROOT)}: runtime DDL marker {marker!r}" for marker in markers)
+
+    builder_engine = ROOT / "core" / "builder_engine.py"
+    if builder_engine.exists():
+        markers = fail_if_present(builder_engine, ("CREATE TABLE IF NOT EXISTS", "ALTER TABLE public."))
+        violations.extend(f"{builder_engine.relative_to(ROOT)}: privileged builder DDL marker {marker!r}" for marker in markers)
 
     reporting = ROOT / "core" / "reporting_engine.py"
     if reporting.exists():
