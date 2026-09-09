@@ -2,12 +2,9 @@
 EOS Enhanced Health Check — Deep health with real checks.
 P63.6: Enhanced Health Checks (API + PostgreSQL + disk + dependencies).
 
-Replaces the simple /health endpoint with /health/full that checks:
-- PostgreSQL connectivity
-- Disk space
-- Memory usage
-- Process health
-- Dependencies
+The health surface is split into lightweight liveness/readiness probes and a
+full diagnostic endpoint. Diagnostic responses deliberately avoid exposing
+raw exception strings or process identifiers to external callers.
 """
 
 import os
@@ -21,32 +18,38 @@ from fastapi import APIRouter, Response
 from sqlalchemy import text
 
 logger = logging.getLogger("eos.health")
-
 router = APIRouter(tags=["Health"], include_in_schema=False)
+VERSION = os.getenv("EOS_APP_VERSION", "1.0.0")
+
+
+def _safe_component_error(message: str) -> Dict[str, Any]:
+    """Return a stable diagnostic payload without leaking exception details."""
+    return {"status": "unhealthy", "message": message}
 
 
 def _check_database() -> Dict[str, Any]:
-    """Check PostgreSQL connectivity and stats."""
+    """Check PostgreSQL connectivity and latency."""
+    db = None
     try:
         from database import SessionLocal
         db = SessionLocal()
         start = time.time()
-        result = db.execute(text("SELECT 1"))
+        db.execute(text("SELECT 1"))
         latency_ms = round((time.time() - start) * 1000, 2)
-        db.close()
-
         return {
             "status": "healthy",
             "latency_ms": latency_ms,
-            "message": "PostgreSQL responding"
+            "message": "PostgreSQL responding",
         }
-    except Exception as e:
-        logger.error(f"Database health check failed: {e}")
-        return {
-            "status": "unhealthy",
-            "error": str(e),
-            "message": "PostgreSQL unreachable"
-        }
+    except Exception:
+        logger.exception("Database health check failed")
+        return _safe_component_error("PostgreSQL unavailable")
+    finally:
+        if db is not None:
+            try:
+                db.close()
+            except Exception:
+                logger.warning("Failed to close health-check database session", exc_info=True)
 
 
 def _check_disk() -> Dict[str, Any]:
@@ -71,14 +74,11 @@ def _check_disk() -> Dict[str, Any]:
             "percent_used": percent,
             "free_gb": free_gb,
             "total_gb": round(disk.total / (1024**3), 2),
-            "message": message
+            "message": message,
         }
-    except Exception as e:
-        return {
-            "status": "unknown",
-            "error": str(e),
-            "message": "Could not check disk"
-        }
+    except Exception:
+        logger.exception("Disk health check failed")
+        return {"status": "unknown", "message": "Disk status unavailable"}
 
 
 def _check_memory() -> Dict[str, Any]:
@@ -103,18 +103,15 @@ def _check_memory() -> Dict[str, Any]:
             "percent_used": percent,
             "available_gb": available_gb,
             "total_gb": round(mem.total / (1024**3), 2),
-            "message": message
+            "message": message,
         }
-    except Exception as e:
-        return {
-            "status": "unknown",
-            "error": str(e),
-            "message": "Could not check memory"
-        }
+    except Exception:
+        logger.exception("Memory health check failed")
+        return {"status": "unknown", "message": "Memory status unavailable"}
 
 
 def _check_process() -> Dict[str, Any]:
-    """Check FastAPI process health."""
+    """Check FastAPI process health without exposing its PID."""
     try:
         proc = psutil.Process(os.getpid())
         mem_mb = round(proc.memory_info().rss / (1024**2), 2)
@@ -124,36 +121,28 @@ def _check_process() -> Dict[str, Any]:
 
         return {
             "status": "healthy",
-            "pid": os.getpid(),
             "memory_mb": mem_mb,
             "cpu_percent": cpu_percent,
             "threads": threads,
             "uptime_hours": round(uptime_seconds / 3600, 2),
-            "message": f"Process running (PID {os.getpid()})"
+            "message": "Process running",
         }
-    except Exception as e:
-        return {
-            "status": "unknown",
-            "error": str(e),
-            "message": "Could not check process"
-        }
+    except Exception:
+        logger.exception("Process health check failed")
+        return {"status": "unknown", "message": "Process status unavailable"}
 
-
-# ═══════════════════════════════════════════════
-# Health Endpoints
-# ═══════════════════════════════════════════════
 
 @router.get("/health")
 async def simple_health():
     """Simple health check (load balancer compatible)."""
-    return {"status": "healthy", "service": "eos-dbp", "version": "1.0.0"}
+    return {"status": "healthy", "service": "eos-dbp", "version": VERSION}
 
 
 @router.get("/health/full")
 async def full_health(response: Response):
     """
     Full health check with real component verification.
-    Returns HTTP 200 if all critical components OK, 503 if any critical fails.
+    Returns HTTP 200 when critical components are healthy and 503 otherwise.
     """
     start = time.time()
 
@@ -166,27 +155,22 @@ async def full_health(response: Response):
     }
 
     duration_ms = round((time.time() - start) * 1000, 2)
-
-    # Determine overall status
-    critical_checks = ["api", "database"]
+    critical_checks = {"api", "database"}
     overall_status = "healthy"
 
     for check_name, check_result in checks.items():
-        if check_result.get("status") == "unhealthy":
-            if check_name in critical_checks:
-                overall_status = "degraded"
+        status = check_result.get("status")
+        if status in {"unhealthy", "critical"}:
+            overall_status = "critical" if status == "critical" else "degraded"
+            if check_name in critical_checks or status == "critical":
                 response.status_code = 503
-            else:
-                if overall_status == "healthy":
-                    overall_status = "degraded"
-        elif check_result.get("status") == "critical":
-            overall_status = "critical"
-            response.status_code = 503
+                if status == "critical":
+                    overall_status = "critical"
 
     return {
         "status": overall_status,
         "service": "eos-dbp",
-        "version": "1.0.0",
+        "version": VERSION,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "checks": checks,
         "duration_ms": duration_ms,
@@ -203,7 +187,7 @@ async def liveness():
 async def readiness(response: Response):
     """Kubernetes readiness probe — can it serve traffic?"""
     db_check = _check_database()
-    if db_check["status"] == "unhealthy":
+    if db_check["status"] != "healthy":
         response.status_code = 503
-        return {"status": "not_ready", "reason": db_check["message"]}
+        return {"status": "not_ready", "reason": "database_unavailable"}
     return {"status": "ready"}
