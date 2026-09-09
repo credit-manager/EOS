@@ -79,6 +79,7 @@ from routers import reporting_api
 from core.audit import set_request_id
 from core.api_versioning import APIVersionMiddleware, SUPPORTED_VERSIONS
 from core.auth import get_current_user, require_permission
+from database import current_tenant_id
 import os
 import json
 import uuid
@@ -99,6 +100,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
     """P13 security middleware for body size, correlation IDs and headers."""
 
     async def dispatch(self, request: Request, call_next):
+        previous_tenant = current_tenant_id.get()
         content_length = request.headers.get("content-length")
         if content_length:
             try:
@@ -118,19 +120,21 @@ class SecurityMiddleware(BaseHTTPMiddleware):
 
         rid = request_id_or_generate(request.headers.get("x-request-id"))
         set_request_id(rid)
-        response = await call_next(request)
-
-        response.headers["X-Request-ID"] = rid
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = "accelerometer=(), camera=(), geolocation=(), microphone=()"
-        response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-        response.headers["Pragma"] = "no-cache"
-        if "server" in response.headers:
-            del response.headers["server"]
-        return response
+        try:
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = rid
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            response.headers["Permissions-Policy"] = "accelerometer=(), camera=(), geolocation=(), microphone=()"
+            response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            if "server" in response.headers:
+                del response.headers["server"]
+            return response
+        finally:
+            current_tenant_id.reset(current_tenant_id.set(previous_tenant))
 
 
 async def require_sales_api_permission(request: Request, user: dict = Depends(get_current_user)):
