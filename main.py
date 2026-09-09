@@ -178,12 +178,14 @@ app.add_middleware(RequestIdMiddleware)
 app.add_middleware(LocaleMiddleware)
 app.add_middleware(APIVersionMiddleware)
 
+# Expose the same registry used by the application's metrics middleware.
+from core.metrics import registry as metrics_registry, metrics_middleware
 from prometheus_client import generate_latest, CollectorRegistry
 from prometheus_client import ProcessCollector, PlatformCollector
 
-_prometheus_registry = CollectorRegistry()
-ProcessCollector(registry=_prometheus_registry)
-PlatformCollector(registry=_prometheus_registry)
+# Keep process/platform collectors in the same registry as application metrics.
+ProcessCollector(registry=metrics_registry)
+PlatformCollector(registry=metrics_registry)
 
 
 @app.get("/metrics", include_in_schema=False)
@@ -191,7 +193,7 @@ async def metrics_endpoint():
     if not METRICS_ENABLED:
         raise HTTPException(status_code=404, detail="Not found")
     return Response(
-        content=generate_latest(_prometheus_registry),
+        content=generate_latest(metrics_registry),
         media_type="text/plain; version=0.0.4; charset=utf-8",
     )
 
@@ -346,11 +348,10 @@ async def graceful_shutdown():
     )
 
 
-from core.metrics import metrics_middleware
-
-
 class _MetricsMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        if not METRICS_ENABLED:
+            return await call_next(request)
         return await metrics_middleware(request, call_next)
 
 
