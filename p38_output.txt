@@ -1,0 +1,210 @@
+======================================================================
+  P38 ENTERPRISE CERTIFICATION
+======================================================================
+
+[38.1] Full Regression Run
+
+[38.2] Multi-Tenant Security
+  [38.2] CRASH: [WinError 10061] No connection could be made because the target machine actively refused it
+
+[38.3] RBAC / Permission Certification
+
+[38.4] Authentication Security
+
+[38.5] Audit Trail Verification
+
+[38.6] Database Schema Verification
+
+[38.7] API Contract Verification
+
+[38.8] Import/Export Stress Testing
+
+[38.9] Workflow / Event Reliability
+
+[38.10] AI Safety & Data Isolation
+
+[38.11] Performance / Load Testing
+
+[38.12] Failure / Recovery Testing
+
+[38.13] Backup / Restore Verification
+
+[38.14] Production Configuration Audit
+
+[38.15] Secrets / Dependency Audit
+
+[38.16] Final Release Gate
+
+======================================================================
+  P38 ENTERPRISE CERTIFICATION REPORT
+  EOS Dynamic Business Platform
+======================================================================
+  38.1 Full Regression Run (P21-P37)                 65/81  [FAIL]
+  38.10 AI Safety & Data Isolation                    15/15  [PASS]
+  38.11 Performance / Load Testing                    5/5  [PASS]
+  38.12 Failure / Recovery Testing                    7/7  [PASS]
+  38.13 Backup / Restore Verification                 6/7  [FAIL]
+  38.14 Production Configuration Audit                41/41  [PASS]
+  38.15 Secrets / Dependency Audit                    5/5  [PASS]
+  38.16 Final Release Gate                            1/1  [PASS]
+  38.2 Multi-Tenant Security                         0/1  [FAIL]
+  38.3 RBAC / Permission Certification               8/8  [PASS]
+  38.4 Authentication Security                       8/8  [PASS]
+  38.5 Audit Trail Verification                      8/8  [PASS]
+  38.6 Database Schema Verification                  19/19  [PASS]
+  38.7 API Contract Verification                     15/15  [PASS]
+  38.8 Import/Export Stress Testing                  6/6  [PASS]
+  38.9 Workflow / Event Reliability                  9/9  [PASS]
+======================================================================
+  CERTIFICATION: NOT CERTIFIED
+  Total: 217/235 checks passed
+======================================================================
+
+  FAILURE DETAILS:
+
+  --- 38.1 Full Regression Run (P21-P37) ---
+    test_p21.py: exit 1 (no parse)
+      last 200 chars: efault.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+    test_p22.py: exit 1 (no parse)
+      last 200 chars: efault.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+    test_p23.py: exit 1 (no parse)
+      last 200 chars: efault.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+    test_p24.py: exit 1 (no parse)
+      last 200 chars: efault.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+    test_p25.py: exit 1 (no parse)
+      last 200 chars: efault.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+    test_p26.py: exit 1 (no parse)
+      last 200 chars: efault.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+    test_p27.py: exit 1 (no parse)
+      last 200 chars: efault.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+    test_p28.py: exit 1 (no parse)
+      last 200 chars: efault.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+    test_p29.py: exit 1 (no parse)
+      last 200 chars: efault.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+    test_p30.py: exit 1 (no parse)
+      last 200 chars: efault.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+    test_p31.py: exit 1 (no parse)
+      last 200 chars: efault.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+    test_p32.py: exit 1 (no parse)
+      last 200 chars: efault.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+    test_p33.py: 65/65 [OK]
+    test_p34.py: exit 1 (no parse)
+      last 200 chars: efault.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+    test_p35.py: exit 1 (no parse)
+      last 200 chars: efault.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+    test_p36.py: exit 1 (no parse)
+      last 200 chars: efault.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+    test_p37.py: exit 1 (no parse)
+      last 200 chars: efault.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+
+  --- 38.13 Backup / Restore Verification ---
+    INFO dbp_companies: 52 rows
+    INFO dbp_currencies: 5 rows
+    INFO dbp_tenant_locales: 0 rows
+    FAIL dbp_tenant_locales non-empty: got False, expected True
+    INFO dbp_countries: 10 rows
+    INFO Pool size: 20
+    INFO Pool overflow: -19
+    INFO Company tenant distribution: tenant_01a3146e87c32738 -> 1
+    INFO Company tenant distribution: tenant_04621ac20af6c997 -> 1
+    INFO Company tenant distribution: tenant_09c0b6953729b2a6 -> 1
+    INFO Company tenant distribution: tenant_0c24be4b246657b1 -> 1
+    INFO Company tenant distribution: tenant_10a6dc956ab901b6 -> 1
+    INFO Company tenant distribution: tenant_1290f9eb00c94a52 -> 1
+    INFO Company tenant distribution: tenant_138954a93480cc4d -> 1
+    INFO Company tenant distribution: tenant_16dd715091a4459d -> 1
+    INFO Company tenant distribution: tenant_18918ed9597d2f2f -> 1
+    INFO Company tenant distribution: tenant_1902dba68adb6c37 -> 1
+    INFO Company tenant distribution: tenant_1b18bc873d6dfbab -> 1
+    INFO Company tenant distribution: tenant_1d6933e65ec2cf58 -> 1
+    INFO Company tenant distribution: tenant_1fbd614852cb4408 -> 1
+    INFO Company tenant distribution: tenant_2696391511df78e9 -> 1
+    INFO Company tenant distribution: tenant_2d4802dce7ba7d11 -> 1
+    INFO Company tenant distribution: tenant_32d9aec0a9fee26d -> 1
+    INFO Company tenant distribution: tenant_339739ee9fcab2a1 -> 1
+    INFO Company tenant distribution: tenant_3e1a65292efae2cb -> 1
+    INFO Company tenant distribution: tenant_4ae72c22eca7bfb5 -> 1
+    INFO Company tenant distribution: tenant_537fabc4a6a4b6f6 -> 1
+    INFO Company tenant distribution: tenant_5a7a4cfe24f68094 -> 1
+    INFO Company tenant distribution: tenant_6058e6fb586088b7 -> 1
+    INFO Company tenant distribution: tenant_6268b2be4693a2d7 -> 1
+    INFO Company tenant distribution: tenant_74532930d2405c78 -> 1
+    INFO Company tenant distribution: tenant_816b2b060d257ed1 -> 1
+    INFO Company tenant distribution: tenant_8276032a9faf64ef -> 1
+    INFO Company tenant distribution: tenant_87b3717cc08f1de1 -> 1
+    INFO Company tenant distribution: tenant_87b7548054addde7 -> 1
+    INFO Company tenant distribution: tenant_8cce73b5073c514f -> 1
+    INFO Company tenant distribution: tenant_8e9b7e89053aac48 -> 1
+    INFO Company tenant distribution: tenant_90f00fa4f4acf270 -> 1
+    INFO Company tenant distribution: tenant_9366841aced5bc94 -> 1
+    INFO Company tenant distribution: tenant_a -> 1
+    INFO Company tenant distribution: tenant_a275b2c5f22adbfd -> 1
+    INFO Company tenant distribution: tenant_a2a18913eacbbf1b -> 1
+    INFO Company tenant distribution: tenant_a2b179d5f14f1c7d -> 1
+    INFO Company tenant distribution: tenant_a859a379a550f539 -> 1
+    INFO Company tenant distribution: tenant_a8f77e1ab5f98f0a -> 1
+    INFO Company tenant distribution: tenant_b -> 1
+    INFO Company tenant distribution: tenant_b30b94f6e5fa7ab1 -> 1
+    INFO Company tenant distribution: tenant_b6f91b7bda285492 -> 1
+    INFO Company tenant distribution: tenant_bfd916e3e02fb509 -> 1
+    INFO Company tenant distribution: tenant_c973c0c28b8f2bcf -> 1
+    INFO Company tenant distribution: tenant_ca956a36f4fa5fcb -> 1
+    INFO Company tenant distribution: tenant_cf16348622255bbf -> 1
+    INFO Company tenant distribution: tenant_d3f6f6394f2ad0b1 -> 1
+    INFO Company tenant distribution: tenant_d4c98b379ec3aefc -> 1
+    INFO Company tenant distribution: tenant_d92bcbdb49b79dac -> 1
+    INFO Company tenant distribution: tenant_e01a724790fa86ca -> 1
+    INFO Company tenant distribution: tenant_ed9d61622f1b81c5 -> 1
+    INFO Company tenant distribution: tenant_p51 -> 1
+    INFO Company tenant distribution: tenant_p57 -> 1
+
+  --- 38.2 Multi-Tenant Security ---
+    CRASH: [WinError 10061] No connection could be made because the target machine actively refused it

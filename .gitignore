@@ -1,0 +1,91 @@
+# ──────────────────────────────────────────────────────────────
+# EOS .gitignore — Security & Best Practices
+# ──────────────────────────────────────────────────────────────
+
+# ── Environment & Secrets ──────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.p12
+*.pfx
+secrets/
+credentials/
+
+# ── Python ─────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.whl
+
+# ── Virtual Environments ───────────────────────────────────
+venv/
+.venv/
+ENV/
+env/
+
+# ── IDE & Editor ───────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*~
+.project
+.settings/
+
+# ── OS ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# ── Logs ───────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Database ───────────────────────────────────────────────
+*.db
+*.sqlite3
+*.sqlite
+
+# ── Backups ────────────────────────────────────────────────
+backups/
+*.bak
+*.backup
+*.old
+
+# ── Security Review ────────────────────────────────────────
+security-review*
+token*
+*.token
+
+# ── Node.js (frontend) ────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnp.*
+.yarn/
+
+# ── Testing ────────────────────────────────────────────────
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+
+# ── Docker ─────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ── Misc ───────────────────────────────────────────────────
+*.tmp
+*.temp
+.cache/
