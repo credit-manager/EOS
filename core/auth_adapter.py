@@ -25,12 +25,11 @@ async def get_current_user(
 
     production = _is_production()
     if production:
-        from core.production_auth import verify_token, _get_secret_key
+        from core.production_auth import verify_token
         try:
-            _get_secret_key()
-        except ValueError as e:
-            raise HTTPException(status_code=500, detail=str(e))
-        payload = verify_token(credentials.credentials)
+            payload = verify_token(credentials.credentials)
+        except ValueError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
     else:
         from core.auth import verify_test_token as verify_token
         payload = verify_token(credentials.credentials)
