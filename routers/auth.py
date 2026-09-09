@@ -2,20 +2,22 @@
 Production authentication endpoints: registration, login, verification,
 password reset, rotating refresh sessions and tenant user administration.
 """
+from datetime import datetime, timedelta, timezone
+import hashlib
+import os
+import secrets
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
+
 from database import get_db
 from core.auth import get_current_user, require_permission, require_admin_role
 from core.user_engine import UserEngine
 from core.email_adapter import get_email_service, EmailTemplateEngine
 from core.rate_limit import write_limiter, auth_limiter
-from datetime import datetime, timedelta, timezone
-import hashlib
-import jwt
-import os
-import secrets
-import uuid
+from core.runtime_config import resolve_auth_mode
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 _REFRESH_DAYS = 30
@@ -40,21 +42,31 @@ def _issue_refresh_token(db: Session, user_id: str, tenant_id: str, family_id: s
 
 
 def _issue_access_token(result: dict) -> str:
-    mode = os.getenv("EOS_AUTH_MODE", "test").lower()
-    if mode == "production":
-        secret_key = os.getenv("EOS_SECRET_KEY")
-        if not secret_key or len(secret_key) < 32:
-            raise _err(500, "SERVER_CONFIG", "Production JWT secret is not configured correctly")
-    else:
-        secret_key = os.getenv("EOS_TEST_SECRET_KEY", "").strip()
-        if not secret_key:
-            raise _err(500, "SERVER_CONFIG", "EOS_TEST_SECRET_KEY is not configured")
-    now = datetime.now(timezone.utc)
-    payload = {"sub": result["user_id"], "exp": now + timedelta(minutes=30), "iat": now, "type": "access",
-               "tenant_id": result["tenant_id"], "email": result["email"], "roles": [result["role"]],
-               "iss": os.getenv("EOS_JWT_ISSUER", "eos-dbp"), "aud": os.getenv("EOS_JWT_AUDIENCE", "eos-api"),
-               "jti": str(uuid.uuid4())}
-    return jwt.encode(payload, secret_key, algorithm="HS256")
+    """Issue access tokens through the central runtime/auth contract."""
+    try:
+        mode = resolve_auth_mode()
+        if mode == "production":
+            from core.production_auth import create_access_token
+            return create_access_token(
+                subject=str(result["user_id"]),
+                extra_data={
+                    "tenant_id": result["tenant_id"],
+                    "email": result["email"],
+                    "roles": [result["role"]],
+                },
+            )
+
+        from core.auth import create_test_token
+        return create_test_token(
+            tenant_id=result["tenant_id"],
+            user_id=str(result["user_id"]),
+            email=result["email"],
+            roles=[result["role"]],
+        )
+    except (HTTPException, ValueError) as exc:
+        if isinstance(exc, HTTPException):
+            raise
+        raise _err(500, "SERVER_CONFIG", "Authentication signing configuration is invalid") from exc
 
 
 @router.post("/register", dependencies=[Depends(auth_limiter.check)])
