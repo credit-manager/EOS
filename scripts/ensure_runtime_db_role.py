@@ -24,14 +24,16 @@ def main() -> None:
     runtime_user = require("EOS_DB_RUNTIME_USER")
     runtime_password = require("EOS_DB_RUNTIME_PASSWORD")
 
-    if runtime_user == os.getenv("POSTGRES_USER", "").strip():
-        raise SystemExit("EOS_DB_RUNTIME_USER must differ from POSTGRES_USER")
-
     with psycopg2.connect(database_url) as conn:
         conn.autocommit = True
         with conn.cursor() as cur:
             cur.execute("SELECT current_database(), current_user")
             database_name, migration_user = cur.fetchone()
+
+            if runtime_user == migration_user:
+                raise SystemExit(
+                    "EOS_DB_RUNTIME_USER must differ from the PostgreSQL migration/database-owner role"
+                )
 
             cur.execute(
                 "SELECT 1 FROM pg_roles WHERE rolname = %s",
@@ -102,14 +104,15 @@ def main() -> None:
             )
 
             cur.execute(
-                "SELECT rolsuper, rolcreaterole, rolcreatedb FROM pg_roles WHERE rolname = %s",
+                "SELECT rolsuper, rolcreaterole, rolcreatedb, rolcanlogin FROM pg_roles WHERE rolname = %s",
                 (runtime_user,),
             )
             role_flags = cur.fetchone()
-            if role_flags != (False, False, False):
+            if role_flags != (False, False, False, True):
                 raise SystemExit(
-                    f"Runtime role {runtime_user!r} is over-privileged: "
-                    f"superuser={role_flags[0]}, createrole={role_flags[1]}, createdb={role_flags[2]}"
+                    f"Runtime role {runtime_user!r} has unsafe flags: "
+                    f"superuser={role_flags[0]}, createrole={role_flags[1]}, "
+                    f"createdb={role_flags[2]}, canlogin={role_flags[3]}"
                 )
 
     print(f"Runtime database role ready: {runtime_user}")
