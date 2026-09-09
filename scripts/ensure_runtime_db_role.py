@@ -56,11 +56,6 @@ def ensure_login_role(cur, role_name: str, password: str, migration_user: str, d
     cur.execute(
         sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(sql.Identifier(role_name))
     )
-    cur.execute(
-        sql.SQL("ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO {}").format(
-            sql.Identifier(migration_user), sql.Identifier(role_name)
-        )
-    )
 
 
 def main() -> None:
@@ -110,8 +105,6 @@ def main() -> None:
                 ).format(sql.Identifier(migration_user), sql.Identifier(runtime_user))
             )
 
-            # pg_monitor grants access to PostgreSQL's monitoring views without
-            # granting table DML or ownership privileges to the exporter.
             cur.execute(
                 sql.SQL("GRANT pg_monitor TO {}").format(sql.Identifier(exporter_user))
             )
