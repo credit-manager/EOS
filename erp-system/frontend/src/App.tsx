@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { FiActivity, FiArrowRight, FiBarChart2, FiBell, FiBox, FiChevronDown, FiFileText, FiGlobe, FiHome, FiLogOut, FiMenu, FiPlus, FiSearch, FiSettings, FiUsers } from 'react-icons/fi';
 import EosDataGrid from './components/EosDataGrid';
 import EosDynamicForm from './components/EosDynamicForm';
@@ -27,7 +27,7 @@ function LoginScreen({ language, onLanguageChange, onLogin }: { language: Langua
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const submit = async (event: React.FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!email.trim() || !password) {
       setError(ar ? 'أدخل البريد الإلكتروني وكلمة المرور.' : 'Enter your email and password.');
