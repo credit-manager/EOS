@@ -3,9 +3,8 @@
 Revision ID: 20260909_finalize_tenant_rls
 Revises: 20260909_merge_release_heads
 
-Several legacy RLS migrations run before later schema-restoration migrations.
-This final idempotent pass closes that ordering gap and only protects tables
-that actually expose a tenant_id column.
+The release head runs after schema restoration and normalizes tenant isolation
+for every known tenant-scoped table that actually has a tenant_id column.
 """
 
 from alembic import op
@@ -57,7 +56,7 @@ def _migration_block(down: bool = False) -> str:
                 EXECUTE format('ALTER TABLE public.%I NO FORCE ROW LEVEL SECURITY', v_table_name);
                 EXECUTE format(
                     'CREATE POLICY %I ON public.%I ' ||
-                    'USING (tenant_id::text = current_setting(''app.tenant_id'', true) OR tenant_id IS NULL) ' ||
+                    'USING (tenant_id::text = current_setting(''app.tenant_id'', true)) ' ||
                     'WITH CHECK (tenant_id::text = current_setting(''app.tenant_id'', true))',
                     v_policy_name, v_table_name
                 );"""
