@@ -45,14 +45,10 @@ async def get_pre_mfa_user(
             tenant_id = str(payload.get("tenant_id") or "").lower()
             if not user_id or not tenant_id:
                 raise HTTPException(status_code=401, detail="Invalid MFA challenge token", headers={"WWW-Authenticate": "Bearer"})
-            # This dependency deliberately bypasses only the MFA gate. It still
-            # verifies the signed token and current account state, and it never
-            # grants access to application routes by itself.
-            from database import current_tenant_id
+            from database import current_tenant_id, SessionLocal
             current_tenant_id.set(tenant_id)
             db = None
             try:
-                from database import SessionLocal
                 db = SessionLocal()
                 row = db.execute(text(
                     "SELECT email, role, is_active FROM dbp_users WHERE id=:id AND tenant_id=:tenant_id"
@@ -64,7 +60,7 @@ async def get_pre_mfa_user(
                 if db is not None:
                     db.close()
         from core.auth import verify_test_token
-        payload = verify_test_token(token)
+        payload = verify_test_token(token, expected_type="access")
         return {
             "id": str(payload["sub"]),
             "tenant_id": str(payload["tenant_id"]).lower(),
@@ -78,29 +74,30 @@ async def get_pre_mfa_user(
         raise HTTPException(status_code=401, detail="Invalid MFA challenge token", headers={"WWW-Authenticate": "Bearer"})
 
 
-def _issue_verified_access(user: dict) -> str:
-    if resolve_auth_mode() == "production":
-        from core.production_auth import create_access_token
-        return create_access_token(
-            subject=user["id"],
-            extra_data={
-                "tenant_id": user["tenant_id"],
-                "email": user.get("email"),
-                "roles": user.get("roles", []),
-                "mfa_verified": True,
-            },
-        )
-    from core.auth import create_test_token
-    return create_test_token(
-        tenant_id=user["tenant_id"], user_id=user["id"], email=user.get("email") or "test@example.com",
-        roles=user.get("roles") or ["user"],
+def _issue_verified_tokens(db, user: dict) -> tuple[str, str]:
+    """Rotate access + refresh credentials after successful MFA."""
+    from routers.auth import _issue_refresh_token, _issue_access_token
+
+    db.execute(text(
+        "UPDATE dbp_refresh_tokens SET revoked_at=NOW() "
+        "WHERE user_id=:uid AND tenant_id=:tid AND mfa_verified=FALSE AND revoked_at IS NULL"
+    ), {"uid": user["id"], "tid": user["tenant_id"]})
+
+    result = {
+        "user_id": user["id"],
+        "tenant_id": user["tenant_id"],
+        "email": user.get("email") or "user@example.com",
+        "role": (user.get("roles") or ["user"])[0],
+    }
+    access_token = _issue_access_token(result, mfa_verified=True)
+    refresh_token = _issue_refresh_token(
+        db, user["id"], user["tenant_id"], mfa_verified=True
     )
+    return access_token, refresh_token
 
 
-# Status must remain available during the short MFA phase; it does not expose
-# the secret and grants no application authorization.
 @router.get("/status")
-def get_status(user: dict = Depends(get_pre_mfa_user), db=Depends(get_db)):
+def get_status(user: dict = Depends(get_current_user), db=Depends(get_db)):
     status = get_2fa_status(db, user["id"])
     return success_response("2FA status", status)
 
@@ -130,9 +127,13 @@ def verify(body: Verify2FA, request: Request, user: dict = Depends(get_pre_mfa_u
     valid, msg = verify_totp(db, user["id"], body.code, ip)
     if not valid:
         raise HTTPException(status_code=401, detail=msg)
-    access_token = _issue_verified_access(user)
+    access_token, refresh_token = _issue_verified_tokens(db, user)
     audit_log(db, user["tenant_id"], user["id"], "verify", "2fa", user["id"])
-    return success_response("2FA verified", {"access_token": access_token, "token_type": "bearer", "expires_in": 1800})
+    db.commit()
+    return success_response("2FA verified", {
+        "access_token": access_token, "refresh_token": refresh_token,
+        "token_type": "bearer", "expires_in": 1800,
+    })
 
 
 @router.post("/verify-recovery")
@@ -143,9 +144,13 @@ def verify_recovery(body: VerifyRecovery, request: Request, user: dict = Depends
     valid, msg = verify_recovery_code(db, user["id"], body.code, ip)
     if not valid:
         raise HTTPException(status_code=401, detail=msg)
-    access_token = _issue_verified_access(user)
+    access_token, refresh_token = _issue_verified_tokens(db, user)
     audit_log(db, user["tenant_id"], user["id"], "verify_recovery", "2fa", user["id"])
-    return success_response("Recovery code verified", {"access_token": access_token, "token_type": "bearer", "expires_in": 1800})
+    db.commit()
+    return success_response("Recovery code verified", {
+        "access_token": access_token, "refresh_token": refresh_token,
+        "token_type": "bearer", "expires_in": 1800,
+    })
 
 
 @router.get("/attempts")
