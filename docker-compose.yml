@@ -97,7 +97,9 @@ services:
     expose: ["8000"]
 
   nginx:
-    image: nginx:stable-alpine3.24
+    build:
+      context: .
+      dockerfile: docker/nginx.Dockerfile
     container_name: eos-nginx
     restart: unless-stopped
     environment:
