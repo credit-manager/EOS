@@ -25,6 +25,9 @@ sync_certificates() {
 }
 
 request_certificate() {
+    # Only the configured canonical hostname is requested. An optional www
+    # alias must be explicitly configured in DNS and can be added later without
+    # making the first production boot depend on it.
     certbot certonly \
         --webroot -w "$WEBROOT" \
         --cert-name "$CERT_NAME" \
@@ -33,8 +36,7 @@ request_certificate() {
         --agree-tos \
         --email "$ACME_EMAIL" \
         --no-eff-email \
-        -d "$DOMAIN" \
-        -d "www.$DOMAIN"
+        -d "$DOMAIN"
 }
 
 while ! sync_certificates; do
