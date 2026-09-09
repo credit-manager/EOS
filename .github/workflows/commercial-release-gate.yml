@@ -113,6 +113,18 @@ jobs:
               AND c.relkind = 'r'
               AND NOT c.relrowsecurity;
           " | grep -Fx '0'
+
+          psql -h 127.0.0.1 -U eos -d eos_contract -v ON_ERROR_STOP=1 -Atc "
+            SELECT count(*)
+            FROM information_schema.columns cols
+            JOIN pg_class c ON c.relname = cols.table_name
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE cols.table_schema = 'public'
+              AND n.nspname = 'public'
+              AND cols.column_name = 'tenant_id'
+              AND c.relkind = 'r'
+              AND NOT c.relforcerowsecurity;
+          " | grep -Fx '0'
       - name: Verify migration idempotency
         env:
           DATABASE_URL: postgresql://eos:eos@127.0.0.1:5432/eos_contract
