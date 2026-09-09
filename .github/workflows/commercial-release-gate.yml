@@ -51,7 +51,7 @@ jobs:
         env:
           ENVIRONMENT: test
           PYTHONPATH: ${{ github.workspace }}
-        run: pytest -q tests/test_runtime_config.py tests/test_enterprise_hardening_primitives.py --tb=short
+        run: pytest -q tests/test_runtime_config.py tests/test_enterprise_hardening_primitives.py tests/test_production_config.py --tb=short
 
   migration-contract:
     name: PostgreSQL migration contract
@@ -100,7 +100,7 @@ jobs:
           test "$(alembic current | grep -c '20260909_finalize_tenant_rls')" -eq 1
       - name: Verify tenant RLS contract
         env:
-          DATABASE_URL: postgresql://eos:eos@127.0.0.1:5432/eos_contract
+          PGPASSWORD: eos
         run: |
           psql -h 127.0.0.1 -U eos -d eos_contract -Atc "SELECT count(*) FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relrowsecurity AND relname IN ('dbp_entities','dbp_accounts','dbp_journal_entries','dbp_tenant_invitations','dbp_construction_projects')" | grep -Fx '5'
       - name: Verify migration idempotency
