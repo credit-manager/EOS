@@ -272,12 +272,6 @@ async def validate_configuration():
 
     auth_mode = os.getenv("EOS_AUTH_MODE", "test").lower()
     if auth_mode == "production":
-        if not os.getenv("EOS_SECRET_KEY"):
-            errors.append("EOS_SECRET_KEY required in production mode")
-        algo = os.getenv("EOS_ALGORITHM", "HS256")
-        if algo == "HS256":
-            print("WARNING: HS256 algorithm. Consider RS256 for production.")
-
         from core.production_config import validate_production_config
         checks = validate_production_config()
         critical = [(n, s) for n, s, c in checks if c and s != "OK"]
