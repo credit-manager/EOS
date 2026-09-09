@@ -88,7 +88,7 @@ services:
       EOS_LOG_FORMAT: ${EOS_LOG_FORMAT:-json}
       DOMAIN: ${DOMAIN:?DOMAIN is required}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
       interval: 30s
       timeout: 10s
       retries: 3
