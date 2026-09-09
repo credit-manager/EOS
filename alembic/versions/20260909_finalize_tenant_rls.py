@@ -4,8 +4,9 @@ Revision ID: 20260909_finalize_tenant_rls
 Revises: 20260909_merge_release_heads
 
 The release head runs after schema restoration and normalizes tenant isolation
-for every public base table that actually has a tenant_id column. The dynamic
-scan prevents newly-added tenant tables from silently escaping the RLS contract.
+for every public table that actually has a tenant_id column, including
+partitioned tables. The catalog scan prevents tenant tables from silently
+escaping the RLS contract because of naming conventions or physical layout.
 """
 
 from alembic import op
@@ -35,7 +36,7 @@ def _migration_block(down: bool = False) -> str:
                                            AND a.attname = 'tenant_id'
                                            AND NOT a.attisdropped
                 WHERE n.nspname = 'public'
-                  AND c.relkind = 'r'
+                  AND c.relkind IN ('r', 'p')
             LOOP
                 v_policy_name := '{RLS_POLICY_PREFIX}' || v_table_name;
                 EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', 'tenant_isolation', v_table_name);
@@ -60,7 +61,7 @@ def _migration_block(down: bool = False) -> str:
                                            AND a.attname = 'tenant_id'
                                            AND NOT a.attisdropped
                 WHERE n.nspname = 'public'
-                  AND c.relkind = 'r'
+                  AND c.relkind IN ('r', 'p')
             LOOP
                 v_policy_name := '{RLS_POLICY_PREFIX}' || v_table_name;
                 EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', 'tenant_isolation', v_table_name);
