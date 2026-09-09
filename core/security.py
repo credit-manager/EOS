@@ -17,6 +17,24 @@ def _safe_identifier(value: Any) -> Optional[str]:
     return candidate if _SAFE_SQL_IDENTIFIER.fullmatch(candidate) else None
 
 
+def _role_matches(user_roles: List[str], required_roles: List[str]) -> bool:
+    """Match roles exactly, or as a namespaced descendant (for example module:manage)."""
+    if not required_roles:
+        return True
+
+    for user_role in user_roles:
+        if isinstance(user_role, dict):
+            user_role = user_role.get("permission", "")
+        user_role = str(user_role)
+        if user_role in {"*", "*:*"}:
+            return True
+        for required_role in required_roles:
+            required_role = str(required_role)
+            if user_role == required_role or user_role.startswith(required_role + ":"):
+                return True
+    return False
+
+
 # ──────────────────────────────────────────────────────────────
 # FIELD-LEVEL SECURITY
 # ──────────────────────────────────────────────────────────────
@@ -66,8 +84,7 @@ class FieldSecurity:
                 filtered[key] = value
                 continue
 
-            writable_roles = sec["writable_roles"]
-            if _role_matches(user_roles, writable_roles):
+            if _role_matches(user_roles, sec["writable_roles"]):
                 filtered[key] = value
             else:
                 blocked.append(key)
@@ -233,10 +250,7 @@ def redact_audit_values(values: Optional[Dict[str, Any]]) -> Optional[Dict[str, 
 
     def _walk(obj):
         if isinstance(obj, dict):
-            return {
-                k: REDACT_VALUE if _is_sensitive_key(k) else _walk(v)
-                for k, v in obj.items()
-            }
+            return {k: REDACT_VALUE if _is_sensitive_key(k) else _walk(v) for k, v in obj.items()}
         if isinstance(obj, list):
             return [_walk(item) for item in obj]
         return obj
@@ -319,38 +333,12 @@ class InputValidator:
         partial: bool = False,
     ) -> List[str]:
         all_errors = []
-
         for fm in field_metadata:
             code = fm["code"]
             value = data.get(code)
-            is_req = fm.get("is_required", False)
-
             if value is None:
-                if is_req and not partial:
+                if fm.get("is_required", False) and not partial:
                     all_errors.append(f"{code}: required")
                 continue
-
             all_errors.extend(InputValidator.validate_field(code, value, fm))
-
         return all_errors
-
-
-# ──────────────────────────────────────────────────────────────
-# HELPER
-# ──────────────────────────────────────────────────────────────
-
-def _role_matches(user_roles: List[str], required_roles: List[str]) -> bool:
-    """Check if any user role matches any required role."""
-    if not required_roles:
-        return True
-
-    for ur in user_roles:
-        if isinstance(ur, dict):
-            ur = ur.get("permission", "")
-        if ur == "*:*":
-            return True
-        for rr in required_roles:
-            if ur == rr or ur.startswith(rr):
-                return True
-
-    return False
