@@ -6,7 +6,6 @@ Revises: 20260909_finalize_tenant_rls_accounting
 from __future__ import annotations
 
 from alembic import op
-import sqlalchemy as sa
 
 revision = "20260909_finalize_tenant_rls_payments"
 down_revision = "20260909_finalize_tenant_rls_accounting"
@@ -22,6 +21,18 @@ def _enable_tenant_rls(table: str) -> None:
         f'''CREATE POLICY "tenant_isolation_{table}" ON public.{table}
             USING (tenant_id::text = current_setting('app.tenant_id', true))
             WITH CHECK (tenant_id::text = current_setting('app.tenant_id', true))'''
+    )
+
+
+def _add_constraint_if_missing(table: str, constraint_name: str, expression: str) -> None:
+    op.execute(
+        f"""DO $$
+        BEGIN
+            ALTER TABLE public.{table}
+              ADD CONSTRAINT {constraint_name} CHECK ({expression});
+        EXCEPTION WHEN duplicate_object THEN
+            NULL;
+        END $$;"""
     )
 
 
@@ -52,11 +63,7 @@ def upgrade() -> None:
             payment_method text NULL,
             gateway_response jsonb NOT NULL DEFAULT '{}'::jsonb,
             created_at timestamptz NOT NULL DEFAULT now(),
-            completed_at timestamptz NULL,
-            CONSTRAINT ck_payment_transactions_amount_positive CHECK (amount > 0),
-            CONSTRAINT ck_payment_transactions_currency CHECK (currency ~ '^[A-Z]{3}$'),
-            CONSTRAINT ck_payment_transactions_type CHECK (transaction_type IN ('payment','refund','authorization','capture')),
-            CONSTRAINT ck_payment_transactions_status CHECK (status IN ('pending','completed','failed','cancelled'))
+            completed_at timestamptz NULL
         )"""
     )
     op.execute(
@@ -70,30 +77,23 @@ def upgrade() -> None:
             customer_email text NULL,
             status text NOT NULL DEFAULT 'active',
             expires_at timestamptz NULL,
-            created_at timestamptz NOT NULL DEFAULT now(),
-            CONSTRAINT ck_payment_links_amount_positive CHECK (amount > 0),
-            CONSTRAINT ck_payment_links_currency CHECK (currency ~ '^[A-Z]{3}$'),
-            CONSTRAINT ck_payment_links_status CHECK (status IN ('active','used','expired','cancelled'))
+            created_at timestamptz NOT NULL DEFAULT now()
         )"""
     )
+
+    _add_constraint_if_missing("dbp_payment_transactions", "ck_payment_transactions_amount_positive", "amount > 0")
+    _add_constraint_if_missing("dbp_payment_transactions", "ck_payment_transactions_currency", "currency ~ '^[A-Z]{3}$'")
+    _add_constraint_if_missing("dbp_payment_transactions", "ck_payment_transactions_type", "transaction_type IN ('payment','refund','authorization','capture')")
+    _add_constraint_if_missing("dbp_payment_transactions", "ck_payment_transactions_status", "status IN ('pending','completed','failed','cancelled')")
+    _add_constraint_if_missing("dbp_payment_links", "ck_payment_links_amount_positive", "amount > 0")
+    _add_constraint_if_missing("dbp_payment_links", "ck_payment_links_currency", "currency ~ '^[A-Z]{3}$'")
+    _add_constraint_if_missing("dbp_payment_links", "ck_payment_links_status", "status IN ('active','used','expired','cancelled')")
 
     op.execute("CREATE INDEX IF NOT EXISTS ix_dbp_payment_gateways_tenant ON public.dbp_payment_gateways (tenant_id, created_at DESC)")
     op.execute("CREATE INDEX IF NOT EXISTS ix_dbp_payment_transactions_tenant_status ON public.dbp_payment_transactions (tenant_id, status, created_at DESC)")
     op.execute("CREATE INDEX IF NOT EXISTS ix_dbp_payment_transactions_reference ON public.dbp_payment_transactions (tenant_id, reference_type, reference_id)")
     op.execute("CREATE INDEX IF NOT EXISTS ix_dbp_payment_links_tenant_status ON public.dbp_payment_links (tenant_id, status, created_at DESC)")
     op.execute("CREATE INDEX IF NOT EXISTS ix_dbp_payment_links_expiry ON public.dbp_payment_links (expires_at)")
-
-    # Reconcile constraints for databases where the tables pre-date this migration.
-    for statement in (
-        "ALTER TABLE public.dbp_payment_transactions ALTER COLUMN amount TYPE numeric(20,4) USING amount::numeric",
-        "ALTER TABLE public.dbp_payment_transactions ALTER COLUMN currency TYPE varchar(3) USING upper(currency)::varchar(3)",
-        "ALTER TABLE public.dbp_payment_links ALTER COLUMN amount TYPE numeric(20,4) USING amount::numeric",
-        "ALTER TABLE public.dbp_payment_links ALTER COLUMN currency TYPE varchar(3) USING upper(currency)::varchar(3)",
-    ):
-        try:
-            op.execute(statement)
-        except Exception:
-            pass
 
     _enable_tenant_rls("dbp_payment_gateways")
     _enable_tenant_rls("dbp_payment_transactions")
