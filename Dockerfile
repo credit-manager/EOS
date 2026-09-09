@@ -3,8 +3,8 @@
 
 FROM node:20-bookworm-slim AS frontend-builder
 WORKDIR /frontend
-COPY erp-system/frontend/package.json ./package.json
-RUN npm install --no-audit --no-fund
+COPY erp-system/frontend/package.json erp-system/frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY erp-system/frontend/ ./
 RUN npm run build
 
@@ -26,6 +26,9 @@ RUN chmod 0755 /app/docker/entrypoint.sh
 USER eos
 ENV PATH=/home/eos/.local/bin:$PATH
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 CMD curl -f http://localhost:8000/health || exit 1
+# Runtime tuning can be supplied by the deployment platform.
+ENV WEB_CONCURRENCY=4
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 CMD curl -f http://localhost:8000/health/live || exit 1
 EXPOSE 8000
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
