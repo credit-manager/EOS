@@ -19,8 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
       - name: Install runtime dependencies
@@ -35,6 +35,9 @@ jobs:
         env:
           ENVIRONMENT: production
           EOS_AUTH_MODE: production
+          EOS_ALGORITHM: HS256
+          EOS_JWT_ISSUER: eos-dbp
+          EOS_JWT_AUDIENCE: eos-api
           EOS_SECRET_KEY: production-contract-secret-key-1234567890abcdef
           DATABASE_URL: postgresql://eos:contract-password@127.0.0.1:5432/eos
           EOS_EMAIL_PROVIDER: smtp
@@ -77,8 +80,8 @@ jobs:
         ports:
           - 5432:5432
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
       - name: Install migration dependencies
@@ -139,7 +142,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Render and validate production compose
         env:
           POSTGRES_USER: eos_admin
@@ -150,6 +153,9 @@ jobs:
           EOS_DB_EXPORTER_USER: eos_exporter
           EOS_DB_EXPORTER_PASSWORD: exporter-password-contract
           EOS_SECRET_KEY: production-contract-secret-key-1234567890abcdef
+          EOS_ALGORITHM: HS256
+          EOS_JWT_PRIVATE_KEY: ''
+          EOS_JWT_PUBLIC_KEY: ''
           EOS_SMTP_HOST: smtp.example.com
           EOS_SMTP_USERNAME: contract-user
           EOS_SMTP_PASSWORD: contract-password
@@ -171,6 +177,7 @@ jobs:
           printf '%s\n' "$rendered" | grep -F '/usr/local/bin/eos-nginx-entrypoint.sh:ro'
           printf '%s\n' "$rendered" | grep -F 'prometheuscommunity/postgres-exporter:v0.20.1'
           printf '%s\n' "$rendered" | grep -F 'prom/alertmanager:v0.34.0'
+          printf '%s\n' "$rendered" | grep -F 'EOS_JWT_ISSUER=eos-dbp' || true
       - name: Validate Nginx template rendering and syntax
         env:
           DOMAIN: example.com
@@ -194,11 +201,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build production image
         run: docker build --pull -t eos:ci .
       - name: Scan image for HIGH/CRITICAL vulnerabilities
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: eos:ci
           format: table
@@ -206,13 +213,13 @@ jobs:
           ignore-unfixed: true
           exit-code: '1'
       - name: Generate SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           image: eos:ci
           artifact-name: eos-sbom.spdx.json
           output-file: eos-sbom.spdx.json
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: eos-sbom
           path: eos-sbom.spdx.json
@@ -226,8 +233,8 @@ jobs:
       run:
         working-directory: erp-system/frontend
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '20'
           cache: npm
