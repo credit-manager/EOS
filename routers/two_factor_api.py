@@ -41,21 +41,41 @@ async def get_pre_mfa_user(
         if resolve_auth_mode() == "production":
             from core.production_auth import verify_token
             payload = verify_token(token, expected_type="access")
-        else:
-            from core.auth import verify_test_token
-            payload = verify_test_token(token, expected_type="access")
+            user_id = str(payload.get("sub") or "")
+            tenant_id = str(payload.get("tenant_id") or "").lower()
+            if not user_id or not tenant_id:
+                raise HTTPException(status_code=401, detail="Invalid MFA challenge token", headers={"WWW-Authenticate": "Bearer"})
+            # This dependency deliberately bypasses only the MFA gate. It still
+            # verifies the signed token and current account state, and it never
+            # grants access to application routes by itself.
+            from database import current_tenant_id
+            current_tenant_id.set(tenant_id)
+            db = None
+            try:
+                from database import SessionLocal
+                db = SessionLocal()
+                row = db.execute(text(
+                    "SELECT email, role, is_active FROM dbp_users WHERE id=:id AND tenant_id=:tenant_id"
+                ), {"id": user_id, "tenant_id": tenant_id}).fetchone()
+                if not row or not row[2]:
+                    raise HTTPException(status_code=401, detail="Account is inactive or no longer exists")
+                return {"id": user_id, "tenant_id": tenant_id, "email": row[0], "roles": [row[1]], "mfa_verified": bool(payload.get("mfa_verified", False))}
+            finally:
+                if db is not None:
+                    db.close()
+        from core.auth import verify_test_token
+        payload = verify_test_token(token)
+        return {
+            "id": str(payload["sub"]),
+            "tenant_id": str(payload["tenant_id"]).lower(),
+            "email": payload.get("email"),
+            "roles": payload.get("roles", []),
+            "mfa_verified": bool(payload.get("mfa_verified", False)),
+        }
     except HTTPException:
         raise
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid MFA challenge token", headers={"WWW-Authenticate": "Bearer"})
-    if not payload.get("sub") or not payload.get("tenant_id"):
-        raise HTTPException(status_code=401, detail="Invalid MFA challenge token", headers={"WWW-Authenticate": "Bearer"})
-    return {
-        "id": str(payload["sub"]),
-        "tenant_id": str(payload["tenant_id"]).lower(),
-        "email": payload.get("email"),
-        "roles": payload.get("roles", []),
-    }
 
 
 def _issue_verified_access(user: dict) -> str:
@@ -71,16 +91,16 @@ def _issue_verified_access(user: dict) -> str:
             },
         )
     from core.auth import create_test_token
-    # Test-mode auth is not subject to production MFA gating; this branch is
-    # retained for API compatibility and returns a normal short-lived token.
     return create_test_token(
         tenant_id=user["tenant_id"], user_id=user["id"], email=user.get("email") or "test@example.com",
         roles=user.get("roles") or ["user"],
     )
 
 
+# Status must remain available during the short MFA phase; it does not expose
+# the secret and grants no application authorization.
 @router.get("/status")
-def get_status(user: dict = Depends(get_current_user), db=Depends(get_db)):
+def get_status(user: dict = Depends(get_pre_mfa_user), db=Depends(get_db)):
     status = get_2fa_status(db, user["id"])
     return success_response("2FA status", status)
 
