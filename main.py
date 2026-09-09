@@ -329,22 +329,47 @@ async def validate_configuration():
     )
 
 
+@app.on_event("shutdown")
+async def graceful_shutdown():
+    """Dispose DB pool and emit a structured shutdown audit event."""
+    import logging as _log
+    logger = _log.getLogger("eos.shutdown")
+    logger.info("Shutting down EOS platform — disposing DB pool")
+    try:
+        from database import engine
+        engine.dispose()
+    except Exception:
+        logger.exception("Error disposing database engine")
+    audit_logger.log_event(
+        event="platform_shutdown",
+        details={"version": os.getenv("EOS_APP_VERSION", "1.0.0")},
+    )
+
+
+from core.metrics import metrics_middleware
+
+
+class _MetricsMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        return await metrics_middleware(request, call_next)
+
+
+app.add_middleware(_MetricsMiddleware)
+
+
 health_router = APIRouter(tags=["Health"])
 
 
 @health_router.get("/health/live", include_in_schema=False)
 async def health_live():
-    """Liveness probe: confirms the process is serving requests."""
     return {"status": "ok"}
 
 
 @health_router.get("/health/ready", include_in_schema=False)
 async def health_ready():
-    """Readiness probe: verifies the database is reachable before serving traffic."""
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         raise HTTPException(status_code=503, detail="Database configuration unavailable")
-
     try:
         from sqlalchemy import text
         from database import engine
@@ -352,7 +377,6 @@ async def health_ready():
             connection.execute(text("SELECT 1"))
     except Exception:
         raise HTTPException(status_code=503, detail="Database unavailable")
-
     return {"status": "ok"}
 
 
