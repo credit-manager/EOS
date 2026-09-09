@@ -7,6 +7,16 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from core.structured_logging import setup_logging, RequestIdMiddleware, audit_logger
 from core.locale_middleware import LocaleMiddleware
+from core.runtime_config import (
+    allowed_hosts as parse_allowed_hosts,
+    cors_origins,
+    docs_enabled,
+    metrics_enabled,
+    parse_bool,
+    parse_positive_int,
+    request_id_or_generate,
+    resolve_auth_mode,
+)
 from routers import dynamic_crud
 from routers import relationships
 from routers import entity_management
@@ -67,14 +77,22 @@ from routers import reconciliation_api
 from routers import portal_customer_api
 from routers import reporting_api
 from core.audit import set_request_id
-from core.health_check import router as health_router
 from core.api_versioning import APIVersionMiddleware, SUPPORTED_VERSIONS
 from core.auth import get_current_user, require_permission
 import os
 import json
 import uuid
 
-MAX_BODY_BYTES = int(os.getenv("EOS_MAX_BODY_BYTES", str(10 * 1024 * 1024)))
+MAX_BODY_BYTES = parse_positive_int("EOS_MAX_BODY_BYTES", 10 * 1024 * 1024)
+AUTH_MODE = resolve_auth_mode()
+DOCS_ENABLED = docs_enabled(AUTH_MODE)
+METRICS_ENABLED = metrics_enabled(AUTH_MODE)
+CORS_ORIGINS = cors_origins()
+ALLOWED_HOSTS = parse_allowed_hosts()
+TRUSTED_HOSTS_ENABLED = parse_bool(
+    "EOS_TRUSTED_HOSTS_ENABLED",
+    default=AUTH_MODE == "production",
+)
 
 
 class SecurityMiddleware(BaseHTTPMiddleware):
@@ -82,14 +100,23 @@ class SecurityMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > MAX_BODY_BYTES:
-            return Response(
-                content='{"status":"error","error":{"code":"PAYLOAD_TOO_LARGE","message":"Request body exceeds size limit"}}',
-                status_code=413,
-                media_type="application/json",
-            )
+        if content_length:
+            try:
+                body_size = int(content_length)
+            except ValueError:
+                return Response(
+                    content='{"status":"error","error":{"code":"INVALID_CONTENT_LENGTH","message":"Invalid Content-Length header"}}',
+                    status_code=400,
+                    media_type="application/json",
+                )
+            if body_size < 0 or body_size > MAX_BODY_BYTES:
+                return Response(
+                    content='{"status":"error","error":{"code":"PAYLOAD_TOO_LARGE","message":"Request body exceeds size limit"}}',
+                    status_code=413,
+                    media_type="application/json",
+                )
 
-        rid = request.headers.get("x-request-id") or str(uuid.uuid4())
+        rid = request_id_or_generate(request.headers.get("x-request-id"))
         set_request_id(rid)
         response = await call_next(request)
 
@@ -127,28 +154,22 @@ setup_logging()
 
 app = FastAPI(
     title="EOS Dynamic Business Platform",
-    version="1.0.0",
-    docs_url=None if os.getenv("EOS_DISABLE_DOCS") == "true" else "/docs",
-    redoc_url=None if os.getenv("EOS_DISABLE_DOCS") == "true" else "/redoc",
+    version=os.getenv("EOS_APP_VERSION", "1.0.0"),
+    docs_url="/docs" if DOCS_ENABLED else None,
+    redoc_url="/redoc" if DOCS_ENABLED else None,
 )
 
-cors_origins = json.loads(os.getenv("EOS_CORS_ORIGINS", "[]"))
-if not cors_origins:
-    cors_origins = ["http://localhost:8000", "http://127.0.0.1:8000"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-Tenant-ID"],
     expose_headers=["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining"],
 )
 
-allowed_hosts = [host.strip() for host in os.getenv("EOS_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
-auth_mode = os.getenv("EOS_AUTH_MODE", "test").lower()
-trusted_hosts_enabled = os.getenv("EOS_TRUSTED_HOSTS_ENABLED", "false").lower() == "true"
-if auth_mode == "production" or trusted_hosts_enabled:
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+if AUTH_MODE == "production" or TRUSTED_HOSTS_ENABLED:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
 app.add_middleware(SecurityMiddleware)
 app.add_middleware(RequestIdMiddleware)
@@ -165,7 +186,12 @@ PlatformCollector(registry=_prometheus_registry)
 
 @app.get("/metrics", include_in_schema=False)
 async def metrics_endpoint():
-    return Response(content=generate_latest(_prometheus_registry), media_type="text/plain; version=0.0.4; charset=utf-8")
+    if not METRICS_ENABLED:
+        raise HTTPException(status_code=404, detail="Not found")
+    return Response(
+        content=generate_latest(_prometheus_registry),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
 
 
 @app.get("/api/version", tags=["System"])
@@ -266,13 +292,12 @@ async def validate_configuration():
     if not os.getenv("DATABASE_URL"):
         errors.append("DATABASE_URL not set")
 
-    auth_mode = os.getenv("EOS_AUTH_MODE", "test").lower()
-    if auth_mode == "production":
+    if AUTH_MODE == "production":
         if not os.getenv("EOS_SECRET_KEY"):
             errors.append("EOS_SECRET_KEY required in production mode")
         algo = os.getenv("EOS_ALGORITHM", "HS256")
         if algo == "HS256":
-            print("WARNING: HS256 algorithm. Consider RS256 for production.")
+            print("WARNING: HS256 algorithm. Consider an asymmetric signing key for production deployments.")
 
         from core.production_config import validate_production_config
         checks = validate_production_config()
@@ -283,14 +308,26 @@ async def validate_configuration():
 
     if errors:
         print(f"CONFIGURATION ERRORS: {', '.join(errors)}")
-        if auth_mode == "production":
+        if AUTH_MODE == "production":
             print("BLOCKING STARTUP — Fix configuration errors before serving traffic.")
             import sys
             sys.exit(1)
     else:
-        print(f"Configuration OK: auth_mode={auth_mode}")
-    audit_logger.log_event(event="platform_startup", details={"auth_mode": auth_mode, "version": "1.0.0"})
-    print(f"Security: CORS={bool(cors_origins)}, body_limit={MAX_BODY_BYTES}, hosts={allowed_hosts}, trusted_hosts={auth_mode == 'production' or trusted_hosts_enabled}")
+        print(f"Configuration OK: auth_mode={AUTH_MODE}")
+    audit_logger.log_event(
+        event="platform_startup",
+        details={
+            "auth_mode": AUTH_MODE,
+            "version": os.getenv("EOS_APP_VERSION", "1.0.0"),
+            "metrics_enabled": METRICS_ENABLED,
+            "docs_enabled": DOCS_ENABLED,
+        },
+    )
+    print(
+        f"Security: CORS={bool(CORS_ORIGINS)}, body_limit={MAX_BODY_BYTES}, "
+        f"hosts={ALLOWED_HOSTS}, trusted_hosts={AUTH_MODE == 'production' or TRUSTED_HOSTS_ENABLED}, "
+        f"metrics={METRICS_ENABLED}, docs={DOCS_ENABLED}"
+    )
 
 
 app.include_router(health_router)
@@ -298,8 +335,11 @@ app.include_router(health_router)
 
 @app.get("/")
 def root():
-    docs_enabled = os.getenv("EOS_DISABLE_DOCS") != "true"
-    return {"message": "EOS DBP Core is running!", "docs": "/docs" if docs_enabled else None}
+    return {
+        "message": "EOS DBP Core is running!",
+        "docs": "/docs" if DOCS_ENABLED else None,
+        "version": os.getenv("EOS_APP_VERSION", "1.0.0"),
+    }
 
 
 @app.get("/app")
@@ -308,7 +348,7 @@ async def serve_landing():
     index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path, media_type="text/html")
-    return {"message": "Landing page not found", "docs": "/docs"}
+    return {"message": "Landing page not found", "docs": "/docs" if DOCS_ENABLED else None}
 
 
 # P67: the canonical frontend source and served artifact share one path.
