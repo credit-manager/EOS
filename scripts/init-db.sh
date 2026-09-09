@@ -18,14 +18,11 @@ psql -v ON_ERROR_STOP=1 \
   -v runtime_user="$EOS_DB_RUNTIME_USER" \
   -v runtime_password="$EOS_DB_RUNTIME_PASSWORD" \
   --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-    -- Enable required extensions
     CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
     CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
-    -- Set timezone
     SET timezone = 'UTC';
 
-    -- Dedicated application role: never use the migration/database-owner role for API traffic.
     SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'runtime_user', :'runtime_password')
     WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'runtime_user')
     \gexec
@@ -39,7 +36,14 @@ psql -v ON_ERROR_STOP=1 \
     SELECT format('GRANT USAGE ON SCHEMA public TO %I', :'runtime_user')
     \gexec
 
-    -- Migration-owned tables created later in the same schema automatically receive DML grants.
+    -- The application runtime gets DML on migration-owned tables, but never
+    -- blanket function EXECUTE or schema CREATE. Sensitive functions such as
+    -- authentication and builder DDL are granted explicitly by migrations.
+    SELECT format(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM %I',
+      current_user, :'runtime_user'
+    )
+    \gexec
     SELECT format(
       'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I',
       current_user, :'runtime_user'
@@ -50,11 +54,9 @@ psql -v ON_ERROR_STOP=1 \
       current_user, :'runtime_user'
     )
     \gexec
-    SELECT format(
-      'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO %I',
-      current_user, :'runtime_user'
-    )
-    \gexec
 
-    \echo 'EOS database initialized successfully with a dedicated runtime role'
+    REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+    REVOKE CREATE ON SCHEMA public FROM :"runtime_user";
+
+    \echo 'EOS database initialized successfully with a least-privilege runtime role'
 EOSQL
