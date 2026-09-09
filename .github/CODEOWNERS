@@ -1,0 +1,15 @@
+# Critical production paths require review by the repository owners.
+* @credit-manager
+
+# Security, database, and release infrastructure are explicitly called out
+# so future changes receive ownership review before production adoption.
+/core/security.py @credit-manager
+/core/production_auth.py @credit-manager
+/core/auth_adapter.py @credit-manager
+/database.py @credit-manager
+/alembic/ @credit-manager
+/.github/workflows/ @credit-manager
+/docker/ @credit-manager
+/nginx/ @credit-manager
+Dockerfile @credit-manager
+docker-compose.yml @credit-manager
