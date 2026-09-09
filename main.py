@@ -81,8 +81,6 @@ from core.api_versioning import APIVersionMiddleware, SUPPORTED_VERSIONS
 from core.auth import get_current_user, require_permission
 from database import current_tenant_id
 import os
-import json
-import uuid
 
 MAX_BODY_BYTES = parse_positive_int("EOS_MAX_BODY_BYTES", 10 * 1024 * 1024)
 AUTH_MODE = resolve_auth_mode()
@@ -299,11 +297,9 @@ async def validate_configuration():
         errors.append("DATABASE_URL not set")
 
     if AUTH_MODE == "production":
-        if not os.getenv("EOS_SECRET_KEY"):
-            errors.append("EOS_SECRET_KEY required in production mode")
-        algo = os.getenv("EOS_ALGORITHM", "HS256")
-        if algo == "HS256":
-            print("WARNING: HS256 algorithm. Consider an asymmetric signing key for production deployments.")
+        algo = os.getenv("EOS_ALGORITHM", "HS256").strip().upper() or "HS256"
+        if algo == "HS256" and not os.getenv("EOS_SECRET_KEY"):
+            errors.append("EOS_SECRET_KEY required for HS256 production mode")
 
         from core.production_config import validate_production_config
         checks = validate_production_config()
@@ -316,8 +312,7 @@ async def validate_configuration():
         print(f"CONFIGURATION ERRORS: {', '.join(errors)}")
         if AUTH_MODE == "production":
             print("BLOCKING STARTUP — Fix configuration errors before serving traffic.")
-            import sys
-            sys.exit(1)
+            raise SystemExit(1)
     else:
         print(f"Configuration OK: auth_mode={AUTH_MODE}")
     audit_logger.log_event(
@@ -345,7 +340,7 @@ async def health_live():
     return {"status": "ok"}
 
 
-@app.get("/health/ready", include_in_schema=False)
+@health_router.get("/health/ready", include_in_schema=False)
 async def health_ready():
     """Readiness probe: verifies the database is reachable before serving traffic."""
     database_url = os.getenv("DATABASE_URL")
