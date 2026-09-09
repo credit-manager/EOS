@@ -33,7 +33,8 @@ DECLARE
     v_sql text;
     v_table text;
     v_code text;
-    v_is_new boolean;
+    v_table_exists boolean;
+    v_column_exists boolean;
 BEGIN
     IF p_table_name IS NULL OR p_table_name !~ '^bld_[a-z][a-z0-9_]{0,99}$' THEN
         RAISE EXCEPTION 'Invalid builder table name';
@@ -47,11 +48,13 @@ BEGIN
         RAISE EXCEPTION 'Builder table name exceeds PostgreSQL identifier limit';
     END IF;
 
-    IF NOT EXISTS (
+    SELECT EXISTS (
         SELECT 1 FROM pg_class c
         JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname='public' AND c.relname=v_table AND c.relkind IN ('r','p')
-    ) THEN
+    ) INTO v_table_exists;
+
+    IF NOT v_table_exists THEN
         EXECUTE format(
             'CREATE TABLE public.%I (' ||
             'id VARCHAR(36) PRIMARY KEY,' ||
@@ -88,22 +91,22 @@ BEGIN
             RAISE EXCEPTION 'Unsupported builder SQL type';
         END IF;
 
-        SELECT NOT EXISTS (
+        SELECT EXISTS (
             SELECT 1
               FROM pg_attribute a
               JOIN pg_class c ON c.oid=a.attrelid
               JOIN pg_namespace n ON n.oid=c.relnamespace
              WHERE n.nspname='public' AND c.relname=v_table
                AND a.attname=v_code AND NOT a.attisdropped
-        ) INTO v_is_new;
+        ) INTO v_column_exists;
 
-        IF v_is_new THEN
+        IF NOT v_column_exists THEN
             v_sql := format('ALTER TABLE public.%I ADD COLUMN %I %s', v_table, v_code, v_type);
             EXECUTE v_sql;
-            -- New tables are empty at publication time, so required metadata can
-            -- safely become physical NOT NULL. Existing populated tables keep the
-            -- column nullable until a data migration/backfill makes it safe.
-            IF COALESCE((col.value->>'not_null')::boolean, false) THEN
+            -- A newly created builder table is empty, so a required metadata
+            -- field may safely become physical NOT NULL. On an existing table,
+            -- a new column is intentionally nullable until data is backfilled.
+            IF NOT v_table_exists AND COALESCE((col.value->>'not_null')::boolean, false) THEN
                 EXECUTE format('ALTER TABLE public.%I ALTER COLUMN %I SET NOT NULL', v_table, v_code);
             END IF;
         ELSE
