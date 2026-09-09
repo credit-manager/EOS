@@ -100,18 +100,20 @@ class SecurityMiddleware(BaseHTTPMiddleware):
     """P13 security middleware for body size, correlation IDs and headers."""
 
     async def dispatch(self, request: Request, call_next):
-        previous_tenant = current_tenant_id.get()
+        tenant_token = current_tenant_id.set(None)
         content_length = request.headers.get("content-length")
         if content_length:
             try:
                 body_size = int(content_length)
             except ValueError:
+                current_tenant_id.reset(tenant_token)
                 return Response(
                     content='{"status":"error","error":{"code":"INVALID_CONTENT_LENGTH","message":"Invalid Content-Length header"}}',
                     status_code=400,
                     media_type="application/json",
                 )
             if body_size < 0 or body_size > MAX_BODY_BYTES:
+                current_tenant_id.reset(tenant_token)
                 return Response(
                     content='{"status":"error","error":{"code":"PAYLOAD_TOO_LARGE","message":"Request body exceeds size limit"}}',
                     status_code=413,
@@ -134,7 +136,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 del response.headers["server"]
             return response
         finally:
-            current_tenant_id.reset(current_tenant_id.set(previous_tenant))
+            current_tenant_id.reset(tenant_token)
 
 
 async def require_sales_api_permission(request: Request, user: dict = Depends(get_current_user)):
@@ -343,7 +345,7 @@ async def health_live():
     return {"status": "ok"}
 
 
-@health_router.get("/health/ready", include_in_schema=False)
+@app.get("/health/ready", include_in_schema=False)
 async def health_ready():
     """Readiness probe: verifies the database is reachable before serving traffic."""
     database_url = os.getenv("DATABASE_URL")
