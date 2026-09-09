@@ -130,7 +130,7 @@ services:
       - ./certbot/www:/var/www/certbot
       - ./docker/certbot-entrypoint.sh:/usr/local/bin/eos-certbot-entrypoint.sh:ro
       - eos_tls:/etc/eos-tls
-    entrypoint: ["/usr/local/bin/eos-certbot-entrypoint.sh"]
+    entrypoint: ["/bin/sh", "/usr/local/bin/eos-certbot-entrypoint.sh"]
     command: []
     networks: [eos-network]
     depends_on:
