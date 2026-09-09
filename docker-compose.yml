@@ -114,7 +114,7 @@ services:
       - ./certbot/conf:/etc/letsencrypt:rw
       - ./certbot/www:/var/www/certbot:rw
       - eos_tls:/etc/eos-tls
-    entrypoint: ["/usr/local/bin/eos-nginx-entrypoint.sh"]
+    entrypoint: ["/bin/sh", "/usr/local/bin/eos-nginx-entrypoint.sh"]
     depends_on:
       api:
         condition: service_healthy
