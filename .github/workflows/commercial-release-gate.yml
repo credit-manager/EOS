@@ -35,7 +35,7 @@ jobs:
         run: pip check
       - name: Verify Python compilation
         run: python -m compileall -q .
-      - name: Validate production configuration contract
+      - name: Validate HS256 production configuration contract
         env:
           ENVIRONMENT: production
           EOS_AUTH_MODE: production
@@ -43,6 +43,32 @@ jobs:
           EOS_JWT_ISSUER: eos-dbp
           EOS_JWT_AUDIENCE: eos-api
           EOS_SECRET_KEY: production-contract-secret-key-1234567890abcdef
+          DATABASE_URL: postgresql://eos:contract-password@127.0.0.1:5432/eos
+          EOS_EMAIL_PROVIDER: smtp
+          EOS_SMTP_HOST: smtp.example.com
+          EOS_SMTP_USERNAME: contract-user
+          EOS_SMTP_PASSWORD: contract-password
+          EOS_FROM_EMAIL: noreply@example.com
+          EOS_PAYMENT_MODE: stripe
+          EOS_STRIPE_SECRET_KEY: sk_live_ci_9f7a6c3b2e1d4a8c
+          EOS_FRONTEND_URL: https://app.example.com
+          EOS_CORS_ORIGINS: '["https://app.example.com"]'
+          EOS_ALLOWED_HOSTS: app.example.com,api.example.com
+          POSTGRES_USER: eos
+          POSTGRES_PASSWORD: contract-password
+          POSTGRES_DB: eos
+          DOMAIN: example.com
+        run: python -m core.production_config
+      - name: Validate RS256 production configuration without HS256 secret
+        env:
+          ENVIRONMENT: production
+          EOS_AUTH_MODE: production
+          EOS_ALGORITHM: RS256
+          EOS_JWT_ISSUER: eos-dbp
+          EOS_JWT_AUDIENCE: eos-api
+          EOS_SECRET_KEY: ''
+          EOS_JWT_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\ncontract-private-key\n-----END PRIVATE KEY-----'
+          EOS_JWT_PUBLIC_KEY: '-----BEGIN PUBLIC KEY-----\ncontract-public-key\n-----END PUBLIC KEY-----'
           DATABASE_URL: postgresql://eos:contract-password@127.0.0.1:5432/eos
           EOS_EMAIL_PROVIDER: smtp
           EOS_SMTP_HOST: smtp.example.com
@@ -157,7 +183,7 @@ jobs:
                AND has_function_privilege('eos_runtime', 'public.eos_auth_tenant_by_refresh_hash(text)', 'EXECUTE')
                AND NOT has_function_privilege('eos_exporter', 'public.eos_auth_tenant_by_email(text)', 'EXECUTE')
                AND NOT has_function_privilege('public', 'public.eos_auth_tenant_by_email(text)', 'EXECUTE')
-               AND (SELECT rolcanlogin = false AND rolbypassrls = true AND rolsuper = false FROM pg_roles WHERE rolname = '${AUTH_DEFINER_ROLE}')
+               AND (SELECT rolcanlogin = false AND rolbypassrls = true AND rolsuper = false AND rolinherit = false FROM pg_roles WHERE rolname = '${AUTH_DEFINER_ROLE}')
                AND (SELECT has_table_privilege('${AUTH_DEFINER_ROLE}', 'public.dbp_users', 'SELECT'))
                AND (SELECT has_table_privilege('${AUTH_DEFINER_ROLE}', 'public.dbp_refresh_tokens', 'SELECT'))
               THEN 'AUTH_LOOKUP_PRIVILEGES_PASS'
