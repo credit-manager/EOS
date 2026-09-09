@@ -22,7 +22,7 @@ COPY --from=python-builder /root/.local /home/eos/.local
 COPY --chown=eos:eos . .
 RUN rm -rf /app/erp-system/frontend/dist
 COPY --from=frontend-builder --chown=eos:eos /frontend/dist /app/erp-system/frontend/dist
-RUN chmod 0755 /app/docker/entrypoint.sh
+RUN chmod 0755 /app/docker/entrypoint.sh /app/docker/migrate-entrypoint.sh
 USER eos
 ENV PATH=/home/eos/.local/bin:$PATH
 
