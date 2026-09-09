@@ -13,6 +13,9 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  EXPECTED_ALEMBIC_HEAD: 20260909_finalize_tenant_rls
+
 jobs:
   production-contract:
     name: Production configuration contract
@@ -98,9 +101,21 @@ jobs:
           alembic heads
           test "$(alembic heads | wc -l | tr -d ' ')" -eq 1
           test "$(alembic heads | grep -c '^20260909_finalize_tenant_rls')" -eq 1
+      - name: Create production-equivalent runtime role before migration
+        env:
+          DATABASE_URL: postgresql://eos:eos@127.0.0.1:5432/eos_contract
+          EOS_DB_RUNTIME_USER: eos_runtime
+          EOS_DB_RUNTIME_PASSWORD: runtime-contract
+          EOS_DB_EXPORTER_USER: eos_exporter
+          EOS_DB_EXPORTER_PASSWORD: exporter-contract
+        run: python scripts/ensure_runtime_db_role.py
       - name: Upgrade database to release head
         env:
           DATABASE_URL: postgresql://eos:eos@127.0.0.1:5432/eos_contract
+          EOS_DB_RUNTIME_USER: eos_runtime
+          EOS_DB_RUNTIME_PASSWORD: runtime-contract
+          EOS_DB_EXPORTER_USER: eos_exporter
+          EOS_DB_EXPORTER_PASSWORD: exporter-contract
           SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
           EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
           ENVIRONMENT: testing
@@ -129,9 +144,29 @@ jobs:
             exit 1
           fi
           echo 'Tenant RLS contract: PASS'
+      - name: Verify authentication lookup privilege boundary
+        env:
+          PGPASSWORD: eos
+        run: |
+          psql -h 127.0.0.1 -U eos -d eos_contract -v ON_ERROR_STOP=1 -Atc "
+            SELECT CASE
+              WHEN has_function_privilege('eos_runtime', 'public.eos_auth_tenant_by_email(text)', 'EXECUTE')
+               AND has_function_privilege('eos_runtime', 'public.eos_auth_tenant_by_verification_hash(text)', 'EXECUTE')
+               AND has_function_privilege('eos_runtime', 'public.eos_auth_tenant_by_reset_hash(text)', 'EXECUTE')
+               AND has_function_privilege('eos_runtime', 'public.eos_auth_tenant_by_refresh_hash(text)', 'EXECUTE')
+               AND NOT has_function_privilege('eos_exporter', 'public.eos_auth_tenant_by_email(text)', 'EXECUTE')
+               AND NOT has_function_privilege('public', 'public.eos_auth_tenant_by_email(text)', 'EXECUTE')
+              THEN 'AUTH_LOOKUP_PRIVILEGES_PASS'
+              ELSE 'AUTH_LOOKUP_PRIVILEGES_FAIL'
+            END;
+          " | grep -Fx 'AUTH_LOOKUP_PRIVILEGES_PASS'
       - name: Verify migration idempotency
         env:
           DATABASE_URL: postgresql://eos:eos@127.0.0.1:5432/eos_contract
+          EOS_DB_RUNTIME_USER: eos_runtime
+          EOS_DB_RUNTIME_PASSWORD: runtime-contract
+          EOS_DB_EXPORTER_USER: eos_exporter
+          EOS_DB_EXPORTER_PASSWORD: exporter-contract
           SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
           EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
           ENVIRONMENT: testing
