@@ -14,8 +14,9 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_ALEMBIC_HEAD: 20260909_finalize_tenant_rls_payments
+  EXPECTED_ALEMBIC_HEAD: 20260909_builder_ddl_security
   AUTH_DEFINER_ROLE: eos_auth_definer
+  RUNTIME_ROLE: eos_runtime
 
 jobs:
   production-contract:
@@ -85,7 +86,7 @@ jobs:
           POSTGRES_DB: eos
           DOMAIN: example.com
         run: python -m core.production_config
-      - name: Run security and runtime regression tests
+      - name: Run commercial regression tests
         env:
           ENVIRONMENT: test
           PYTHONPATH: ${{ github.workspace }}
@@ -97,12 +98,14 @@ jobs:
             tests/test_security_regressions.py \
             tests/test_subscription_engine_regressions.py \
             tests/test_payment_engine_regressions.py \
+            tests/test_financial_authorization_regressions.py \
+            tests/test_marketplace_regressions.py \
             --tb=short
 
   migration-contract:
     name: PostgreSQL migration contract
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:16-alpine
@@ -143,7 +146,7 @@ jobs:
           EOS_DB_EXPORTER_USER: eos_exporter
           EOS_DB_EXPORTER_PASSWORD: exporter-contract
         run: python scripts/ensure_runtime_db_role.py
-      - name: Upgrade database to release head
+      - name: Upgrade database to release head twice
         env:
           DATABASE_URL: postgresql://eos:eos@127.0.0.1:5432/eos_contract
           EOS_DB_RUNTIME_USER: eos_runtime
@@ -156,7 +159,7 @@ jobs:
           alembic upgrade head
           test "$(alembic current | grep -c "${EXPECTED_ALEMBIC_HEAD}")" -eq 1
           alembic upgrade head
-      - name: Verify RLS on every tenant table
+      - name: Verify tenant RLS on every public tenant table
         env:
           PGPASSWORD: eos
         run: |
@@ -173,16 +176,20 @@ jobs:
              ORDER BY cols.table_name;
           ")"
           test -z "$violations"
-      - name: Verify authentication lookup privilege boundary
+      - name: Verify authentication and builder DDL privilege boundaries
         env:
           PGPASSWORD: eos
         run: |
           psql -h 127.0.0.1 -U eos -d eos_contract -v ON_ERROR_STOP=1 -Atc "
             SELECT CASE
-              WHEN has_function_privilege('eos_runtime','public.eos_auth_tenant_by_email(text)','EXECUTE')
-               AND has_function_privilege('eos_runtime','public.eos_auth_tenant_by_verification_hash(text)','EXECUTE')
-               AND has_function_privilege('eos_runtime','public.eos_auth_tenant_by_reset_hash(text)','EXECUTE')
-               AND has_function_privilege('eos_runtime','public.eos_auth_tenant_by_refresh_hash(text)','EXECUTE')
+              WHEN has_function_privilege('${RUNTIME_ROLE}','public.eos_auth_tenant_by_email(text)','EXECUTE')
+               AND has_function_privilege('${RUNTIME_ROLE}','public.eos_auth_tenant_by_verification_hash(text)','EXECUTE')
+               AND has_function_privilege('${RUNTIME_ROLE}','public.eos_auth_tenant_by_reset_hash(text)','EXECUTE')
+               AND has_function_privilege('${RUNTIME_ROLE}','public.eos_auth_tenant_by_refresh_hash(text)','EXECUTE')
+               AND has_function_privilege('${RUNTIME_ROLE}','public.eos_create_builder_table(text,jsonb)','EXECUTE')
+               AND NOT has_function_privilege('eos_exporter','public.eos_create_builder_table(text,jsonb)','EXECUTE')
+               AND NOT has_function_privilege('public','public.eos_create_builder_table(text,jsonb)','EXECUTE')
+               AND NOT has_schema_privilege('${RUNTIME_ROLE}','public','CREATE')
                AND NOT has_function_privilege('eos_exporter','public.eos_auth_tenant_by_email(text)','EXECUTE')
                AND NOT has_function_privilege('public','public.eos_auth_tenant_by_email(text)','EXECUTE')
                AND (SELECT rolcanlogin=false AND rolbypassrls=true AND rolsuper=false AND rolinherit=false FROM pg_roles WHERE rolname='${AUTH_DEFINER_ROLE}')
@@ -190,6 +197,13 @@ jobs:
                AND has_table_privilege('${AUTH_DEFINER_ROLE}','public.dbp_refresh_tokens','SELECT')
               THEN 'PASS' ELSE 'FAIL' END;
           " | grep -Fx PASS
+      - name: Verify dynamic builder objects carry tenant isolation metadata
+        env:
+          PGPASSWORD: eos
+        run: |
+          psql -h 127.0.0.1 -U eos -d eos_contract -v ON_ERROR_STOP=1 -Atc "
+            SELECT COUNT(*) FROM pg_event_trigger WHERE evtname='eos_tenant_rls_ddl_guard';
+          " | grep -Fx 1
 
   production-compose-contract:
     name: Production container / compose contract
