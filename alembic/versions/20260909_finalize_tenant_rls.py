@@ -53,7 +53,7 @@ def _migration_block(down: bool = False) -> str:
                 EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', 'tenant_isolation', v_table_name);
                 EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', v_policy_name, v_table_name);
                 EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', v_table_name);
-                EXECUTE format('ALTER TABLE public.%I NO FORCE ROW LEVEL SECURITY', v_table_name);
+                EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', v_table_name);
                 EXECUTE format(
                     'CREATE POLICY %I ON public.%I ' ||
                     'USING (tenant_id::text = current_setting(''app.tenant_id'', true)) ' ||
