@@ -38,7 +38,7 @@ jobs:
           EOS_SMTP_PASSWORD: contract-password
           EOS_FROM_EMAIL: noreply@example.com
           EOS_PAYMENT_MODE: stripe
-          EOS_STRIPE_SECRET_KEY: sk_live_ci_contract_9f7a6c3b2e1d4a8c
+          EOS_STRIPE_SECRET_KEY: sk_live_ci_9f7a6c3b2e1d4a8c
           EOS_FRONTEND_URL: https://app.example.com
           EOS_CORS_ORIGINS: '["https://app.example.com"]'
           EOS_ALLOWED_HOSTS: app.example.com,api.example.com
