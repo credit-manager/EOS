@@ -128,6 +128,36 @@ jobs:
           ENVIRONMENT: testing
         run: alembic upgrade head
 
+  production-compose-contract:
+    name: Production container / compose contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Render and validate production compose
+        env:
+          POSTGRES_USER: eos_admin
+          POSTGRES_PASSWORD: admin-password-contract
+          POSTGRES_DB: eos
+          EOS_DB_RUNTIME_USER: eos_runtime
+          EOS_DB_RUNTIME_PASSWORD: runtime-password-contract
+          EOS_SECRET_KEY: production-contract-secret-key-1234567890abcdef
+          EOS_SMTP_HOST: smtp.example.com
+          EOS_SMTP_USERNAME: contract-user
+          EOS_SMTP_PASSWORD: contract-password
+          EOS_FROM_EMAIL: noreply@example.com
+          EOS_STRIPE_SECRET_KEY: sk_live_ci_9f7a6c3b2e1d4a8c
+          EOS_FRONTEND_URL: https://app.example.com
+          EOS_CORS_ORIGINS: '["https://app.example.com"]'
+          EOS_ALLOWED_HOSTS: app.example.com,api.example.com
+          DOMAIN: example.com
+          GRAFANA_PASSWORD: grafana-password-contract
+        run: |
+          docker compose -f docker-compose.yml config --quiet
+          rendered="$(docker compose -f docker-compose.yml config)"
+          printf '%s\n' "$rendered" | grep -F 'eos_runtime:runtime-password-contract@db:5432/eos'
+          printf '%s\n' "$rendered" | grep -F 'service_completed_successfully'
+          printf '%s\n' "$rendered" | grep -F '/app/docker/migrate-entrypoint.sh'
+
   frontend-contract:
     name: Canonical frontend commercial build
     runs-on: ubuntu-latest
