@@ -10,10 +10,8 @@ import json
 import os
 from typing import Final
 
-
 LOCAL_ENVIRONMENTS: Final = frozenset({"development", "dev", "local", "test", "testing"})
 SUPPORTED_AUTH_MODES: Final = frozenset({"test", "production"})
-DEFAULT_MAX_BODY_BYTES: Final = 10 * 1024 * 1024
 
 
 class RuntimeConfigurationError(ValueError):
@@ -28,9 +26,9 @@ def environment_name() -> str:
 def resolve_auth_mode() -> str:
     """Resolve authentication mode without a production unsafe default.
 
-    An explicit ``EOS_AUTH_MODE`` always wins. When it is omitted, test
-    authentication is allowed only in known local/test environments; every other
-    environment uses production authentication.
+    An explicit ``EOS_AUTH_MODE`` always wins. When omitted, test authentication is
+    allowed only in a known local/test environment or when the test-only secret is
+    explicitly present. Every other deployment uses production authentication.
     """
     configured = os.getenv("EOS_AUTH_MODE")
     if configured:
@@ -41,7 +39,9 @@ def resolve_auth_mode() -> str:
             )
         return mode
 
-    return "test" if environment_name() in LOCAL_ENVIRONMENTS else "production"
+    if environment_name() in LOCAL_ENVIRONMENTS or os.getenv("EOS_TEST_SECRET_KEY"):
+        return "test"
+    return "production"
 
 
 def parse_bool(name: str, default: bool) -> bool:
@@ -54,9 +54,7 @@ def parse_bool(name: str, default: bool) -> bool:
         return True
     if value in {"0", "false", "no", "off"}:
         return False
-    raise RuntimeConfigurationError(
-        f"{name} must be a boolean value (true/false), got {raw!r}"
-    )
+    raise RuntimeConfigurationError(f"{name} must be a boolean value (true/false), got {raw!r}")
 
 
 def parse_positive_int(name: str, default: int) -> int:
@@ -74,28 +72,19 @@ def parse_positive_int(name: str, default: int) -> int:
 
 
 def cors_origins() -> list[str]:
-    """Return validated CORS origins.
-
-    Production deployments must explicitly configure the origin list. Local/test
-    environments retain localhost defaults for developer ergonomics.
-    """
+    """Return validated CORS origins."""
     raw = os.getenv("EOS_CORS_ORIGINS", "").strip()
     if not raw:
         return ["http://localhost:8000", "http://127.0.0.1:8000"]
-
     try:
         value = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise RuntimeConfigurationError("EOS_CORS_ORIGINS must contain valid JSON") from exc
-
     if not isinstance(value, list) or not value or not all(isinstance(item, str) for item in value):
         raise RuntimeConfigurationError("EOS_CORS_ORIGINS must be a non-empty JSON array of strings")
-
     origins = [item.strip().rstrip("/") for item in value if item.strip()]
-    if not origins:
-        raise RuntimeConfigurationError("EOS_CORS_ORIGINS cannot be empty")
-    if "*" in origins:
-        raise RuntimeConfigurationError("Wildcard CORS origin is forbidden when credentials are enabled")
+    if not origins or "*" in origins:
+        raise RuntimeConfigurationError("Wildcard/empty CORS origins are forbidden when credentials are enabled")
     return origins
 
 
@@ -125,7 +114,6 @@ def allowed_hosts() -> list[str]:
 def request_id_or_generate(value: str | None) -> str:
     """Validate an incoming request id without allowing log/header abuse."""
     import uuid
-
     if not value:
         return str(uuid.uuid4())
     candidate = value.strip()
