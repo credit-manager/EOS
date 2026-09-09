@@ -12,6 +12,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
       EOS_DB_RUNTIME_USER: ${EOS_DB_RUNTIME_USER:?EOS_DB_RUNTIME_USER is required}
       EOS_DB_RUNTIME_PASSWORD: ${EOS_DB_RUNTIME_PASSWORD:?EOS_DB_RUNTIME_PASSWORD is required}
+      EOS_DB_EXPORTER_USER: ${EOS_DB_EXPORTER_USER:?EOS_DB_EXPORTER_USER is required}
+      EOS_DB_EXPORTER_PASSWORD: ${EOS_DB_EXPORTER_PASSWORD:?EOS_DB_EXPORTER_PASSWORD is required}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
@@ -40,6 +42,8 @@ services:
       EOS_SECRET_KEY: ${EOS_SECRET_KEY:?EOS_SECRET_KEY is required}
       EOS_DB_RUNTIME_USER: ${EOS_DB_RUNTIME_USER:?EOS_DB_RUNTIME_USER is required}
       EOS_DB_RUNTIME_PASSWORD: ${EOS_DB_RUNTIME_PASSWORD:?EOS_DB_RUNTIME_PASSWORD is required}
+      EOS_DB_EXPORTER_USER: ${EOS_DB_EXPORTER_USER:?EOS_DB_EXPORTER_USER is required}
+      EOS_DB_EXPORTER_PASSWORD: ${EOS_DB_EXPORTER_PASSWORD:?EOS_DB_EXPORTER_PASSWORD is required}
     entrypoint: ["/app/docker/migrate-entrypoint.sh"]
     networks: [eos-network]
 
@@ -111,7 +115,7 @@ services:
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done'"
 
   prometheus:
-    image: prom/prometheus:v2.51.0
+    image: prom/prometheus:v3.13.3
     container_name: eos-prometheus
     restart: unless-stopped
     ports:
@@ -127,7 +131,7 @@ services:
     networks: [eos-network]
 
   grafana:
-    image: grafana/grafana:10.4.0
+    image: grafana/grafana:13.2.1
     container_name: eos-grafana
     restart: unless-stopped
     ports:
@@ -145,7 +149,7 @@ services:
     networks: [eos-network]
 
   alertmanager:
-    image: prom/alertmanager:v0.27.0
+    image: prom/alertmanager:v0.32.1
     container_name: eos-alertmanager
     restart: unless-stopped
     ports:
@@ -159,17 +163,19 @@ services:
     networks: [eos-network]
 
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:v0.15.0
+    image: prometheuscommunity/postgres-exporter:v0.20.1
     container_name: eos-postgres-exporter
     restart: unless-stopped
     environment:
-      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable"
+      DATA_SOURCE_NAME: "postgresql://${EOS_DB_EXPORTER_USER}:${EOS_DB_EXPORTER_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable"
     expose: ["9187"]
-    depends_on: [db]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     networks: [eos-network]
 
   node-exporter:
-    image: prom/node-exporter:v1.7.0
+    image: prom/node-exporter:v1.12.1
     container_name: eos-node-exporter
     restart: unless-stopped
     expose: ["9100"]
@@ -184,7 +190,7 @@ services:
     networks: [eos-network]
 
   loki:
-    image: grafana/loki:2.9.4
+    image: grafana/loki:3.7.4
     container_name: eos-loki
     restart: unless-stopped
     expose: ["3100"]
@@ -195,7 +201,7 @@ services:
     networks: [eos-network]
 
   promtail:
-    image: grafana/promtail:2.9.4
+    image: grafana/promtail:3.7.4
     container_name: eos-promtail
     restart: unless-stopped
     volumes:
@@ -211,6 +217,8 @@ services:
 volumes:
   postgres_data:
   prometheus_data:
+  grafana_data:
+  alertmanager_data:
   grafana_data:
   alertmanager_data:
   loki_data:
