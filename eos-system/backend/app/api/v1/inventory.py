@@ -134,8 +134,8 @@ async def list_products(
     search: Optional[str] = None,
     is_active: Optional[bool] = True,
     low_stock: Optional[bool] = False,
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
     permissions: list[str] = Depends(get_user_permissions),
@@ -144,22 +144,26 @@ async def list_products(
         raise HTTPException(status_code=403, detail="Requires inventory:read")
 
     query = select(Product)
+    count_query = select(func.count(Product.id))
+
+    filters = []
     if category_id:
-        query = query.filter(Product.category_id == category_id)
+        filters.append(Product.category_id == category_id)
     if is_active is not None:
-        query = query.filter(Product.is_active == is_active)
+        filters.append(Product.is_active == is_active)
     if search:
-        query = query.filter(
+        filters.append(
             (Product.name.ilike(f"%{search}%"))
             | (Product.name_ar.ilike(f"%{search}%"))
             | (Product.sku.ilike(f"%{search}%"))
         )
     if low_stock:
-        query = query.filter(Product.current_stock <= Product.min_stock)
+        filters.append(Product.current_stock <= Product.min_stock)
 
-    count_query = select(func.count(Product.id))
-    if category_id:
-        count_query = count_query.filter(Product.category_id == category_id)
+    if filters:
+        query = query.filter(*filters)
+        count_query = count_query.filter(*filters)
+
     total = (await db.execute(count_query)).scalar() or 0
 
     query = query.offset((page - 1) * page_size).limit(page_size)
@@ -379,8 +383,8 @@ async def list_movements(
     product_id: Optional[str] = None,
     warehouse_id: Optional[str] = None,
     movement_type: Optional[str] = None,
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
     permissions: list[str] = Depends(get_user_permissions),
@@ -389,15 +393,21 @@ async def list_movements(
         raise HTTPException(status_code=403, detail="Requires inventory:read")
 
     query = select(StockMovement)
-    if product_id:
-        query = query.filter(StockMovement.product_id == product_id)
-    if warehouse_id:
-        query = query.filter(StockMovement.warehouse_id == warehouse_id)
-    if movement_type:
-        query = query.filter(StockMovement.movement_type == movement_type)
-    query = query.order_by(StockMovement.created_at.desc())
-
     count_q = select(func.count(StockMovement.id))
+
+    filters = []
+    if product_id:
+        filters.append(StockMovement.product_id == product_id)
+    if warehouse_id:
+        filters.append(StockMovement.warehouse_id == warehouse_id)
+    if movement_type:
+        filters.append(StockMovement.movement_type == movement_type)
+
+    if filters:
+        query = query.filter(*filters)
+        count_q = count_q.filter(*filters)
+
+    query = query.order_by(StockMovement.created_at.desc())
     total = (await db.execute(count_q)).scalar() or 0
 
     query = query.offset((page - 1) * page_size).limit(page_size)
@@ -431,9 +441,9 @@ async def create_movement(
 
     new_movement = StockMovement(
         id=str(uuid.uuid4()), product_id=movement.product_id,
-        warehouse_id=movement.warehouse_id, movement_type=m.movement_type,
-        quantity=m.quantity, reference=m.reference, notes=m.notes,
-        movement_date=m.movement_date,
+        warehouse_id=movement.warehouse_id, movement_type=movement.movement_type,
+        quantity=movement.quantity, reference=movement.reference,
+        notes=movement.notes, movement_date=movement.movement_date,
     )
     db.add(new_movement)
     await db.flush()
@@ -467,7 +477,10 @@ async def get_low_stock(
         raise HTTPException(status_code=403, detail="Requires inventory:read")
 
     result = await db.execute(
-        select(Product).filter(Product.current_stock <= Product.min_stock, Product.is_active == True)
+        select(Product).filter(
+            Product.current_stock <= Product.min_stock,
+            Product.is_active.is_(True),
+        )
     )
     products = result.scalars().all()
 
