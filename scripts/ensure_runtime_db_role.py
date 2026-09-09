@@ -3,7 +3,9 @@
 Runs with the migration/database-owner connection so an existing PostgreSQL
 volume is reconciled safely on every deployment. The application runtime role
 gets CRUD access; the monitoring exporter role gets PostgreSQL monitoring
-privileges only.
+privileges only. Runtime function execution is intentionally not granted here;
+only narrowly scoped authentication lookup functions receive EXECUTE during
+migration.
 """
 
 from __future__ import annotations
@@ -102,6 +104,21 @@ def main() -> None:
                 sql.SQL(
                     "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
                     "GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO {}"
+                ).format(sql.Identifier(migration_user), sql.Identifier(runtime_user))
+            )
+
+            # Remove any legacy/default function execution privilege from the
+            # runtime role. Specific authentication lookup functions are granted
+            # explicitly by the final RLS migration only.
+            cur.execute(
+                sql.SQL("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM {}").format(
+                    sql.Identifier(runtime_user)
+                )
+            )
+            cur.execute(
+                sql.SQL(
+                    "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
+                    "REVOKE ALL ON FUNCTIONS FROM {}"
                 ).format(sql.Identifier(migration_user), sql.Identifier(runtime_user))
             )
 
