@@ -71,6 +71,17 @@ def main() -> None:
 
             harden_role(cur, runtime_user)
             harden_role(cur, exporter_user, {"pg_monitor"})
+
+            # The exporter is a monitoring principal, not an application principal.
+            # Remove any legacy/default function EXECUTE grants that could survive
+            # a previous deployment and silently expand its authority later.
+            cur.execute(
+                sql.SQL(
+                    "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
+                    "REVOKE EXECUTE ON FUNCTIONS FROM {}"
+                ).format(sql.Identifier(migration_user), sql.Identifier(exporter_user))
+            )
+
             cur.execute(
                 sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
                     sql.Identifier(database_name), sql.Identifier(runtime_user)
