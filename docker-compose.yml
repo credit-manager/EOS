@@ -93,14 +93,18 @@ services:
     image: nginx:alpine
     container_name: eos-nginx
     restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required}
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d/eos.conf:/etc/nginx/templates/eos.conf.template:ro
+      - ./nginx/conf.d/eos.conf:/etc/nginx/eos.conf.template:ro
+      - ./docker/nginx-entrypoint.sh:/usr/local/bin/eos-nginx-entrypoint.sh:ro
       - ./certbot/conf:/etc/letsencrypt:ro
       - ./certbot/www:/var/www/certbot:ro
+    entrypoint: ["/usr/local/bin/eos-nginx-entrypoint.sh"]
     depends_on:
       api:
         condition: service_healthy
