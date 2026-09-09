@@ -14,20 +14,27 @@ class ProductionConfigError(Exception):
     """Raised when production configuration is invalid."""
 
 
-def _check(checks, name: str, value: str, pattern: str | None = None) -> bool:
+def _check(checks, name: str, value: str, pattern: str | None = None, critical: bool = True) -> bool:
     if not value:
-        checks.append((name, "MISSING", True))
+        checks.append((name, "MISSING", critical))
         return False
     if pattern and not re.fullmatch(pattern, value):
-        checks.append((name, "INVALID FORMAT", True))
+        checks.append((name, "INVALID FORMAT", critical))
         return False
-    checks.append((name, "OK", True))
+    checks.append((name, "OK", critical))
     return True
 
 
 def _validate_fernet_key(checks: list[tuple[str, str, bool]]) -> None:
+    # This key is required only when tenant gateway credentials are persisted.
+    # The application can use provider credentials supplied entirely through
+    # environment/secret-manager configuration without enabling this feature.
     key = os.getenv("EOS_SECRET_ENCRYPTION_KEY", "").strip()
-    if not _check(checks, "EOS_SECRET_ENCRYPTION_KEY", key, r"[A-Za-z0-9_-]{43}="):
+    if not key:
+        checks.append(("EOS_SECRET_ENCRYPTION_KEY", "OPTIONAL / NOT CONFIGURED", False))
+        return
+    if not re.fullmatch(r"[A-Za-z0-9_-]{43}=", key):
+        checks.append(("EOS_SECRET_ENCRYPTION_KEY", "INVALID FORMAT", True))
         return
     try:
         decoded = base64.urlsafe_b64decode(key.encode("ascii"))
@@ -36,6 +43,8 @@ def _validate_fernet_key(checks: list[tuple[str, str, bool]]) -> None:
         return
     if len(decoded) != 32:
         checks.append(("EOS_SECRET_ENCRYPTION_KEY", "INVALID FORMAT", True))
+        return
+    checks.append(("EOS_SECRET_ENCRYPTION_KEY", "OK", True))
 
 
 def validate_production_config() -> List[Tuple[str, str, bool]]:
