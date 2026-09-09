@@ -11,7 +11,7 @@ fi
 # least-privilege database role and avoids concurrent migration races between replicas.
 
 # Keep the runtime process as PID 1 for correct signal handling and graceful shutdown.
-exec gunicorn main:app \
+exec gunicorn app_server:app \
   --workers "${GUNICORN_WORKERS:-4}" \
   --worker-class uvicorn.workers.UvicornWorker \
   --bind 0.0.0.0:8000 \
