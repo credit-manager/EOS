@@ -35,6 +35,7 @@ DECLARE
     v_code text;
     v_table_exists boolean;
     v_column_exists boolean;
+    v_policy_name text;
 BEGIN
     IF p_table_name IS NULL OR p_table_name !~ '^bld_[a-z][a-z0-9_]{0,99}$' THEN
         RAISE EXCEPTION 'Invalid builder table name';
@@ -44,6 +45,7 @@ BEGIN
     END IF;
 
     v_table := p_table_name;
+    v_policy_name := 'tenant_isolation_' || v_table;
     IF length(v_table) > 63 THEN
         RAISE EXCEPTION 'Builder table name exceeds PostgreSQL identifier limit';
     END IF;
@@ -74,6 +76,18 @@ BEGIN
         END IF;
     END IF;
 
+    -- Builder-created tables are always tenant-scoped. Reconcile RLS every
+    -- time the function is called so old tables are hardened as well.
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', v_table);
+    EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', v_table);
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', v_policy_name, v_table);
+    EXECUTE format(
+        'CREATE POLICY %I ON public.%I ' ||
+        'USING (tenant_id::text = current_setting(''app.tenant_id'', true)) ' ||
+        'WITH CHECK (tenant_id::text = current_setting(''app.tenant_id'', true))',
+        v_policy_name, v_table
+    );
+
     FOR col IN SELECT * FROM jsonb_array_elements(COALESCE(p_columns, '[]'::jsonb))
     LOOP
         IF jsonb_typeof(col.value) <> 'object' OR NOT (col.value ? 'code') OR NOT (col.value ? 'sql_type') THEN
@@ -103,9 +117,6 @@ BEGIN
         IF NOT v_column_exists THEN
             v_sql := format('ALTER TABLE public.%I ADD COLUMN %I %s', v_table, v_code, v_type);
             EXECUTE v_sql;
-            -- A newly created builder table is empty, so a required metadata
-            -- field may safely become physical NOT NULL. On an existing table,
-            -- a new column is intentionally nullable until data is backfilled.
             IF NOT v_table_exists AND COALESCE((col.value->>'not_null')::boolean, false) THEN
                 EXECUTE format('ALTER TABLE public.%I ALTER COLUMN %I SET NOT NULL', v_table, v_code);
             END IF;
