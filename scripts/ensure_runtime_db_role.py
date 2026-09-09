@@ -65,13 +65,18 @@ def revoke_function_execute(cur, role_name: str) -> None:
     )
 
 
-def revoke_default_function_execute(cur, migration_user: str, role_name: str) -> None:
-    cur.execute(
-        sql.SQL(
+def revoke_default_function_execute(cur, migration_user: str, role_name: str | None = None) -> None:
+    if role_name is None:
+        statement = sql.SQL(
+            "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
+            "REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC"
+        ).format(sql.Identifier(migration_user))
+    else:
+        statement = sql.SQL(
             "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
             "REVOKE EXECUTE ON FUNCTIONS FROM {}"
         ).format(sql.Identifier(migration_user), sql.Identifier(role_name))
-    )
+    cur.execute(statement)
 
 
 def main() -> None:
@@ -131,7 +136,7 @@ def main() -> None:
             cur.execute("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC")
             revoke_function_execute(cur, runtime_user)
             revoke_function_execute(cur, exporter_user)
-            revoke_default_function_execute(cur, migration_user, "PUBLIC")
+            revoke_default_function_execute(cur, migration_user)
             revoke_default_function_execute(cur, migration_user, runtime_user)
             revoke_default_function_execute(cur, migration_user, exporter_user)
 
