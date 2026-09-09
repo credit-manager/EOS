@@ -19,17 +19,14 @@ def require(name: str) -> str:
 
 def harden_role(cur, role_name: str, allowed_memberships: set[str] | None = None) -> None:
     allowed_memberships = allowed_memberships or set()
-
     cur.execute(
         sql.SQL(
             "ALTER ROLE {} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE "
             "NOREPLICATION NOBYPASSRLS"
         ).format(sql.Identifier(role_name))
     )
-
     cur.execute(
-        "SELECT parent.rolname "
-        "FROM pg_auth_members m "
+        "SELECT parent.rolname FROM pg_auth_members m "
         "JOIN pg_roles parent ON parent.oid = m.roleid "
         "JOIN pg_roles member ON member.oid = m.member "
         "WHERE member.rolname = %s",
@@ -37,15 +34,10 @@ def harden_role(cur, role_name: str, allowed_memberships: set[str] | None = None
     )
     for (parent_name,) in cur.fetchall():
         if parent_name not in allowed_memberships:
-            cur.execute(
-                sql.SQL("REVOKE {} FROM {}").format(
-                    sql.Identifier(parent_name), sql.Identifier(role_name)
-                )
-            )
-
+            cur.execute(sql.SQL("REVOKE {} FROM {}").format(sql.Identifier(parent_name), sql.Identifier(role_name)))
     cur.execute(
-        "SELECT rolsuper, rolcreaterole, rolcreatedb, rolcanlogin, "
-        "rolreplication, rolbypassrls FROM pg_roles WHERE rolname = %s",
+        "SELECT rolsuper, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, rolbypassrls "
+        "FROM pg_roles WHERE rolname = %s",
         (role_name,),
     )
     flags = cur.fetchone()
@@ -55,19 +47,15 @@ def harden_role(cur, role_name: str, allowed_memberships: set[str] | None = None
 
 def verify_auth_definer_role(cur) -> None:
     cur.execute(
-        "SELECT rolsuper, rolcreaterole, rolcreatedb, rolcanlogin, "
-        "rolreplication, rolbypassrls, rolinherit FROM pg_roles WHERE rolname = %s",
+        "SELECT rolsuper, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, rolbypassrls, rolinherit "
+        "FROM pg_roles WHERE rolname = %s",
         (AUTH_DEFINER_ROLE,),
     )
     flags = cur.fetchone()
     if flags != (False, False, False, False, False, True, False):
-        raise SystemExit(
-            f"Unsafe authentication definer role flags for {AUTH_DEFINER_ROLE!r}: {flags}"
-        )
-
+        raise SystemExit(f"Unsafe authentication definer role flags for {AUTH_DEFINER_ROLE!r}: {flags}")
     cur.execute(
-        "SELECT parent.rolname "
-        "FROM pg_auth_members m "
+        "SELECT parent.rolname FROM pg_auth_members m "
         "JOIN pg_roles parent ON parent.oid = m.roleid "
         "JOIN pg_roles member ON member.oid = m.member "
         "WHERE member.rolname = %s",
@@ -75,10 +63,7 @@ def verify_auth_definer_role(cur) -> None:
     )
     memberships = [row[0] for row in cur.fetchall()]
     if memberships:
-        raise SystemExit(
-            f"Authentication definer role must not inherit memberships: {memberships}"
-        )
-
+        raise SystemExit(f"Authentication definer role must not inherit memberships: {memberships}")
     cur.execute(
         "SELECT has_table_privilege(%s, 'public.dbp_users', 'SELECT'), "
         "has_table_privilege(%s, 'public.dbp_refresh_tokens', 'SELECT')",
@@ -86,9 +71,7 @@ def verify_auth_definer_role(cur) -> None:
     )
     table_access = cur.fetchone()
     if table_access != (True, True):
-        raise SystemExit(
-            f"Authentication definer lacks required auth-table SELECT privileges: {table_access}"
-        )
+        raise SystemExit(f"Authentication definer lacks required auth-table SELECT privileges: {table_access}")
 
 
 def main() -> None:
@@ -103,28 +86,17 @@ def main() -> None:
             database_name, migration_user = cur.fetchone()
             if migration_user in {runtime_user, exporter_user, AUTH_DEFINER_ROLE}:
                 raise SystemExit("Production roles must not be the migration/database-owner role")
-
             for role_name in (runtime_user, exporter_user, AUTH_DEFINER_ROLE):
                 cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role_name,))
                 if cur.fetchone() is None:
                     raise SystemExit(f"Expected role {role_name!r} does not exist")
-
             harden_role(cur, runtime_user)
             harden_role(cur, exporter_user, {"pg_monitor"})
             verify_auth_definer_role(cur)
 
-            # Existing functions must not accidentally inherit ambient EXECUTE;
-            # explicitly scoped migration functions grant only the permissions
-            # they require. Keep the runtime/exporter roles least-privileged.
+            # Strip only ambient PUBLIC EXECUTE. Explicit runtime grants from
+            # security-sensitive migrations must survive reconciliation.
             cur.execute("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC")
-            cur.execute(
-                sql.SQL("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM {}")
-                .format(sql.Identifier(runtime_user))
-            )
-            cur.execute(
-                sql.SQL("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM {}")
-                .format(sql.Identifier(exporter_user))
-            )
             for role_name in (runtime_user, exporter_user):
                 cur.execute(
                     sql.SQL(
@@ -138,17 +110,8 @@ def main() -> None:
                     "REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC"
                 ).format(sql.Identifier(migration_user))
             )
-
-            cur.execute(
-                sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
-                    sql.Identifier(database_name), sql.Identifier(runtime_user)
-                )
-            )
-            cur.execute(
-                sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
-                    sql.Identifier(database_name), sql.Identifier(exporter_user)
-                )
-            )
+            cur.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(sql.Identifier(database_name), sql.Identifier(runtime_user)))
+            cur.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(sql.Identifier(database_name), sql.Identifier(exporter_user)))
 
     print("Database role security invariants: PASS")
 
