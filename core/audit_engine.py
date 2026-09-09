@@ -1,4 +1,4 @@
-﻿"""
+"""
 P31 Audit & Compliance Engine
 """
 import uuid
@@ -41,12 +41,16 @@ class AuditComplianceEngine:
         self.db.flush()
         return eid
 
+    def _company_scope(self, company_id, tenant_id):
+        """Return SQL predicates that always bind company access to the caller tenant."""
+        if tenant_id:
+            return "company_id = :cid AND tenant_id = :tid", {"cid": company_id, "tid": tenant_id}
+        return "company_id = :cid", {"cid": company_id}
+
     def get_audit_trail(self, company_id, entity_type=None, entity_id=None,
                         actor_id=None, from_date=None, to_date=None, limit=100, tenant_id=None):
-        conditions = ["company_id = :cid"]
-        params = {"cid": company_id, "lim": limit}
-        if tenant_id:
-            conditions.append("tenant_id = :tid"); params["tid"] = tenant_id
+        conditions, params = [self._company_scope(company_id, tenant_id)[0]], self._company_scope(company_id, tenant_id)[1]
+        params["lim"] = max(1, min(int(limit), 500))
         if entity_type:
             conditions.append("entity_type = :et"); params["et"] = entity_type
         if entity_id:
@@ -69,8 +73,8 @@ class AuditComplianceEngine:
                  "ip_address": r[8], "request_id": r[9],
                  "created_at": r[10].isoformat() if r[10] else None} for r in rows]
 
-    def get_entity_history(self, company_id, entity_type, entity_id):
-        return self.get_audit_trail(company_id, entity_type=entity_type, entity_id=entity_id, limit=500)
+    def get_entity_history(self, company_id, entity_type, entity_id, tenant_id=None):
+        return self.get_audit_trail(company_id, entity_type=entity_type, entity_id=entity_id, limit=500, tenant_id=tenant_id)
 
     def log_access(self, tenant_id, user_id, user_email, action, resource_type,
                    resource_id=None, access_granted=True, denial_reason=None, ip_address=None):
@@ -81,16 +85,19 @@ class AuditComplianceEngine:
             "VALUES (:id,:tid,:uid,:ue,:act,:rt,:rid,:ag,:dr,:ip)"
         ), {"id": lid, "tid": tenant_id, "uid": user_id, "ue": user_email,
             "act": action, "rt": resource_type, "rid": resource_id,
-            "ag": access_granted, "dr": denial_reason, "ip": ip_address})
+            "access_granted": access_granted, "dr": denial_reason, "ip": ip_address})
         self.db.flush()
         return lid
 
     def get_access_logs(self, company_id=None, tenant_id=None, user_id=None,
                         resource_type=None, from_date=None, to_date=None, limit=100):
         conditions = []
-        params = {"lim": limit}
+        params = {"lim": max(1, min(int(limit), 500))}
         if company_id:
-            conditions.append("l.tenant_id = (SELECT tenant_id FROM dbp_audit_trail LIMIT 1)")
+            # Access logs do not carry company_id; never infer a tenant through an
+            # unrelated audit row. The tenant filter below is the authoritative scope.
+            if not tenant_id:
+                return []
         if tenant_id:
             conditions.append("l.tenant_id = :tid"); params["tid"] = tenant_id
         if user_id:
@@ -129,10 +136,7 @@ class AuditComplianceEngine:
         return rid
 
     def list_compliance_rules(self, company_id, tenant_id=None, category=None):
-        conditions = ["company_id = :cid"]
-        params = {"cid": company_id}
-        if tenant_id:
-            conditions.append("tenant_id = :tid"); params["tid"] = tenant_id
+        conditions, params = [self._company_scope(company_id, tenant_id)[0]], self._company_scope(company_id, tenant_id)[1]
         if category:
             conditions.append("category = :cat"); params["cat"] = category
         where = " AND ".join(conditions)
@@ -142,11 +146,14 @@ class AuditComplianceEngine:
         ), params).fetchall()
         return [{"id": r[0], "rule_code": r[1], "name": r[2], "description": r[3],
                  "category": r[4], "severity": r[5], "entity_type": r[6],
-                 "is_active": bool(r[7]),
-                 "created_at": r[8].isoformat() if r[8] else None} for r in rows]
+                 "is_active": bool(r[7]), "created_at": r[8].isoformat() if r[8] else None} for r in rows]
 
-    def update_compliance_rule(self, rule_id, **kw):
-        row = self.db.execute(text("SELECT id FROM dbp_compliance_rules WHERE id = :rid"), {"rid": rule_id}).fetchone()
+    def update_compliance_rule(self, rule_id, tenant_id=None, **kw):
+        conditions = ["id = :rid"]
+        params = {"rid": rule_id}
+        if tenant_id:
+            conditions.append("tenant_id = :tid"); params["tid"] = tenant_id
+        row = self.db.execute(text(f"SELECT id FROM dbp_compliance_rules WHERE {' AND '.join(conditions)}"), params).fetchone()
         if not row:
             return {"success": False, "error": "Rule not found"}
         allowed = {"name", "description", "category", "severity", "is_active", "rule_expression"}
@@ -154,43 +161,43 @@ class AuditComplianceEngine:
         if not updates:
             return {"success": False, "error": "No valid fields"}
         set_clause = ", ".join(f"{k} = :{k}" for k in updates)
-        self.db.execute(text(f"UPDATE dbp_compliance_rules SET {set_clause} WHERE id = :rid"), {"rid": rule_id, **updates})
+        self.db.execute(text(f"UPDATE dbp_compliance_rules SET {set_clause} WHERE {' AND '.join(conditions)}"), {**params, **updates})
         self.db.flush()
         return {"success": True}
 
     def run_compliance_check(self, company_id, tenant_id=None):
-        params = {"cid": company_id}
-        tid_filter = ""
-        if tenant_id:
-            tid_filter = " AND tenant_id = :tid"
-            params["tid"] = tenant_id
+        scope, params = self._company_scope(company_id, tenant_id)
+        params["tid"] = tenant_id
         action_counts = self.db.execute(text(
-            f"SELECT action, COUNT(*) FROM dbp_audit_trail WHERE company_id = :cid{tid_filter} "
+            f"SELECT action, COUNT(*) FROM dbp_audit_trail WHERE {scope} "
             f"AND created_at >= NOW() - INTERVAL '30 days' GROUP BY action"
         ), params).fetchall()
+        denied_conditions = "access_granted = false"
+        denied_params = {}
+        if tenant_id:
+            denied_conditions += " AND tenant_id = :tid"; denied_params["tid"] = tenant_id
         denied = self.db.execute(text(
-            f"SELECT COUNT(*) FROM dbp_data_access_logs WHERE access_granted = false "
+            f"SELECT COUNT(*) FROM dbp_data_access_logs WHERE {denied_conditions} "
             f"AND created_at >= NOW() - INTERVAL '30 days'"
-        )).scalar() or 0
+        ), denied_params).scalar() or 0
+        rule_scope, rule_params = self._company_scope(company_id, tenant_id)
         active_rules = self.db.execute(text(
-            f"SELECT COUNT(*) FROM dbp_compliance_rules WHERE company_id = :cid AND is_active = true"
-        ), {"cid": company_id}).scalar() or 0
+            f"SELECT COUNT(*) FROM dbp_compliance_rules WHERE {rule_scope} AND is_active = true"
+        ), rule_params).scalar() or 0
         return {"audit_events_30d": {r[0]: r[1] for r in action_counts},
                 "denied_access_30d": int(denied), "active_rules": int(active_rules)}
 
     def create_audit_export(self, tenant_id, company_id, export_type, from_date, to_date,
                              entity_types=None, exported_by=None):
         xid = str(uuid.uuid4())
-        conditions = ["company_id = :cid", "created_at >= :fd", "created_at <= :td"]
-        params = {"cid": company_id, "fd": from_date, "td": to_date + "T23:59:59"}
+        conditions = ["company_id = :cid", "tenant_id = :tid", "created_at >= :fd", "created_at <= :td"]
+        params = {"cid": company_id, "tid": tenant_id, "fd": from_date, "td": to_date + "T23:59:59"}
         if entity_types:
             types_list = [t.strip() for t in entity_types.split(",")]
             conditions.append("entity_type = ANY(:types)")
             params["types"] = types_list
         where = " AND ".join(conditions)
-        count = self.db.execute(text(
-            f"SELECT COUNT(*) FROM dbp_audit_trail WHERE {where}"
-        ), params).scalar() or 0
+        count = self.db.execute(text(f"SELECT COUNT(*) FROM dbp_audit_trail WHERE {where}"), params).scalar() or 0
         self.db.execute(text(
             "INSERT INTO dbp_audit_exports (id, tenant_id, company_id, export_type, "
             "entity_types, from_date, to_date, status, record_count, exported_by, completed_at) "
@@ -201,10 +208,7 @@ class AuditComplianceEngine:
         return xid
 
     def list_audit_exports(self, company_id, tenant_id=None):
-        conditions = ["company_id = :cid"]
-        params = {"cid": company_id}
-        if tenant_id:
-            conditions.append("tenant_id = :tid"); params["tid"] = tenant_id
+        conditions, params = [self._company_scope(company_id, tenant_id)[0]], self._company_scope(company_id, tenant_id)[1]
         where = " AND ".join(conditions)
         rows = self.db.execute(text(
             f"SELECT id, export_type, entity_types, from_date, to_date, status, "
@@ -212,7 +216,6 @@ class AuditComplianceEngine:
             f"WHERE {where} ORDER BY created_at DESC"
         ), params).fetchall()
         return [{"id": r[0], "export_type": r[1], "entity_types": r[2],
-                 "from_date": str(r[3]) if r[3] else None,
-                 "to_date": str(r[4]) if r[4] else None, "status": r[5],
-                 "record_count": r[6], "exported_by": r[7],
+                 "from_date": str(r[3]) if r[3] else None, "to_date": str(r[4]) if r[4] else None,
+                 "status": r[5], "record_count": r[6], "exported_by": r[7],
                  "created_at": r[8].isoformat() if r[8] else None} for r in rows]
