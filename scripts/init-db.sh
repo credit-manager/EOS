@@ -14,7 +14,10 @@ if [ "$POSTGRES_USER" = "$EOS_DB_RUNTIME_USER" ]; then
   exit 1
 fi
 
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+psql -v ON_ERROR_STOP=1 \
+  -v runtime_user="$EOS_DB_RUNTIME_USER" \
+  -v runtime_password="$EOS_DB_RUNTIME_PASSWORD" \
+  --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
     -- Enable required extensions
     CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
     CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -23,26 +26,35 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     SET timezone = 'UTC';
 
     -- Dedicated application role: never use the migration/database-owner role for API traffic.
-    DO \$\$
-    BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${EOS_DB_RUNTIME_USER}') THEN
-            CREATE ROLE "${EOS_DB_RUNTIME_USER}" LOGIN PASSWORD '${EOS_DB_RUNTIME_PASSWORD}';
-        ELSE
-            ALTER ROLE "${EOS_DB_RUNTIME_USER}" LOGIN PASSWORD '${EOS_DB_RUNTIME_PASSWORD}';
-        END IF;
-    END
-    \$\$;
+    SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'runtime_user', :'runtime_password')
+    WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'runtime_user')
+    \gexec
 
-    GRANT CONNECT ON DATABASE "${POSTGRES_DB}" TO "${EOS_DB_RUNTIME_USER}";
-    GRANT USAGE ON SCHEMA public TO "${EOS_DB_RUNTIME_USER}";
+    SELECT format('ALTER ROLE %I LOGIN PASSWORD %L', :'runtime_user', :'runtime_password')
+    WHERE EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'runtime_user')
+    \gexec
+
+    SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), :'runtime_user')
+    \gexec
+    SELECT format('GRANT USAGE ON SCHEMA public TO %I', :'runtime_user')
+    \gexec
 
     -- Migration-owned tables created later in the same schema automatically receive DML grants.
-    ALTER DEFAULT PRIVILEGES FOR ROLE "${POSTGRES_USER}" IN SCHEMA public
-      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${EOS_DB_RUNTIME_USER}";
-    ALTER DEFAULT PRIVILEGES FOR ROLE "${POSTGRES_USER}" IN SCHEMA public
-      GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO "${EOS_DB_RUNTIME_USER}";
-    ALTER DEFAULT PRIVILEGES FOR ROLE "${POSTGRES_USER}" IN SCHEMA public
-      GRANT EXECUTE ON FUNCTIONS TO "${EOS_DB_RUNTIME_USER}";
+    SELECT format(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I',
+      current_user, :'runtime_user'
+    )
+    \gexec
+    SELECT format(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO %I',
+      current_user, :'runtime_user'
+    )
+    \gexec
+    SELECT format(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO %I',
+      current_user, :'runtime_user'
+    )
+    \gexec
 
     \echo 'EOS database initialized successfully with a dedicated runtime role'
 EOSQL
