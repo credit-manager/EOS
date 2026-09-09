@@ -38,12 +38,12 @@ DECLARE
     v_policy_name text;
     v_tenant text;
     v_column_count integer;
+    v_owned_by_tenant boolean;
 BEGIN
     v_tenant := current_setting('app.tenant_id', true);
     IF v_tenant IS NULL OR btrim(v_tenant) = '' THEN
         RAISE EXCEPTION 'Tenant context is required for builder DDL';
     END IF;
-
     IF p_table_name IS NULL OR p_table_name !~ '^bld_[a-z][a-z0-9_]{0,99}$' THEN
         RAISE EXCEPTION 'Invalid builder table name';
     END IF;
@@ -62,13 +62,22 @@ BEGIN
     END IF;
 
     SELECT EXISTS (
-        SELECT 1
-          FROM pg_class c
-          JOIN pg_namespace n ON n.oid=c.relnamespace
-         WHERE n.nspname='public'
-           AND c.relname=v_table
-           AND c.relkind IN ('r','p')
+        SELECT 1 FROM pg_class c
+        JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='public' AND c.relname=v_table AND c.relkind IN ('r','p')
     ) INTO v_table_exists;
+
+    IF v_table_exists THEN
+        SELECT EXISTS (
+            SELECT 1 FROM public.dbp_entities e
+            WHERE e.tenant_id=v_tenant
+              AND e.table_mapping=v_table
+              AND e.is_system=false
+        ) INTO v_owned_by_tenant;
+        IF NOT v_owned_by_tenant THEN
+            RAISE EXCEPTION 'Builder table is not owned by the current tenant';
+        END IF;
+    END IF;
 
     IF NOT v_table_exists THEN
         EXECUTE format(
@@ -80,14 +89,11 @@ BEGIN
         );
     ELSE
         IF NOT EXISTS (
-            SELECT 1
-              FROM pg_attribute a
-              JOIN pg_class c ON c.oid=a.attrelid
-              JOIN pg_namespace n ON n.oid=c.relnamespace
-             WHERE n.nspname='public'
-               AND c.relname=v_table
-               AND a.attname='tenant_id'
-               AND NOT a.attisdropped
+            SELECT 1 FROM pg_attribute a
+            JOIN pg_class c ON c.oid=a.attrelid
+            JOIN pg_namespace n ON n.oid=c.relnamespace
+            WHERE n.nspname='public' AND c.relname=v_table
+              AND a.attname='tenant_id' AND NOT a.attisdropped
         ) THEN
             RAISE EXCEPTION 'Existing builder table lacks tenant_id';
         END IF;
@@ -126,28 +132,18 @@ BEGIN
         END IF;
 
         SELECT EXISTS (
-            SELECT 1
-              FROM pg_attribute a
-              JOIN pg_class c ON c.oid=a.attrelid
-              JOIN pg_namespace n ON n.oid=c.relnamespace
-             WHERE n.nspname='public'
-               AND c.relname=v_table
-               AND a.attname=v_code
-               AND NOT a.attisdropped
+            SELECT 1 FROM pg_attribute a
+            JOIN pg_class c ON c.oid=a.attrelid
+            JOIN pg_namespace n ON n.oid=c.relnamespace
+            WHERE n.nspname='public' AND c.relname=v_table
+              AND a.attname=v_code AND NOT a.attisdropped
         ) INTO v_column_exists;
 
         IF NOT v_column_exists THEN
-            v_sql := format(
-                'ALTER TABLE public.%I ADD COLUMN %I %s',
-                v_table, v_code, v_type
-            );
+            v_sql := format('ALTER TABLE public.%I ADD COLUMN %I %s', v_table, v_code, v_type);
             EXECUTE v_sql;
-            IF NOT v_table_exists
-               AND COALESCE((col.value->>'not_null')::boolean, false) THEN
-                EXECUTE format(
-                    'ALTER TABLE public.%I ALTER COLUMN %I SET NOT NULL',
-                    v_table, v_code
-                );
+            IF NOT v_table_exists AND COALESCE((col.value->>'not_null')::boolean, false) THEN
+                EXECUTE format('ALTER TABLE public.%I ALTER COLUMN %I SET NOT NULL', v_table, v_code);
             END IF;
         END IF;
     END LOOP;
@@ -160,23 +156,12 @@ def upgrade() -> None:
     runtime_role = os.getenv("EOS_DB_RUNTIME_USER", "").strip()
     if runtime_role and not _SAFE_ROLE.fullmatch(runtime_role):
         raise RuntimeError("EOS_DB_RUNTIME_USER must be a simple PostgreSQL role identifier")
-
     op.execute(_FUNCTION_SQL)
-    op.execute(
-        "ALTER FUNCTION public.eos_create_builder_table(text,jsonb) OWNER TO CURRENT_USER"
-    )
-    op.execute(
-        "REVOKE ALL ON FUNCTION public.eos_create_builder_table(text,jsonb) FROM PUBLIC"
-    )
+    op.execute("ALTER FUNCTION public.eos_create_builder_table(text,jsonb) OWNER TO CURRENT_USER")
+    op.execute("REVOKE ALL ON FUNCTION public.eos_create_builder_table(text,jsonb) FROM PUBLIC")
     if runtime_role:
-        op.execute(
-            f'GRANT EXECUTE ON FUNCTION public.eos_create_builder_table(text,jsonb) TO "{runtime_role}"'
-        )
+        op.execute(f'GRANT EXECUTE ON FUNCTION public.eos_create_builder_table(text,jsonb) TO "{runtime_role}"')
 
 
 def downgrade() -> None:
-    op.execute(
-        "REVOKE ALL ON FUNCTION public.eos_create_builder_table(text,jsonb) FROM PUBLIC"
-    )
-    # Intentionally leave the function absent only when rolling back the
-    # preceding builder security migration as part of a coordinated downgrade.
+    op.execute("REVOKE ALL ON FUNCTION public.eos_create_builder_table(text,jsonb) FROM PUBLIC")
