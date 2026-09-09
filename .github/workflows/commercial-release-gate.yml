@@ -59,7 +59,7 @@ jobs:
         env:
           ENVIRONMENT: test
           PYTHONPATH: ${{ github.workspace }}
-        run: pytest -q tests/test_runtime_config.py tests/test_enterprise_hardening_primitives.py tests/test_production_config.py --tb=short
+        run: pytest -q tests/test_runtime_config.py tests/test_enterprise_hardening_primitives.py tests/test_production_config.py tests/test_security_regressions.py --tb=short
 
   migration-contract:
     name: PostgreSQL migration contract
