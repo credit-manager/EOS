@@ -99,28 +99,26 @@ class SecurityMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         tenant_token = current_tenant_id.set(None)
-        content_length = request.headers.get("content-length")
-        if content_length:
-            try:
-                body_size = int(content_length)
-            except ValueError:
-                current_tenant_id.reset(tenant_token)
-                return Response(
-                    content='{"status":"error","error":{"code":"INVALID_CONTENT_LENGTH","message":"Invalid Content-Length header"}}',
-                    status_code=400,
-                    media_type="application/json",
-                )
-            if body_size < 0 or body_size > MAX_BODY_BYTES:
-                current_tenant_id.reset(tenant_token)
-                return Response(
-                    content='{"status":"error","error":{"code":"PAYLOAD_TOO_LARGE","message":"Request body exceeds size limit"}}',
-                    status_code=413,
-                    media_type="application/json",
-                )
-
-        rid = request_id_or_generate(request.headers.get("x-request-id"))
-        set_request_id(rid)
         try:
+            content_length = request.headers.get("content-length")
+            if content_length:
+                try:
+                    body_size = int(content_length)
+                except ValueError:
+                    return Response(
+                        content='{"status":"error","error":{"code":"INVALID_CONTENT_LENGTH","message":"Invalid Content-Length header"}}',
+                        status_code=400,
+                        media_type="application/json",
+                    )
+                if body_size < 0 or body_size > MAX_BODY_BYTES:
+                    return Response(
+                        content='{"status":"error","error":{"code":"PAYLOAD_TOO_LARGE","message":"Request body exceeds size limit"}}',
+                        status_code=413,
+                        media_type="application/json",
+                    )
+
+            rid = request_id_or_generate(request.headers.get("x-request-id"))
+            set_request_id(rid)
             response = await call_next(request)
             response.headers["X-Request-ID"] = rid
             response.headers["X-Content-Type-Options"] = "nosniff"
