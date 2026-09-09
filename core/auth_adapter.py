@@ -35,6 +35,12 @@ async def get_current_user(
             raise
         except ValueError:
             raise HTTPException(status_code=500, detail="Production authentication is not configured")
+        if payload.get("type") != "access":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
     else:
         from core.auth import verify_test_token as verify_token
         payload = verify_token(credentials.credentials)
