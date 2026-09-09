@@ -14,8 +14,8 @@ jobs:
     name: Production configuration contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Install runtime dependencies
@@ -71,8 +71,8 @@ jobs:
         ports:
           - 5432:5432
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Install migration dependencies
@@ -102,29 +102,24 @@ jobs:
         env:
           PGPASSWORD: eos
         run: |
-          psql -h 127.0.0.1 -U eos -d eos_contract -v ON_ERROR_STOP=1 -Atc "
-            SELECT count(*)
+          violations="$(psql -h 127.0.0.1 -U eos -d eos_contract -v ON_ERROR_STOP=1 -Atc "
+            SELECT cols.table_name || ' relrowsecurity=' || c.relrowsecurity || ' relforcerowsecurity=' || c.relforcerowsecurity
             FROM information_schema.columns cols
             JOIN pg_class c ON c.relname = cols.table_name
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE cols.table_schema = 'public'
               AND n.nspname = 'public'
               AND cols.column_name = 'tenant_id'
-              AND c.relkind = 'r'
-              AND NOT c.relrowsecurity;
-          " | grep -Fx '0'
-
-          psql -h 127.0.0.1 -U eos -d eos_contract -v ON_ERROR_STOP=1 -Atc "
-            SELECT count(*)
-            FROM information_schema.columns cols
-            JOIN pg_class c ON c.relname = cols.table_name
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE cols.table_schema = 'public'
-              AND n.nspname = 'public'
-              AND cols.column_name = 'tenant_id'
-              AND c.relkind = 'r'
-              AND NOT c.relforcerowsecurity;
-          " | grep -Fx '0'
+              AND c.relkind IN ('r','p')
+              AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity)
+            ORDER BY cols.table_name;
+          ")"
+          if [ -n "$violations" ]; then
+            echo 'Tenant RLS violations detected:'
+            printf '%s\n' "$violations"
+            exit 1
+          fi
+          echo 'Tenant RLS contract: PASS'
       - name: Verify migration idempotency
         env:
           DATABASE_URL: postgresql://eos:eos@127.0.0.1:5432/eos_contract
@@ -140,8 +135,8 @@ jobs:
       run:
         working-directory: erp-system/frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: npm
