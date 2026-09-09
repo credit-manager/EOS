@@ -21,7 +21,7 @@ def require(name: str) -> str:
     return value
 
 
-def ensure_login_role(cur, role_name: str, password: str, migration_user: str, database_name: str) -> None:
+def ensure_login_role(cur, role_name: str, password: str, database_name: str) -> None:
     cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role_name,))
     role_exists = cur.fetchone() is not None
 
@@ -55,13 +55,6 @@ def ensure_login_role(cur, role_name: str, password: str, migration_user: str, d
     )
     cur.execute(
         sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(sql.Identifier(role_name))
-    )
-
-
-def revoke_function_execute(cur, role_name: str) -> None:
-    cur.execute(
-        sql.SQL("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM {}")
-        .format(sql.Identifier(role_name))
     )
 
 
@@ -100,22 +93,18 @@ def main() -> None:
                     "Application and exporter roles must differ from the PostgreSQL migration/database-owner role"
                 )
 
-            # Never depend on PostgreSQL's default public-schema ACLs: make the
-            # DDL boundary explicit for every environment, old or new.
             cur.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
 
-            ensure_login_role(cur, runtime_user, runtime_password, migration_user, database_name)
-            ensure_login_role(cur, exporter_user, exporter_password, migration_user, database_name)
+            ensure_login_role(cur, runtime_user, runtime_password, database_name)
+            ensure_login_role(cur, exporter_user, exporter_password, database_name)
 
             cur.execute(
-                sql.SQL(
-                    "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {}"
-                ).format(sql.Identifier(runtime_user))
+                sql.SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {}")
+                .format(sql.Identifier(runtime_user))
             )
             cur.execute(
-                sql.SQL(
-                    "GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO {}"
-                ).format(sql.Identifier(runtime_user))
+                sql.SQL("GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO {}")
+                .format(sql.Identifier(runtime_user))
             )
             cur.execute(
                 sql.SQL(
@@ -130,12 +119,11 @@ def main() -> None:
                 ).format(sql.Identifier(migration_user), sql.Identifier(runtime_user))
             )
 
-            # PostgreSQL grants EXECUTE on newly created functions to PUBLIC by
-            # default. Close that ambient authority for existing and future
-            # functions; narrowly scoped migrations explicitly grant EXECUTE.
+            # PostgreSQL grants EXECUTE on new functions to PUBLIC by default.
+            # Remove only that ambient authority. Explicit runtime grants added
+            # by security-sensitive migrations must remain intact (for example
+            # tenant lookup and the controlled builder DDL function).
             cur.execute("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC")
-            revoke_function_execute(cur, runtime_user)
-            revoke_function_execute(cur, exporter_user)
             revoke_default_function_execute(cur, migration_user)
             revoke_default_function_execute(cur, migration_user, runtime_user)
             revoke_default_function_execute(cur, migration_user, exporter_user)
