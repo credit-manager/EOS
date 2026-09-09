@@ -2,19 +2,22 @@
 AUTH ADAPTER
 =============
 
-Switches between test and production authentication based on environment.
-Production authentication additionally re-checks the user's current database
-state so deactivation and role changes take effect without waiting for JWT expiry.
+Switches between test and production authentication based on the central runtime
+configuration. Production authentication additionally re-checks the user's
+current database state so deactivation and role changes take effect without
+waiting for JWT expiry.
 """
 
-import os
 from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
+from core.runtime_config import resolve_auth_mode
+
 
 def _is_production() -> bool:
-    return os.getenv("EOS_AUTH_MODE", "test").lower() == "production"
+    """Use the single fail-closed runtime authentication contract everywhere."""
+    return resolve_auth_mode() == "production"
 
 
 async def get_current_user(
@@ -28,8 +31,8 @@ async def get_current_user(
         from core.production_auth import verify_token, _get_secret_key
         try:
             _get_secret_key()
-        except ValueError as e:
-            raise HTTPException(status_code=500, detail=str(e))
+        except ValueError:
+            raise HTTPException(status_code=500, detail="Production authentication is not configured")
         payload = verify_token(credentials.credentials)
     else:
         from core.auth import verify_test_token as verify_token
@@ -47,9 +50,6 @@ async def get_current_user(
     roles = payload.get("roles", [])
 
     if production:
-        # Bind the verified token tenant before the DB lookup because dbp_users is
-        # itself tenant-scoped under PostgreSQL RLS. This value is derived only from
-        # the already verified signed JWT, never from an untrusted request header.
         from database import current_tenant_id
         current_tenant_id.set(tenant_id)
         from database import SessionLocal
