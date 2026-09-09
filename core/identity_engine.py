@@ -6,7 +6,7 @@ from typing import Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from core.secret_store import encrypt_json
+from core.secret_store import encrypt_text
 
 
 class IdentityEngine:
@@ -20,9 +20,8 @@ class IdentityEngine:
         normalized = str(value)
         if not normalized:
             return None
-        return encrypt_json({"value": normalized})
+        return encrypt_text(normalized)
 
-    # -------------------------------------------------- SSO providers
     def create_provider(self, tenant_id, provider_name, provider_type,
                         client_id, client_secret=None, metadata_url=None):
         pid = str(uuid.uuid4())
@@ -64,7 +63,6 @@ class IdentityEngine:
         ), params)
         return {"id": provider_id, "updated": True}
 
-    # -------------------------------------------------- SSO sessions
     def create_session(self, tenant_id, user_id, provider_id, sso_session_id,
                        ip_address=None, user_agent=None, expires_at=None):
         sid = str(uuid.uuid4())
@@ -89,7 +87,6 @@ class IdentityEngine:
                  "sso_session_id": r[3], "ip_address": r[4],
                  "created_at": str(r[5]) if r[5] else None} for r in rows]
 
-    # -------------------------------------------------- MFA
     def setup_mfa(self, tenant_id, user_id, mfa_type):
         mid = str(uuid.uuid4())
         secret = secrets.token_hex(20)
@@ -115,8 +112,7 @@ class IdentityEngine:
             params["ui"] = user_id
         rows = self.db.execute(text(q), params).fetchall()
         return [{"id": r[0], "user_id": r[1], "mfa_type": r[2],
-                 "is_enabled": r[3],
-                 "last_used_at": str(r[4]) if r[4] else None,
+                 "is_enabled": r[3], "last_used_at": str(r[4]) if r[4] else None,
                  "created_at": str(r[5]) if r[5] else None} for r in rows]
 
     def disable_mfa(self, tenant_id, mfa_id):
@@ -125,9 +121,7 @@ class IdentityEngine:
         ), {"id": mfa_id, "tid": tenant_id})
         return {"id": mfa_id, "disabled": True}
 
-    # ------------------------------------------------ role mappings
-    def create_role_mapping(self, tenant_id, provider_id, external_role,
-                            internal_role):
+    def create_role_mapping(self, tenant_id, provider_id, external_role, internal_role):
         rid = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_role_mappings "
@@ -145,8 +139,7 @@ class IdentityEngine:
             params["pi"] = provider_id
         rows = self.db.execute(text(q), params).fetchall()
         return [{"id": r[0], "provider_id": r[1], "external_role": r[2],
-                 "internal_role": r[3],
-                 "created_at": str(r[4]) if r[4] else None} for r in rows]
+                 "internal_role": r[3], "created_at": str(r[4]) if r[4] else None} for r in rows]
 
     def delete_role_mapping(self, tenant_id, mapping_id):
         r = self.db.execute(text(
@@ -154,7 +147,6 @@ class IdentityEngine:
         ), {"id": mapping_id, "tid": tenant_id})
         return r.rowcount > 0
 
-    # ----------------------------------------------------- API keys
     def create_api_key(self, tenant_id, key_name, permissions=None, expires_at=None):
         if permissions is not None and not isinstance(permissions, (list, tuple)):
             raise ValueError("permissions must be a list")
@@ -166,7 +158,6 @@ class IdentityEngine:
         invalid = set(normalized_permissions) - allowed_permissions
         if invalid:
             raise ValueError(f"unsupported API key permissions: {sorted(invalid)}")
-
         kid = str(uuid.uuid4())
         raw_key = f"dbp_{secrets.token_hex(32)}"
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
@@ -187,8 +178,7 @@ class IdentityEngine:
             q += " AND is_active=:ia"
             params["ia"] = is_active
         rows = self.db.execute(text(q), params).fetchall()
-        return [{"id": r[0], "key_name": r[1],
-                 "permissions": r[2], "is_active": r[3],
+        return [{"id": r[0], "key_name": r[1], "permissions": r[2], "is_active": r[3],
                  "last_used_at": str(r[4]) if r[4] else None,
                  "expires_at": str(r[5]) if r[5] else None,
                  "created_at": str(r[6]) if r[6] else None} for r in rows]
