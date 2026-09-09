@@ -58,6 +58,22 @@ def ensure_login_role(cur, role_name: str, password: str, migration_user: str, d
     )
 
 
+def revoke_function_execute(cur, role_name: str) -> None:
+    cur.execute(
+        sql.SQL("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM {}")
+        .format(sql.Identifier(role_name))
+    )
+
+
+def revoke_default_function_execute(cur, migration_user: str, role_name: str) -> None:
+    cur.execute(
+        sql.SQL(
+            "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
+            "REVOKE EXECUTE ON FUNCTIONS FROM {}"
+        ).format(sql.Identifier(migration_user), sql.Identifier(role_name))
+    )
+
+
 def main() -> None:
     database_url = require("DATABASE_URL")
     runtime_user = require("EOS_DB_RUNTIME_USER")
@@ -110,29 +126,14 @@ def main() -> None:
             )
 
             # PostgreSQL grants EXECUTE on newly created functions to PUBLIC by
-            # default. Close that ambient authority for both existing and future
-            # functions; narrowly scoped migrations must explicitly grant EXECUTE.
+            # default. Close that ambient authority for existing and future
+            # functions; narrowly scoped migrations explicitly grant EXECUTE.
             cur.execute("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC")
-            cur.execute("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM %s".replace("%s", sql.Identifier(runtime_user).as_string(cur)))
-            cur.execute("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM %s".replace("%s", sql.Identifier(exporter_user).as_string(cur)))
-            cur.execute(
-                sql.SQL(
-                    "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
-                    "REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC"
-                ).format(sql.Identifier(migration_user))
-            )
-            cur.execute(
-                sql.SQL(
-                    "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
-                    "REVOKE EXECUTE ON FUNCTIONS FROM {}"
-                ).format(sql.Identifier(migration_user), sql.Identifier(runtime_user))
-            )
-            cur.execute(
-                sql.SQL(
-                    "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
-                    "REVOKE EXECUTE ON FUNCTIONS FROM {}"
-                ).format(sql.Identifier(migration_user), sql.Identifier(exporter_user))
-            )
+            revoke_function_execute(cur, runtime_user)
+            revoke_function_execute(cur, exporter_user)
+            revoke_default_function_execute(cur, migration_user, "PUBLIC")
+            revoke_default_function_execute(cur, migration_user, runtime_user)
+            revoke_default_function_execute(cur, migration_user, exporter_user)
 
             cur.execute(sql.SQL("GRANT pg_monitor TO {}").format(sql.Identifier(exporter_user)))
 
