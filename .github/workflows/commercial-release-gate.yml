@@ -6,14 +6,18 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: eos-commercial-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   production-contract:
     name: Production configuration contract
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -57,6 +61,7 @@ jobs:
   migration-contract:
     name: PostgreSQL migration contract
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:15
@@ -132,6 +137,7 @@ jobs:
   production-compose-contract:
     name: Production container / compose contract
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - name: Render and validate production compose
@@ -164,10 +170,28 @@ jobs:
           printf '%s\n' "$rendered" | grep -F '/etc/nginx/eos.conf.template:ro'
           printf '%s\n' "$rendered" | grep -F '/usr/local/bin/eos-nginx-entrypoint.sh:ro'
           printf '%s\n' "$rendered" | grep -F 'prometheuscommunity/postgres-exporter:v0.20.1'
+      - name: Validate Nginx template rendering and syntax
+        env:
+          DOMAIN: example.com
+        run: |
+          mkdir -p .ci/nginx-tls
+          openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+            -subj /CN=example.com \
+            -keyout .ci/nginx-tls/privkey.pem \
+            -out .ci/nginx-tls/fullchain.pem
+          cp .ci/nginx-tls/fullchain.pem .ci/nginx-tls/chain.pem
+          docker run --rm \
+            -e DOMAIN="$DOMAIN" \
+            -v "$PWD/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
+            -v "$PWD/nginx/conf.d/eos.conf:/etc/nginx/eos.conf.template:ro" \
+            -v "$PWD/.ci/nginx-tls:/etc/letsencrypt/live/example.com:ro" \
+            nginx:stable-alpine3.24 \
+            sh -c "envsubst '\${DOMAIN}' < /etc/nginx/eos.conf.template > /etc/nginx/conf.d/eos.conf && nginx -t -c /etc/nginx/nginx.conf"
 
   container-security:
     name: Container vulnerability and SBOM gate
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - name: Build production image
@@ -196,6 +220,7 @@ jobs:
   frontend-contract:
     name: Canonical frontend commercial build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: erp-system/frontend
