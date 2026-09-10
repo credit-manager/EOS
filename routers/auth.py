@@ -10,6 +10,7 @@ from core.auth import get_current_user, require_permission, require_admin_role
 from core.user_engine import UserEngine
 from core.email_adapter import get_email_service, EmailTemplateEngine
 from core.rate_limit import write_limiter, auth_limiter
+from core.schemas import RegisterRequest, LoginRequest
 from datetime import datetime, timedelta, timezone
 import hashlib
 import jwt
@@ -58,24 +59,20 @@ def _issue_access_token(result: dict) -> str:
 
 
 @router.post("/register", dependencies=[Depends(auth_limiter.check)])
-async def register(body: dict, request: Request, db: Session = Depends(get_db)):
-    required = ["email", "password", "first_name", "last_name", "company_name"]
-    for f in required:
-        if not body.get(f):
-            raise _err(400, "MISSING", f"{f} required")
+async def register(body: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     from database import SessionLocal
     db2 = SessionLocal()
     try:
         tenant_id = f"tenant_{secrets.token_hex(8)}"
-        company_name = body["company_name"]
+        company_name = body.company_name
         company_id = str(uuid.uuid4())
         db2.execute(text(f"SET LOCAL {RLS_CONTEXT_PARAM} = :tid"), {"tid": tenant_id})
         db2.execute(text("INSERT INTO dbp_companies (id, tenant_id, code, name_en, name_ar) VALUES (:id, :tid, :code, :name, :name)"),
                     {"id": company_id, "tid": tenant_id, "code": company_name.lower().replace(" ", "_")[:30], "name": company_name})
         engine = UserEngine(db2)
-        result = engine.register(tenant_id=tenant_id, email=body["email"], password=body["password"], first_name=body["first_name"],
-                                 last_name=body["last_name"], first_name_ar=body.get("first_name_ar"), last_name_ar=body.get("last_name_ar"),
-                                 phone=body.get("phone"), role="admin")
+        result = engine.register(tenant_id=tenant_id, email=body.email, password=body.password, first_name=body.first_name,
+                                 last_name=body.last_name, first_name_ar=body.first_name_ar, last_name_ar=body.last_name_ar,
+                                 phone=body.phone, role="admin")
         if not result["success"]:
             db2.rollback()
             raise _err(400, "REGISTER_FAILED", result["error"])
@@ -83,8 +80,8 @@ async def register(body: dict, request: Request, db: Session = Depends(get_db)):
         email_svc = get_email_service()
         frontend_url = os.getenv("EOS_FRONTEND_URL", "http://localhost:3000")
         verification_token = result.get("verification_token", "")
-        tpl = EmailTemplateEngine.verification_email(f"{frontend_url}/verify-email?token={verification_token}", body["first_name"])
-        email_svc.send(to_email=body["email"], subject=tpl["subject"], html_body=tpl["html"], text_body=tpl.get("text"))
+        tpl = EmailTemplateEngine.verification_email(f"{frontend_url}/verify-email?token={verification_token}", body.first_name)
+        email_svc.send(to_email=body.email, subject=tpl["subject"], html_body=tpl["html"], text_body=tpl.get("text"))
         return {"status": "success", "data": {"user_id": result["user_id"], "tenant_id": tenant_id, "company_id": company_id, "email": result["email"],
                 "requires_verification": result["requires_verification"],
                 "verification_token": verification_token if email_svc.__class__.__name__ == "ConsoleEmailProvider" else None,
@@ -117,9 +114,9 @@ async def verify_email(body: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/login", dependencies=[Depends(auth_limiter.check)])
-async def login(body: dict, db: Session = Depends(get_db)):
-    email = body.get("email")
-    password = body.get("password")
+async def login(body: LoginRequest, db: Session = Depends(get_db)):
+    email = body.email
+    password = body.password
     if not email or not password:
         raise _err(400, "MISSING", "email and password required")
     result = UserEngine(db).login(email, password)
