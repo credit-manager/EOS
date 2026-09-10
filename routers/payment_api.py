@@ -7,7 +7,7 @@ self-approve monetary state transitions.
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from pydantic import BaseModel, Field
 
 from core.auth import get_current_user, require_financial_settlement, require_permission
@@ -83,13 +83,18 @@ async def create_gateway(body: GatewayCreate, user: dict = Depends(get_current_u
 
 
 @router.post("/transactions", dependencies=[_run_permission("payments", "create"), Depends(write_limiter.check)])
-async def create_transaction(body: TransactionCreate, user: dict = Depends(get_current_user)):
+async def create_transaction(
+    body: TransactionCreate,
+    user: dict = Depends(get_current_user),
+    idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key", max_length=255),
+):
     db = _db()
     try:
         try:
             result = PaymentGatewayEngine(db).create_transaction(
                 user["tenant_id"], body.amount, body.currency, body.transaction_type,
                 body.reference_type, body.reference_id, body.customer_id, body.payment_method,
+                idempotency_key=idempotency_key,
             )
         except ValueError as exc:
             raise HTTPException(400, detail={"status": "error", "error": {"code": "INVALID", "message": str(exc)}})
