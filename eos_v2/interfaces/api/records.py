@@ -4,12 +4,14 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select, func
 
 from eos_v2.application.audit.service import record_event
 from eos_v2.application.records.service import DynamicRecordService
 from eos_v2.domain.permissions.policy import Permission
 from eos_v2.infrastructure.db.metadata_repository import SqlAlchemyMetadataRepository
+from eos_v2.infrastructure.db.record_models import DynamicRecordModel
 from eos_v2.infrastructure.db.record_repository import SqlAlchemyRecordRepository, UniqueValueConflict
 from eos_v2.interfaces.api.auth import get_current_identity, require_permission
 
@@ -30,6 +32,15 @@ class RecordResponse(BaseModel):
     row_version: int
 
 
+class RecordListResponse(BaseModel):
+    data: list[RecordResponse]
+    count: int
+    total: int
+    limit: int
+    offset: int
+    has_next: bool
+
+
 def to_response(record) -> RecordResponse:
     return RecordResponse(
         id=record.id,
@@ -38,6 +49,50 @@ def to_response(record) -> RecordResponse:
         entity_version=record.entity_version,
         data=record.data,
         row_version=record.row_version,
+    )
+
+
+@router.get("/entities/{entity_id}/records", response_model=RecordListResponse)
+def list_records(
+    entity_id: UUID,
+    request: Request,
+    identity=Depends(get_current_identity),
+    limit: int = Field(default=50, ge=1, le=200),
+    offset: int = Field(default=0, ge=0),
+) -> RecordListResponse:
+    require_permission(identity, Permission.READ)
+    database = request.app.state.database
+    if database is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    with database.session() as session:
+        metadata = SqlAlchemyMetadataRepository(session)
+        try:
+            metadata.get(entity_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Metadata entity not found") from exc
+        tenant_id = identity.tenant.id
+        stmt = (
+            select(DynamicRecordModel)
+            .where(DynamicRecordModel.entity_id == entity_id, DynamicRecordModel.tenant_id == tenant_id)
+            .order_by(DynamicRecordModel.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        models = session.scalars(stmt).all()
+        total = session.scalar(
+            select(func.count()).select_from(DynamicRecordModel).where(
+                DynamicRecordModel.entity_id == entity_id,
+                DynamicRecordModel.tenant_id == tenant_id,
+            )
+        ) or 0
+        records = [
+            DynamicRecordService(SqlAlchemyRecordRepository(session)).get(model.id)
+            for model in models
+        ]
+    return RecordListResponse(
+        data=[to_response(record) for record in records],
+        count=len(records), total=total, limit=limit, offset=offset,
+        has_next=offset + len(records) < total,
     )
 
 
