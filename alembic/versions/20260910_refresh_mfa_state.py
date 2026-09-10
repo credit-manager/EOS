@@ -1,13 +1,13 @@
 """Persist MFA verification state on rotating refresh sessions.
 
 Revision ID: 20260910_refresh_mfa_state
-Revises: 20260910_builder_ddl_hardening
+Revises: 20260905_restore_api_core_tables
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = "20260910_refresh_mfa_state"
-down_revision = "20260910_builder_ddl_hardening"
+down_revision = "20260905_restore_api_core_tables"
 branch_labels = None
 depends_on = None
 
