@@ -1,71 +1,60 @@
-# EOS DBP v2 — Rebuild Contract
+# EOS / 2TO — v2 Migration Contract
 
 ## Objective
-Rebuild EOS as a metadata-first ERP platform without deleting the validated legacy baseline. The `main` branch remains the rollback/reference implementation; v2 is migrated by vertical slices.
+
+Consolidate EOS into one deployable **2TO ERP Platform** without losing production capabilities. `eos_v2/` is the target architecture for new Metadata Platform and Core-domain capabilities. `core/` and `routers/` remain the migration source for capabilities that have not yet reached verified parity.
+
+## Composition root and runtime
+
+- `main.py` is the **only production application composition root** today.
+- `eos_v2/` is an integrated internal architecture, not a second ASGI application.
+- Production traffic is switched capability-by-capability only after parity and release-gate evidence.
+
+## Hybrid domain boundary
+
+### Metadata-driven by default
+
+Flexible business entities are implemented through `eos_v2` metadata and dynamic records, including custom entities, customers, projects and industry-specific business entities.
+
+### Explicit domain contracts
+
+Financial and inventory invariants remain explicit domain contracts. General ledger, journal posting, inventory balances, payments and financial controls must not become arbitrary JSON workflows. Metadata-driven business documents may invoke these explicit domains through application services.
+
+**Rule:** if an operation changes accounting state, posts a journal, changes a ledger balance, or changes an inventory balance subject to financial invariants, the operation crosses an explicit domain boundary.
 
 ## Non-negotiable architecture rules
-1. **One application composition root**: `eos_v2/app` owns startup, configuration and dependency wiring.
-2. **Domain before transport**: business rules do not import FastAPI routers.
-3. **Explicit tenant context**: tenant-scoped application services require a tenant context; tenant IDs are never trusted from arbitrary request payloads.
-4. **Database is authoritative**: migrations are the only schema evolution mechanism for production.
-5. **Metadata is the platform primitive**: entities, fields, relationships, workflows, permissions and UI definitions are data-driven.
-6. **Modules are bounded**: Accounting, HR, Inventory, Sales, Projects and Industry Packs integrate through application services/events rather than direct router-to-router calls.
-7. **Every vertical slice is testable**: unit, API, tenant-isolation and migration tests are added before promotion.
-8. **No compatibility shortcuts in v2**: legacy code may be adapted behind explicit anti-corruption adapters, then removed after migration.
 
-## Target layout
-```text
-eos_v2/
-  app/
-    config.py
-    app.py
-    health.py
-    tenant_context.py
-  domain/
-    metadata/
-    identity/
-    tenancy/
-    workflow/
-    permissions/
-    accounting/
-  application/
-    commands/
-    queries/
-    services/
-  infrastructure/
-    db/
-    events/
-    cache/
-    files/
-  interfaces/
-    api/
-    workers/
-    webhooks/
-  modules/
-    accounting/
-    sales/
-    purchasing/
-    inventory/
-    hr/
-    projects/
-    industry/
-  tests/
-```
+1. **One composition root:** `main.py` owns runtime composition.
+2. **New platform work goes to `eos_v2`:** `core/` changes are limited to required production/security/reliability fixes while capability migration is in progress.
+3. **Explicit tenant context:** tenant-scoped operations fail closed when tenant context is absent.
+4. **Database is authoritative:** production schema changes are performed through migrations.
+5. **Metadata is the platform primitive:** entity, field, relationship, workflow, permission and UI definitions are data-driven.
+6. **Bounded domains:** modules integrate through application services and events, not router-to-router coupling.
+7. **No deletion without evidence:** a legacy implementation is removed only after duplicate/unreferenced/superseded proof, migration parity, tests and production-traffic review.
+8. **No completion without execution evidence:** a feature is only Verified when code, automated tests and real execution evidence support the claim.
 
-## Delivery order
-1. Runtime/configuration boundary — **started**
-2. Persistence boundary + migration contract
-3. Tenant/identity/authorization kernel
-4. Metadata entity model + metadata API
-5. Dynamic record engine
-6. Workflow/rules/events
-7. Accounting kernel and posting contract
-8. Foundation modules
-9. Industry packs
-10. AI Composer as an application service over metadata
-11. Frontend generated from the same metadata contract
-12. Observability, performance, security and production deployment
-13. Data migration and legacy decommissioning
+## Strangler migration path
 
-## Definition of done
-A v2 slice is not complete until its code, migration, tests, API contract and operational behavior are all green. No production traffic is switched to v2 until the complete release gate passes.
+1. Keep the root runtime operational.
+2. Implement new capabilities in `eos_v2`.
+3. Prove each capability through real PostgreSQL/API/runtime tests.
+4. Migrate existing capabilities incrementally from `core/` and `routers/`.
+5. Cut traffic over only after verified parity.
+6. Delete obsolete legacy code only after its capability and references are demonstrably gone.
+
+## Frontend contract
+
+`frontend/` is the canonical React source currently served by `main.py`. The UI should consume the same Metadata contract as the backend; entity-specific screens are temporary bridges and must not replace the generic metadata renderer.
+
+## Definition of Done
+
+A vertical slice is **Verified** only when it has:
+
+- real PostgreSQL persistence;
+- real HTTP/API execution;
+- tenant isolation and authorization tests;
+- workflow and audit evidence;
+- canonical runtime integration through `main.py`;
+- frontend behavior driven by the same metadata contract where UI is part of the slice.
+
+`pytest` or CI success alone does not qualify as completion.
