@@ -8,34 +8,10 @@ from sqlalchemy import text
 
 
 class CustomerPortalEngine:
+    """Portal business operations; database schema is migration-owned."""
+
     def __init__(self, db):
         self.db = db
-        self._ensure_tables()
-
-    def _ensure_tables(self):
-        self.db.execute(text(
-            "CREATE TABLE IF NOT EXISTS dbp_portal_users ("
-            "id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text, "
-            "tenant_id TEXT NOT NULL, customer_id TEXT NOT NULL, "
-            "email TEXT NOT NULL, password_hash TEXT NOT NULL, "
-            "full_name TEXT, is_active BOOLEAN DEFAULT TRUE, "
-            "last_login TIMESTAMP, created_at TIMESTAMP DEFAULT NOW())"
-        ))
-        self.db.execute(text(
-            "CREATE TABLE IF NOT EXISTS dbp_portal_sessions ("
-            "id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text, "
-            "tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, "
-            "session_token TEXT UNIQUE NOT NULL, "
-            "expires_at TIMESTAMP NOT NULL, created_at TIMESTAMP DEFAULT NOW())"
-        ))
-        self.db.execute(text(
-            "CREATE TABLE IF NOT EXISTS dbp_portal_notifications ("
-            "id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text, "
-            "tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, "
-            "title TEXT NOT NULL, message TEXT, is_read BOOLEAN DEFAULT FALSE, "
-            "link TEXT, created_at TIMESTAMP DEFAULT NOW())"
-        ))
-        self.db.commit()
 
     def _hash_password(self, password):
         salt = secrets.token_hex(16)
