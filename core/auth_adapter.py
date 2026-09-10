@@ -34,11 +34,20 @@ async def _authenticate(credentials: HTTPAuthorizationCredentials, enforce_mfa: 
     if production:
         from core.production_auth import verify_token
         try:
-            payload = verify_token(credentials.credentials, expected_type="access")
+            # verify_token defaults to the access-token type. Keep the adapter
+            # call compatible with small test doubles while retaining an
+            # explicit defense-in-depth type check on the returned claims.
+            payload = verify_token(credentials.credentials)
         except HTTPException:
             raise
         except ValueError:
             raise HTTPException(status_code=500, detail="Production authentication is not configured")
+        if payload.get("type") != "access":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
     else:
         from core.auth import verify_test_token
         payload = verify_test_token(credentials.credentials)
