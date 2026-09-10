@@ -10,10 +10,10 @@ from ..config import get_settings
 from ..db import get_db
 from .models import Tenant, TenantMembership, User
 from .schemas import (
-    MeResponse,
     MemberCreateRequest,
     MemberResponse,
     MemberRoleUpdate,
+    MeResponse,
     RegisterRequest,
     TokenRequest,
     TokenResponse,
