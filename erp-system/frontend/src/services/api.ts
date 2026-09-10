@@ -4,29 +4,54 @@ const runtimeOrigin = typeof window !== 'undefined' ? window.location.origin : '
 const API_BASE_URL = import.meta.env.VITE_API_URL || `${runtimeOrigin}/api/v1`;
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
+  withCredentials: true,
   headers: { 'Content-Type': 'application/json', 'Accept-Language': 'ar' },
 });
 
+let accessToken: string | null = null;
+let refreshPromise: Promise<string | null> | null = null;
+
+const setAccessToken = (token: unknown) => {
+  accessToken = typeof token === 'string' && token ? token : null;
+};
+
 const clearLocalSession = () => {
+  setAccessToken(null);
   if (typeof localStorage !== 'undefined') {
-    localStorage.removeItem('access_token'); localStorage.removeItem('refresh_token');
-    localStorage.removeItem('eos_tenant_id'); localStorage.removeItem('eos_company_id'); localStorage.removeItem('eos_user');
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('eos_tenant_id');
+    localStorage.removeItem('eos_company_id');
+    localStorage.removeItem('eos_user');
   }
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('eos:auth-expired'));
 };
 
+const refreshAccessToken = async (): Promise<string | null> => {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = apiClient.post('/auth/refresh', {}).then((response) => {
+    const token = response.data?.data?.access_token;
+    setAccessToken(token);
+    return accessToken;
+  }).catch(() => {
+    clearLocalSession();
+    return null;
+  }).finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+};
+
 apiClient.interceptors.request.use((config) => {
-  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('access_token') : null;
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (accessToken) config.headers.Authorization = `Bearer ${accessToken}`;
   return config;
 });
 
 apiClient.interceptors.response.use(
   (response) => {
     const data = response.data?.data;
+    setAccessToken(data?.access_token);
     if (typeof localStorage !== 'undefined') {
-      if (data?.access_token) localStorage.setItem('access_token', data.access_token);
-      if (data?.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
       if (data?.user?.tenant_id) localStorage.setItem('eos_tenant_id', String(data.user.tenant_id));
       if (data?.user?.company_id) localStorage.setItem('eos_company_id', String(data.user.company_id));
     }
@@ -37,21 +62,13 @@ apiClient.interceptors.response.use(
     const url = original?.url || '';
     const isAuthEndpoint = ['/auth/login', '/auth/refresh', '/auth/register', '/auth/verify-email', '/auth/2fa/verify', '/auth/2fa/verify-recovery'].some((p) => url.includes(p));
     if (error.response?.status === 401 && original && !original._retry && !isAuthEndpoint) {
-      const refreshToken = typeof localStorage !== 'undefined' ? localStorage.getItem('refresh_token') : null;
-      if (refreshToken) {
-        original._retry = true;
-        try {
-          const refreshResponse = await apiClient.post('/auth/refresh', { refresh_token: refreshToken });
-          const refreshed = refreshResponse.data?.data;
-          if (refreshed?.access_token && refreshed?.refresh_token) {
-            localStorage.setItem('access_token', refreshed.access_token);
-            localStorage.setItem('refresh_token', refreshed.refresh_token);
-            original.headers = original.headers || {};
-            original.headers.Authorization = `Bearer ${refreshed.access_token}`;
-            return apiClient.request(original);
-          }
-        } catch { clearLocalSession(); }
-      } else clearLocalSession();
+      original._retry = true;
+      const refreshedToken = await refreshAccessToken();
+      if (refreshedToken) {
+        original.headers = original.headers || {};
+        original.headers.Authorization = `Bearer ${refreshedToken}`;
+        return apiClient.request(original);
+      }
     }
     return Promise.reject(error);
   },
@@ -66,8 +83,7 @@ export const authAPI = {
   verify2FA: (code: string) => apiClient.post('/auth/2fa/verify', { code }),
   verifyRecoveryCode: (code: string) => apiClient.post('/auth/2fa/verify-recovery', { code }),
   logout: async () => {
-    const refreshToken = typeof localStorage !== 'undefined' ? localStorage.getItem('refresh_token') : null;
-    try { if (refreshToken) await apiClient.post('/auth/logout', { refresh_token: refreshToken }); }
+    try { await apiClient.post('/auth/logout', {}); }
     finally { clearLocalSession(); }
     return { data: { status: 'success', data: { message: 'Logged out' } } };
   },
