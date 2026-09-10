@@ -6,6 +6,7 @@ path must confirm completion. Gateway credentials are encrypted at rest.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import secrets
 import uuid
@@ -90,6 +91,21 @@ class PaymentGatewayEngine:
             }, separators=(",", ":"))
         return json.dumps(config, ensure_ascii=False, separators=(",", ":"))
 
+    @staticmethod
+    def _idempotency_hash(key: str) -> str:
+        return hashlib.sha256(key.strip().encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _request_fingerprint(amount: Decimal, currency: str, transaction_type: str,
+                             ref_type: Optional[str], ref_id: Optional[str],
+                             customer_id: Optional[str], method: Optional[str]) -> str:
+        payload = {
+            "amount": str(amount), "currency": currency,
+            "transaction_type": transaction_type, "reference_type": ref_type,
+            "reference_id": ref_id, "customer_id": customer_id, "payment_method": method,
+        }
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
     def list_gateways(self, tenant_id):
         rows = self.db.execute(
             text(
@@ -116,55 +132,80 @@ class PaymentGatewayEngine:
                 "VALUES (:id, :t, :name, :type, CAST(:config AS JSONB))"
             ),
             {
-                "id": gid,
-                "t": tenant_id,
-                "name": gateway_name,
-                "type": gateway_type,
-                "config": self._serialize_gateway_config(config),
+                "id": gid, "t": tenant_id, "name": gateway_name,
+                "type": gateway_type, "config": self._serialize_gateway_config(config),
             },
         )
         self.db.commit()
         return {"gateway_id": gid, "message": f"Gateway {gateway_name} created"}
 
-    def create_transaction(
-        self,
-        tenant_id,
-        amount,
-        currency="SAR",
-        tx_type="payment",
-        ref_type=None,
-        ref_id=None,
-        customer_id=None,
-        method=None,
-    ):
+    def create_transaction(self, tenant_id, amount, currency="SAR", tx_type="payment",
+                           ref_type=None, ref_id=None, customer_id=None, method=None,
+                           idempotency_key: Optional[str] = None):
         amount_value = self._amount(amount)
+        normalized_currency = self._currency(currency)
         transaction_type = str(tx_type or "payment").strip().lower()
         if transaction_type not in self._TRANSACTION_TYPES:
             raise ValueError("Unsupported transaction type")
+
+        key = (idempotency_key or "").strip()
+        key_hash = None
+        fingerprint = None
+        if key:
+            if len(key) > 255:
+                raise ValueError("Idempotency-Key must not exceed 255 characters")
+            key_hash = self._idempotency_hash(key)
+            fingerprint = self._request_fingerprint(
+                amount_value, normalized_currency, transaction_type,
+                ref_type, ref_id, customer_id, method,
+            )
+            existing = self.db.execute(
+                text(
+                    "SELECT id, status, idempotency_fingerprint FROM dbp_payment_transactions "
+                    "WHERE tenant_id=:t AND idempotency_key_hash=:kh FOR UPDATE"
+                ), {"t": tenant_id, "kh": key_hash}
+            ).fetchone()
+            if existing:
+                if existing[2] != fingerprint:
+                    raise ValueError("Idempotency-Key was already used with different payment parameters")
+                return {"transaction_id": existing[0], "ref_number": None, "status": existing[1], "idempotent": True}
+
         tid = str(uuid.uuid4())
         ref_number = f"TXN-{secrets.token_hex(4).upper()}"
-        self.db.execute(
-            text(
-                "INSERT INTO dbp_payment_transactions "
-                "(id, tenant_id, transaction_type, amount, currency, status, reference_type, "
-                "reference_id, customer_id, payment_method, gateway_response) "
-                "VALUES (:id, :t, :type, :amt, :cur, 'pending', :rtype, :rid, :cid, :method, :resp)"
-            ),
-            {
-                "id": tid,
-                "t": tenant_id,
-                "type": transaction_type,
-                "amt": amount_value,
-                "cur": self._currency(currency),
-                "rtype": ref_type,
-                "rid": ref_id,
-                "cid": customer_id,
-                "method": method,
-                "resp": json.dumps({"ref_number": ref_number}),
-            },
-        )
-        self.db.commit()
-        return {"transaction_id": tid, "ref_number": ref_number, "status": "pending"}
+        try:
+            self.db.execute(
+                text(
+                    "INSERT INTO dbp_payment_transactions "
+                    "(id, tenant_id, transaction_type, amount, currency, status, reference_type, "
+                    "reference_id, customer_id, payment_method, gateway_response, "
+                    "idempotency_key_hash, idempotency_fingerprint) "
+                    "VALUES (:id, :t, :type, :amt, :cur, 'pending', :rtype, :rid, :cid, :method, "
+                    ":resp, :kh, :fp)"
+                ),
+                {
+                    "id": tid, "t": tenant_id, "type": transaction_type,
+                    "amt": amount_value, "cur": normalized_currency, "rtype": ref_type,
+                    "rid": ref_id, "cid": customer_id, "method": method,
+                    "resp": json.dumps({"ref_number": ref_number}),
+                    "kh": key_hash, "fp": fingerprint,
+                },
+            )
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            if key_hash:
+                existing = self.db.execute(
+                    text(
+                        "SELECT id, status, idempotency_fingerprint FROM dbp_payment_transactions "
+                        "WHERE tenant_id=:t AND idempotency_key_hash=:kh"
+                    ), {"t": tenant_id, "kh": key_hash}
+                ).fetchone()
+                if existing:
+                    if existing[2] != fingerprint:
+                        raise ValueError("Idempotency-Key was already used with different payment parameters")
+                    return {"transaction_id": existing[0], "ref_number": None, "status": existing[1], "idempotent": True}
+            raise
+        return {"transaction_id": tid, "ref_number": ref_number, "status": "pending", "idempotent": False}
 
     def complete_transaction(self, transaction_id, tenant_id, gateway_response=None):
         row = self.db.execute(
@@ -229,8 +270,7 @@ class PaymentGatewayEngine:
                 "SELECT COALESCE(SUM(amount),0) FROM dbp_payment_transactions "
                 "WHERE reference_type='payment' AND reference_id=:ref "
                 "AND transaction_type='refund' AND tenant_id=:t AND status='completed'"
-            ),
-            {"ref": transaction_id, "t": tenant_id},
+            ), {"ref": transaction_id, "t": tenant_id}
         ).fetchone()[0]
         refundable = original_amount - Decimal(str(already_refunded or 0))
         refund_amount = refundable if amount is None else self._amount(amount)
@@ -243,8 +283,7 @@ class PaymentGatewayEngine:
                 "INSERT INTO dbp_payment_transactions "
                 "(id, tenant_id, transaction_type, amount, currency, status, reference_type, reference_id, completed_at) "
                 "VALUES (:id,:t,'refund',:amt,:cur,'completed','payment',:ref,NOW())"
-            ),
-            {"id": refund_id, "t": tenant_id, "amt": refund_amount, "cur": row_dict["currency"], "ref": transaction_id},
+            ), {"id": refund_id, "t": tenant_id, "amt": refund_amount, "cur": row_dict["currency"], "ref": transaction_id}
         )
         self.db.commit()
         return {"refund_id": refund_id, "amount": float(refund_amount), "status": "completed"}
@@ -278,8 +317,7 @@ class PaymentGatewayEngine:
                 "INSERT INTO dbp_payment_links "
                 "(id, tenant_id, link_token, amount, currency, description, customer_email, expires_at) "
                 "VALUES (:id,:t,:token,:amt,'SAR',:desc,:email,NOW() + (:hrs || ' hours')::interval)"
-            ),
-            {"id": link_id, "t": tenant_id, "token": token, "amt": amount_value, "desc": description, "email": email, "hrs": str(hours)},
+            ), {"id": link_id, "t": tenant_id, "token": token, "amt": amount_value, "desc": description, "email": email, "hrs": str(hours)}
         )
         self.db.commit()
         return {"link_id": link_id, "payment_url": f"/pay/{token}"}
@@ -292,16 +330,10 @@ class PaymentGatewayEngine:
             text(
                 "UPDATE dbp_payment_transactions SET gateway_response = COALESCE(gateway_response,'{}'::jsonb) || :resp "
                 "WHERE id=:id AND tenant_id=:t"
-            ),
-            {
-                "id": tx["transaction_id"],
-                "t": tenant_id,
-                "resp": json.dumps({
-                    "bank_name": str(bank_name)[:120],
-                    "account_last4": str(account_number)[-4:],
-                    "transfer_reference": str(reference)[:120],
-                }),
-            },
+            ), {
+                "id": tx["transaction_id"], "t": tenant_id,
+                "resp": json.dumps({"bank_name": str(bank_name)[:120], "account_last4": str(account_number)[-4:], "transfer_reference": str(reference)[:120]}),
+            }
         )
         self.db.commit()
         return tx
