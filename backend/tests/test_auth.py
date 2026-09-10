@@ -53,7 +53,7 @@ def test_registration_enforces_strong_password_and_unique_email() -> None:
     assert client.post("/api/v1/auth/register", json=weak).status_code == 422
 
 
-def test_admin_can_add_member_and_cannot_remove_last_admin() -> None:
+def test_admin_can_add_member_and_protect_last_admin() -> None:
     admin = _register("admin@example.com")
     member = _register("member@example.com")
     admin_headers = {"Authorization": f"Bearer {admin['access_token']}"}
@@ -68,7 +68,11 @@ def test_admin_can_add_member_and_cannot_remove_last_admin() -> None:
 
     member_login = client.post(
         "/api/v1/auth/token",
-        json={"email": "member@example.com", "password": "Correct-Horse-Battery-42", "tenant_id": admin["tenant_id"]},
+        json={
+            "email": "member@example.com",
+            "password": "Correct-Horse-Battery-42",
+            "tenant_id": admin["tenant_id"],
+        },
     )
     assert member_login.status_code == 200
     member_headers = {"Authorization": f"Bearer {member_login.json()['access_token']}"}
@@ -92,7 +96,11 @@ def test_admin_can_add_member_and_cannot_remove_last_admin() -> None:
     )
     assert demoted.status_code == 200
 
-    listed = client.get("/api/v1/auth/members", headers=admin_headers)
-    assert listed.status_code == 200
-    assert any(item["email"] == "admin@example.com" and item["role"] == "admin" for item in listed.json())
+    admin_id = UUID(admin["user_id"])
+    last_admin = client.patch(
+        f"/api/v1/auth/members/{admin_id}",
+        json={"role": "member"},
+        headers=admin_headers,
+    )
+    assert last_admin.status_code == 409
     assert member["tenant_id"] != admin["tenant_id"]
