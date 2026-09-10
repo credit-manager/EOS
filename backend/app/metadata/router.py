@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..audit.service import record as audit_record
 from ..db import get_db
-from ..tenant import require_tenant
+from ..tenant import require_admin, require_tenant
 from .models import MetadataEntity
 from .schemas import MetadataDefinition, MetadataResponse
 
@@ -30,7 +30,7 @@ def _response(row: MetadataEntity) -> MetadataResponse:
 def create_entity(
     payload: MetadataDefinition,
     request: Request,
-    tenant_id: UUID = Depends(require_tenant),
+    tenant_id: UUID = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> MetadataResponse:
     latest = db.scalar(
@@ -50,6 +50,7 @@ def create_entity(
     audit_record(
         db,
         tenant_id=tenant_id,
+        actor_id=request.state.user_id,
         action="metadata.created",
         resource_type=payload.code,
         metadata={"version": version},
@@ -64,7 +65,7 @@ def create_entity(
 def publish_entity(
     code: str,
     request: Request,
-    tenant_id: UUID = Depends(require_tenant),
+    tenant_id: UUID = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> MetadataResponse:
     row = db.scalar(
@@ -79,6 +80,7 @@ def publish_entity(
         audit_record(
             db,
             tenant_id=tenant_id,
+            actor_id=request.state.user_id,
             action="metadata.published",
             resource_type=code,
             resource_id=row.id,
