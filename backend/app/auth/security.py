@@ -9,12 +9,12 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import get_db
 from .models import TenantMembership, User
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 _ALGORITHM = "HS256"
 _ISSUER = "2to-eos"
@@ -118,10 +118,4 @@ def require_principal(
     )
     if user is None or membership is None or membership.role != principal.role:
         raise HTTPException(status_code=403, detail="tenant membership is not valid")
-    return principal
-
-
-def require_admin(principal: Principal = Depends(require_principal)) -> Principal:
-    if principal.role != "admin":
-        raise HTTPException(status_code=403, detail="admin role required")
     return principal
