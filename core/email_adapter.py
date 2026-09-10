@@ -44,8 +44,8 @@ class ConsoleEmailProvider(EmailProvider):
         from_email: Optional[str] = None,
         from_name: Optional[str] = None,
     ) -> dict:
-        from_name = from_name or "EOS Platform"
-        from_email = from_email or "noreply@eos-platform.com"
+        from_name = from_name or "2TO Platform"
+        from_email = from_email or "noreply@2to-erp.com"
         msg_id = f"console_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{hash(to_email) % 10000}"
 
         entry = {
@@ -88,9 +88,9 @@ class SMTPEmailProvider(EmailProvider):
         self.username = username or os.getenv("EOS_SMTP_USERNAME", "")
         self.password = password or os.getenv("EOS_SMTP_PASSWORD", "")
         self.use_tls = use_tls
-        self.from_email = from_email or os.getenv("EOS_FROM_EMAIL", "noreply@eos-platform.com")
-        self.from_name = from_name or os.getenv("EOS_FROM_NAME", "EOS Platform")
-
+        self.from_email = from_email or os.getenv("EOS_FROM_EMAIL", 
+"noreply@2to-erp.com")
+        self.from_name = from_name or os.getenv("EOS_FROM_NAME", "2TO Platform")
     def send(
         self,
         to_email: str,
@@ -113,7 +113,7 @@ class SMTPEmailProvider(EmailProvider):
             msg["From"] = f"{from_name} <{from_email}>"
             msg["To"] = to_email
             msg["Subject"] = subject
-            msg["Message-ID"] = f"<{msg_id}@eos-platform.com>"
+            msg["Message-ID"] = f"<{msg_id}@2to-erp.com>"
             msg["Date"] = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000")
 
             if text_body:
@@ -141,10 +141,10 @@ class EmailTemplateEngine:
     @staticmethod
     def verification_email(verification_url: str, first_name: str = "User") -> dict:
         return {
-            "subject": "Verify your EOS account",
+            "subject": "Verify your 2TO account",
             "html": f"""
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                <h2 style="color: #2563eb;">Welcome to EOS, {first_name}!</h2>
+                <h2 style="color: #2563eb;">Welcome to 2TO, {first_name}!</h2>
                 <p>Thank you for registering. Please verify your email address to activate your account.</p>
                 <div style="text-align: center; margin: 30px 0;">
                     <a href="{verification_url}"
@@ -158,13 +158,13 @@ class EmailTemplateEngine:
                 </p>
             </div>
             """,
-            "text": f"Welcome to EOS! Verify your email: {verification_url}",
+            "text": f"Welcome to 2TO! Verify your email: {verification_url}",
         }
 
     @staticmethod
     def password_reset_email(reset_url: str, first_name: str = "User") -> dict:
         return {
-            "subject": "Reset your EOS password",
+            "subject": "Reset your 2TO password",
             "html": f"""
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
                 <h2 style="color: #dc2626;">Password Reset Request</h2>
@@ -187,7 +187,7 @@ class EmailTemplateEngine:
     @staticmethod
     def welcome_email(first_name: str = "User", company_name: str = "Your Company") -> dict:
         return {
-            "subject": f"Welcome to EOS, {first_name}!",
+            "subject": f"Welcome to 2TO, {first_name}!",
             "html": f"""
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
                 <h2 style="color: #16a34a;">Account Activated!</h2>
@@ -207,7 +207,7 @@ class EmailTemplateEngine:
                 </div>
             </div>
             """,
-            "text": f"Welcome to EOS! Your account for {company_name} is now active.",
+            "text": f"Welcome to 2TO! Your account for {company_name} is now active.",
         }
 
 

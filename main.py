@@ -126,9 +126,9 @@ async def require_sales_api_permission(request: Request, user: dict = Depends(ge
 setup_logging()
 
 app = FastAPI(
-    title="EOS Dynamic Business Platform",
+    title="2TO ERP Platform",
     description=(
-        "Enterprise-grade multi-tenant ERP/CRM platform with:\n"
+        "Enterprise-grade multi-tenant ERP/CRM platform by 2TO:\n"
         "- Multi-tenant architecture with Row-Level Security (RLS)\n"
         "- Dynamic CRUD engine with API generation\n"
         "- Industry-specific modules (Construction, Trading, Retail, Restaurant, Manufacturing, Services)\n"
@@ -145,8 +145,8 @@ app = FastAPI(
     version="2.0.0",
     docs_url=None if os.getenv("EOS_DISABLE_DOCS") == "true" else "/docs",
     redoc_url=None if os.getenv("EOS_DISABLE_DOCS") == "true" else "/redoc",
-    contact={"name": "EOS Platform Support", "email": "support@eos-platform.com"},
-    license_info={"name": "Proprietary", "url": "https://eos-platform.com/license"},
+    contact={"name": "2TO Support", "email": "support@2to-erp.com"},
+    license_info={"name": "Proprietary", "url": "https://2to-erp.com/license"},
     openapi_tags=[
         {"name": "Auth", "description": "Registration, login, email verification, password reset, 2FA"},
         {"name": "Accounting", "description": "Chart of accounts, journal entries, financial reports"},

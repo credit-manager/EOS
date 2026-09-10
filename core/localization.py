@@ -48,7 +48,7 @@ TRANSLATIONS = {
     # ─────────────────────────────────────
     # Landing Page
     # ─────────────────────────────────────
-    "landing.title": {"en": "EOS Dynamic Business Platform", "ar": "منصة EOS للأعمال الديناميكية"},
+    "landing.title": {"en": "2TO ERP Platform", "ar": "منصة 2TO لإدارة المؤسسات"},
     "landing.subtitle": {"en": "Build, Deploy, and Scale your ERP in minutes", "ar": "ابنِ وانشر ووسّع نظام ERP الخاص بك في دقائق"},
     "landing.cta.start": {"en": "Get Started Free", "ar": "ابدأ مجاناً"},
     "landing.cta.demo": {"en": "See Demo", "ar": "شاهد العرض"},
@@ -178,11 +178,11 @@ TRANSLATIONS = {
     # ─────────────────────────────────────
     # Onboarding
     # ─────────────────────────────────────
-    "onboard.welcome": {"en": "Welcome to EOS!", "ar": "مرحباً بك في EOS!"},
+    "onboard.welcome": {"en": "Welcome to 2TO!", "ar": "مرحباً بك في 2TO!"},
     "onboard.step1": {"en": "Tell us about your business", "ar": "أخبرنا عن عملك"},
     "onboard.step2": {"en": "Choose your modules", "ar": "اختر الوحدات"},
     "onboard.step3": {"en": "Invite your team", "ar": "ادعُ فريقك"},
-    "onboard.step4": {"en": "Start using EOS", "ar": "ابدأ استخدام EOS"},
+    "onboard.step4": {"en": "Start using 2TO", "ar": "ابدأ استخدام 2TO"},
     "onboard.industry.placeholder": {"en": "e.g. Construction, Trading, Manufacturing...", "ar": "مثال: مقاولات، تجارة، تصنيع..."},
     "onboard.company_name": {"en": "Company Name", "ar": "اسم الشركة"},
     "onboard.company_name_ar": {"en": "Company Name (Arabic)", "ar": "اسم الشركة (عربي)"},

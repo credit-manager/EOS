@@ -46,8 +46,8 @@ export default function Login({ onAuthenticated, language = 'ar' }: LoginProps) 
   return (
     <main className="eos-login" dir={ar ? 'rtl' : 'ltr'}>
       <section className="eos-login-card" aria-labelledby="login-title">
-        <div className="eos-brand eos-login-brand"><span className="eos-logo">E</span><span>EOS</span></div>
-        <span className="eos-eyebrow">EOS DBP</span>
+        <div className="eos-brand eos-login-brand"><span className="eos-logo">2</span><span>2TO</span></div>
+        <span className="eos-eyebrow">2TO ERP</span>
         <h1 id="login-title">{ar ? 'تسجيل الدخول' : 'Sign in'}</h1>
         <p>{ar ? 'ادخل إلى مساحة عمل شركتك الآمنة.' : 'Access your secure company workspace.'}</p>
         <form onSubmit={submit} noValidate>

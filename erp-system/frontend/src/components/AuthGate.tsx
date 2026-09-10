@@ -41,7 +41,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('eos:auth-expired', onExpired);
   }, []);
 
-  if (checking) return <main className="eos-auth-loading" aria-live="polite">EOS</main>;
+  if (checking) return <main className="eos-auth-loading" aria-live="polite">2TO</main>;
   if (!authenticated) return <Login onAuthenticated={() => setAuthenticated(true)} />;
   return <>{children}</>;
 }
