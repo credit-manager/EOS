@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -47,7 +47,14 @@ def create_entity(
         definition=payload.model_dump(),
     )
     db.add(row)
-    audit_record(db, tenant_id=tenant_id, action="metadata.created", resource_type=payload.code, metadata={"version": version}, request_id=request.headers.get("X-Request-ID"))
+    audit_record(
+        db,
+        tenant_id=tenant_id,
+        action="metadata.created",
+        resource_type=payload.code,
+        metadata={"version": version},
+        request_id=request.headers.get("X-Request-ID"),
+    )
     db.commit()
     db.refresh(row)
     return _response(row)
@@ -68,8 +75,16 @@ def publish_entity(
     if row is None:
         raise HTTPException(status_code=404, detail="metadata entity not found")
     if row.published_at is None:
-        row.published_at = datetime.now(timezone.utc)
-        audit_record(db, tenant_id=tenant_id, action="metadata.published", resource_type=code, resource_id=row.id, metadata={"version": row.version}, request_id=request.headers.get("X-Request-ID"))
+        row.published_at = datetime.now(UTC)
+        audit_record(
+            db,
+            tenant_id=tenant_id,
+            action="metadata.published",
+            resource_type=code,
+            resource_id=row.id,
+            metadata={"version": row.version},
+            request_id=request.headers.get("X-Request-ID"),
+        )
         db.commit()
         db.refresh(row)
     return _response(row)
@@ -83,7 +98,11 @@ def get_entity(
 ) -> MetadataResponse:
     row = db.scalar(
         select(MetadataEntity)
-        .where(MetadataEntity.tenant_id == tenant_id, MetadataEntity.code == code, MetadataEntity.published_at.is_not(None))
+        .where(
+            MetadataEntity.tenant_id == tenant_id,
+            MetadataEntity.code == code,
+            MetadataEntity.published_at.is_not(None),
+        )
         .order_by(MetadataEntity.version.desc())
     )
     if row is None:
