@@ -1,18 +1,19 @@
 name: EOS DBP v2 CI
 
 on:
-  push:
-    branches: [eos-v2-rebuild]
-  pull_request:
-    branches: [eos-v2-rebuild]
   workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for running the legacy v2 validation"
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   v2-tests:
-    if: github.ref == 'refs/heads/eos-v2-rebuild' || github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/eos-v2-rebuild'
     name: v2 unit and integration tests
     runs-on: ubuntu-latest
     services:
@@ -81,10 +82,3 @@ jobs:
         run: python -c "import locust; print('locust', locust.__version__)"
       - name: Validate Locust scenario
         run: python -c "import loadtests.locustfile; print('loadtest scenario: PASS')"
-
-  legacy-skip:
-    if: github.ref != 'refs/heads/eos-v2-rebuild' && github.event_name != 'workflow_dispatch'
-    name: legacy v2 pipeline not applicable to commercial branch
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "EOS v2 CI is intentionally isolated from the commercial readiness branch."
