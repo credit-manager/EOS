@@ -1,8 +1,8 @@
 """Reconcile historical schema branches and enforce financial invariants.
 
-This unreleased commercial merge is the single release head.  It reconciles
-the two historical lineages and applies database-level journal-line checks so
-financial correctness cannot depend solely on API validation.
+This unreleased commercial merge is the single release head. It reconciles
+the two historical lineages, hardens double-entry constraints, and adds
+DB-backed idempotency for payment creation.
 """
 from alembic import op
 import sqlalchemy as sa
@@ -41,9 +41,37 @@ def upgrade() -> None:
             "(debit > 0 AND credit = 0) OR (credit > 0 AND debit = 0)",
         )
 
+    inspector = sa.inspect(bind)
+    columns = {c["name"] for c in inspector.get_columns("dbp_payment_transactions", schema="public")}
+    if "idempotency_key_hash" not in columns:
+        op.add_column(
+            "dbp_payment_transactions",
+            sa.Column("idempotency_key_hash", sa.String(64), nullable=True),
+        )
+    if "idempotency_fingerprint" not in columns:
+        op.add_column(
+            "dbp_payment_transactions",
+            sa.Column("idempotency_fingerprint", sa.String(64), nullable=True),
+        )
+    op.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_dbp_payment_transactions_idempotency "
+        "ON public.dbp_payment_transactions (tenant_id, idempotency_key_hash) "
+        "WHERE idempotency_key_hash IS NOT NULL"
+    )
+
 
 def downgrade() -> None:
-    inspector = sa.inspect(op.get_bind())
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if inspector.has_table("dbp_payment_transactions", schema="public"):
+        op.execute("DROP INDEX IF EXISTS public.uq_dbp_payment_transactions_idempotency")
+        columns = {c["name"] for c in inspector.get_columns("dbp_payment_transactions", schema="public")}
+        if "idempotency_fingerprint" in columns:
+            op.drop_column("dbp_payment_transactions", "idempotency_fingerprint")
+        if "idempotency_key_hash" in columns:
+            op.drop_column("dbp_payment_transactions", "idempotency_key_hash")
+
+    inspector = sa.inspect(bind)
     if inspector.has_table("dbp_journal_lines", schema="public"):
         existing = {c["name"] for c in inspector.get_check_constraints("dbp_journal_lines", schema="public")}
         if "ck_dbp_journal_lines_exactly_one_side" in existing:
