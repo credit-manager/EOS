@@ -17,6 +17,7 @@ from core.runtime_config import (
     request_id_or_generate,
     resolve_auth_mode,
 )
+from core.control_plane_security import validate_tenant_provisioning_request
 from routers import dynamic_crud
 from routers import relationships
 from routers import entity_management
@@ -234,7 +235,7 @@ app.include_router(inventory_api.router)
 app.include_router(accounting_api.router)
 app.include_router(projects_api.router)
 app.include_router(hr_api.router)
-app.include_router(control_plane.router)
+app.include_router(control_plane.router, dependencies=[Depends(validate_tenant_provisioning_request)])
 app.include_router(construction_api.router)
 app.include_router(industry_framework.router)
 app.include_router(trading_api.router)
@@ -356,85 +357,3 @@ class _MetricsMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(_MetricsMiddleware)
-
-
-health_router = APIRouter(tags=["Health"])
-
-
-@health_router.get("/health/live", include_in_schema=False)
-async def health_live():
-    return {"status": "ok"}
-
-
-@health_router.get("/health/ready", include_in_schema=False)
-async def health_ready():
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        raise HTTPException(status_code=503, detail="Database configuration unavailable")
-    try:
-        from sqlalchemy import text
-        from database import engine
-        with engine.connect() as connection:
-            connection.execute(text("SELECT 1"))
-    except Exception:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-    return {"status": "ok"}
-
-
-app.include_router(health_router)
-
-
-@app.get("/")
-def root():
-    return {
-        "message": "EOS DBP Core is running!",
-        "docs": "/docs" if DOCS_ENABLED else None,
-        "version": os.getenv("EOS_APP_VERSION", "1.0.0"),
-    }
-
-
-@app.get("/app")
-async def serve_landing():
-    from fastapi.responses import FileResponse
-    index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path, media_type="text/html")
-    return {"message": "Landing page not found", "docs": "/docs" if DOCS_ENABLED else None}
-
-
-# P67: the canonical frontend source and served artifact share one path.
-import os as _os
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse as _FileResponse
-
-_REACT_DIST = _os.path.join(_os.path.dirname(__file__), "erp-system", "frontend", "dist")
-
-if _os.path.isdir(_REACT_DIST):
-    _assets_dir = _os.path.join(_REACT_DIST, "assets")
-    if _os.path.isdir(_assets_dir):
-        app.mount("/ui/assets", StaticFiles(directory=_assets_dir), name="react-assets")
-
-    _icons_dir = _os.path.join(_REACT_DIST, "icons")
-    if _os.path.isdir(_icons_dir):
-        app.mount("/ui/icons", StaticFiles(directory=_icons_dir), name="react-icons")
-
-    @app.get("/ui/manifest.webmanifest")
-    async def _serve_manifest():
-        return _FileResponse(_os.path.join(_REACT_DIST, "manifest.webmanifest"), media_type="application/manifest+json")
-
-    @app.get("/ui/sw.js")
-    async def _serve_sw():
-        return _FileResponse(_os.path.join(_REACT_DIST, "sw.js"), media_type="application/javascript")
-
-    @app.get("/ui/{full_path:path}")
-    async def _serve_react(full_path: str):
-        return _FileResponse(_os.path.join(_REACT_DIST, "index.html"), media_type="text/html")
-
-    print(f"React frontend mounted at /ui  (dist: {_REACT_DIST})")
-else:
-    print(f"React dist not found at {_REACT_DIST} — /ui will not be available")
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=False)
