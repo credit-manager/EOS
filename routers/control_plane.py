@@ -13,6 +13,7 @@ from sqlalchemy import text
 from database import get_db
 from core.auth import get_current_user, require_platform_owner
 from core.module_registry import INDUSTRY_TEMPLATES as FRAMEWORK_TEMPLATES
+from core.schemas import TenantProvision
 
 router = APIRouter(prefix="/api/v1/control", tags=["EOS Control Plane"])
 
@@ -168,17 +169,17 @@ async def get_tenant(tenant_id: str, user: dict = Depends(require_platform_owner
 
 
 @router.post("/tenants", status_code=201)
-async def provision_tenant(body: dict, user: dict = Depends(require_platform_owner), db: Session = Depends(get_db)):
+async def provision_tenant(body: TenantProvision, user: dict = Depends(require_platform_owner), db: Session = Depends(get_db)):
     """
     Full tenant provisioning: Tenant → License → Admin User → Company → Template → Modules → Accounts.
     POST /api/v1/control/tenants
     Body: { name, industry_code, plan_id, admin_email, admin_password, admin_name, slug?, currency? }
     """
-    name = body.get("name")
-    industry_code = body.get("industry_code")
-    admin_email = body.get("admin_email")
-    admin_password = body.get("admin_password", "admin123")
-    admin_name = body.get("admin_name", "")
+    name = body.name
+    industry_code = body.industry_code
+    admin_email = body.admin_email
+    admin_password = body.admin_password
+    admin_name = body.admin_name or ""
 
     if not name:
         raise HTTPException(400, detail="name required")
@@ -186,6 +187,8 @@ async def provision_tenant(body: dict, user: dict = Depends(require_platform_own
         raise HTTPException(400, detail="industry_code required (construction, trading, retail, restaurant, services, manufacturing)")
     if not admin_email:
         raise HTTPException(400, detail="admin_email required")
+    if not admin_password or len(admin_password) < 8:
+        raise HTTPException(400, detail="admin_password required (minimum 8 characters)")
 
     # Check email not taken
     existing = db.execute(
@@ -196,10 +199,10 @@ async def provision_tenant(body: dict, user: dict = Depends(require_platform_own
 
     # Fetch plan
     plan = None
-    if body.get("plan_id"):
+    if body.plan_id:
         plan = db.execute(
             text("SELECT id, plan_name, max_users, max_companies, max_storage_gb "
-                 "FROM dbp_saas_plans WHERE id = :pid"), {"pid": body["plan_id"]}
+                 "FROM dbp_saas_plans WHERE id = :pid"), {"pid": body.plan_id}
         ).fetchone()
 
     # Fetch industry template
@@ -217,7 +220,7 @@ async def provision_tenant(body: dict, user: dict = Depends(require_platform_own
     # ── Step 1: Create Tenant ──────────────────
     tid = str(uuid.uuid4())
     tenant_id = f"tenant_{uuid.uuid4().hex[:8]}"
-    slug = body.get("slug", name.lower().replace(" ", "-")[:30])
+    slug = body.slug or name.lower().replace(" ", "-")[:30]
     max_users = plan[2] if plan else 5
     max_companies = plan[3] if plan else 1
 
@@ -226,7 +229,7 @@ async def provision_tenant(body: dict, user: dict = Depends(require_platform_own
              "max_users, max_companies, settings, created_at, updated_at) "
              "VALUES (:id, :tid, :name, :slug, 'active', :plan, :mu, :mc, :settings, :now, :now)"),
         {"id": tid, "tid": tenant_id, "name": name, "slug": slug,
-         "plan": body.get("plan_id"), "mu": max_users, "mc": max_companies,
+         "plan": body.plan_id, "mu": max_users, "mc": max_companies,
          "settings": json.dumps(template[4] or {}), "now": now},
     )
 

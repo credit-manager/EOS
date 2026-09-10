@@ -10,7 +10,7 @@ Sync audit logging with:
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional, Dict, Any
-from datetime import datetime, date, timezone
+from datetime import datetime, date
 from decimal import Decimal
 from contextvars import ContextVar
 import json
@@ -129,7 +129,7 @@ def log_dynamic_audit(
             "request_id": effective_request_id,
             "status": status,
             "error_message": error_message,
-            "created_at": datetime.now(timezone.utc),
+            "created_at": datetime.utcnow(),
         }
 
         query = text("""

@@ -307,7 +307,7 @@ class DataJobEngine:
                     "errors": ["Entity or table_mapping not found"]}
 
         table_name = entity[0]
-        limit = min(config.get("limit", 1000), 50000)  # Hard max 50k rows per export
+        limit = config.get("limit", 1000)
         filters = config.get("filters", {})
 
         where_parts = ["1=1"]
