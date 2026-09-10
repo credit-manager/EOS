@@ -2,7 +2,7 @@ name: EOS Platform CI/CD
 
 on:
   push:
-    branches: [main, develop, 'feature/**']
+    branches: [main, develop, platform-consolidation, 'feature/**']
   pull_request:
     branches: [main, develop]
 
