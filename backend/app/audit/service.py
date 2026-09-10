@@ -21,7 +21,7 @@ def record(
         resource_type=resource_type,
         resource_id=resource_id,
         request_id=request_id,
-        metadata=metadata or {},
+        details=metadata or {},
     )
     db.add(event)
     db.flush()
