@@ -233,7 +233,7 @@ class SecurityAudit:
                                         }
                                         findings.append(finding)
                                         self.high.append(finding)
-                    except:
+                    except (OSError, UnicodeDecodeError):
                         pass
         
         if env_exists:

@@ -342,7 +342,7 @@ async def graceful_shutdown():
         _engine.dispose()
     except Exception as exc:
         _log.getLogger("eos.shutdown").warning(f"Error disposing engine: {exc}")
-    audit_logger.log_event(event="platform_shutdown", details={"version": "1.0.0"})
+    audit_logger.log_event(event="platform_shutdown", details={"version": "2.0.0"})
     _log.getLogger("eos.shutdown").info("EOS shutdown complete")
 
 

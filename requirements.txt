@@ -1,51 +1,49 @@
 # EOS Dynamic Business Platform — Production Dependencies
-fastapi==0.141.1
-starlette==1.6.0
-uvicorn[standard]==0.30.1
-gunicorn==23.0.0
-sqlalchemy==2.0.52
-psycopg2-binary==2.9.12
-PyJWT==2.13.0
-passlib[bcrypt]==1.7.4
-bcrypt==4.2.0
-python-dotenv==1.2.2
-httpx==0.28.1
-pydantic==2.9.2
-pydantic-settings==2.3.3
-python-multipart==0.0.31
-jinja2==3.1.6
-email-validator==2.3.0
-aiosmtplib==5.1.2
-python-dateutil==2.8.2
-prometheus-client==0.19.0
-prometheus-fastapi-instrumentator==6.1.0
+fastapi>=0.100.0
+starlette>=0.27.0
+uvicorn[standard]>=0.22.0
+gunicorn>=21.0.0
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+PyJWT>=2.8.0
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.0
+python-dotenv>=1.0.0
+httpx>=0.24.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-multipart>=0.0.5
+jinja2>=3.1.0
+email-validator>=2.0.0
+aiosmtplib>=3.0.0
+python-dateutil>=2.8.0
+prometheus-client>=0.17.0
+prometheus-fastapi-instrumentator>=6.0.0
 
-# System monitoring and Excel support (Phase 0)
-psutil==5.9.8
-openpyxl==3.1.2
+# System monitoring and Excel support
+psutil>=5.9.0
+openpyxl>=3.1.0
 
-# Testing and Quality Assurance (Phase 1)
-pytest==9.0.3
-pytest-asyncio==1.4.0
-pytest-cov==7.0.0
+# Testing and Quality Assurance
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
 
-# Security Scanning (Phase 1 & 3)
-bandit==1.7.5
-pbr==6.1.0
-pip-audit==2.10.0
+# Security Scanning
+bandit>=1.7.0
+pip-audit>=2.6.0
 
-# Code Style and Linting (Phase 1)
-ruff==0.1.6
-flake8==6.1.0
+# Code Style and Linting
+ruff>=0.1.0
 
-# Database Migrations (Phase 1)
-alembic==1.12.1
+# Database Migrations
+alembic>=1.12.0
 
-# Internationalization (Phase 5)
-Babel==2.13.1
+# Internationalization
+Babel>=2.12.0
 
-# Load Testing (Phase 5)
-locust==2.20.0
+# Load Testing
+locust>=2.15.0
 
-# Encryption for 2FA Secrets (Security Fix)
-cryptography==50.0.0
+# Encryption for 2FA Secrets
+cryptography>=41.0.0

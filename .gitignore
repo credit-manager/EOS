@@ -9,23 +9,29 @@ __pycache__/
 .Python
 env/
 ENV/
+.eggs/
+*.egg
 
 # Build artifacts
 dist/
 build/
 *.egg-info/
 .installed.cfg
-*.egg
 
 # Logs
 *.log
 logs/
 
-# Environment variables
+# Environment variables (NEVER commit secrets)
 .env
 .env.local
-.env.*
+.env.development
+.env.staging
+.env.production
+.env.production.local
+.env.*.local
 !.env.example
+!.env.production.example
 
 # IDE specific
 .vscode/
@@ -42,17 +48,24 @@ Thumbs.db
 .coverage
 htmlcov/
 .coverage.*
+coverage.xml
 
 # Testing
 .pytest_cache/
 .mypy_cache/
 .tox/
+.ruff_cache/
 
 # SQLite databases
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
 
 # Backups
 backups/
+*.bak
+*.backup
 
 # Alembic versions (managed by migrations)
 alembic/versions/*.pyc
@@ -62,6 +75,7 @@ alembic/versions/*.pyc
 
 # Profiling
 profile.log
+cProfile.prof
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -84,3 +98,9 @@ loadtests/
 # Old bootstrap
 eos_dbp_project/
 master_bootstrap.py
+
+# Secret files (NEVER commit)
+*.pem
+*.key
+*.cert
+*.crt

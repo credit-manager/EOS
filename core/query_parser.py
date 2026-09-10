@@ -16,6 +16,36 @@ from dataclasses import dataclass
 from enum import Enum
 
 
+# ═══════════════════════════════════════════════
+# SQL INJECTION PREVENTION
+# ═══════════════════════════════════════════════
+
+_IDENTIFIER_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+def safe_identifier(name: str, max_length: int = 63) -> str:
+    """
+    Validate and quote a SQL identifier (table/column name).
+    Raises ValueError if the identifier is unsafe.
+    PostgreSQL max identifier length is 63 characters.
+    """
+    if not name or len(name) > max_length:
+        raise ValueError(f"Identifier too long or empty: {name!r}")
+    if not _IDENTIFIER_RE.match(name):
+        raise ValueError(f"Unsafe SQL identifier: {name!r}")
+    return name
+
+
+def safe_table_name(name: str) -> str:
+    """Validate a table name for use in dynamic SQL."""
+    return safe_identifier(name)
+
+
+def safe_column_name(name: str) -> str:
+    """Validate a column name for use in dynamic SQL."""
+    return safe_identifier(name)
+
+
 class Operator(str, Enum):
     """Supported filter operators."""
     EQ = "eq"

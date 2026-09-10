@@ -7,11 +7,14 @@ failed. This patch keeps schema changes in the caller transaction.
 from sqlalchemy import text
 
 from core.builder_engine import BuilderEngine, FIELD_SQL_TYPES
+from core.query_parser import safe_table_name, safe_column_name
 
 
 def _atomic_ensure_physical_table(self, table_name, fields):
+    safe_table_name(table_name)
     col_defs = ["id VARCHAR(36) PRIMARY KEY", "tenant_id VARCHAR(100) NOT NULL"]
     for fld in fields:
+        safe_column_name(fld["code"])
         sqltype = FIELD_SQL_TYPES[fld["field_type"]]
         notnull = " NOT NULL" if fld.get("is_required") else ""
         col_defs.append(f"{fld['code']} {sqltype}{notnull}")
@@ -20,6 +23,7 @@ def _atomic_ensure_physical_table(self, table_name, fields):
         f"CREATE TABLE IF NOT EXISTS public.{table_name} ({', '.join(col_defs)})"
     ))
     for fld in fields:
+        safe_column_name(fld["code"])
         sqltype = FIELD_SQL_TYPES[fld["field_type"]]
         self.db.execute(text(
             f"ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS {fld['code']} {sqltype}"
