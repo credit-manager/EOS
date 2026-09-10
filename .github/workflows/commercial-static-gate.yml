@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, 'commercial-readiness-hardening-*']
 
 permissions:
   contents: read
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   static-gate:
-    name: Runtime / financial anti-regression
+    name: Runtime / financial / migration anti-regression
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -25,5 +25,7 @@ jobs:
           python-version: '3.12'
       - name: Execute commercial static gate
         run: python scripts/commercial_static_gate.py
+      - name: Verify Alembic revision graph
+        run: python scripts/check_alembic_graph.py
       - name: Compile all Python modules
         run: python -m compileall -q core routers scripts
