@@ -66,8 +66,8 @@ export default function Register({ onAuthenticated, onBack, language = 'ar' }: R
   return (
     <main className="eos-login" dir={ar ? 'rtl' : 'ltr'}>
       <section className="eos-login-card" aria-labelledby="register-title">
-        <div className="eos-brand eos-login-brand"><span className="eos-logo">E</span><span>EOS</span></div>
-        <span className="eos-eyebrow">EOS DBP</span>
+        <div className="eos-brand eos-login-brand"><span className="eos-logo">2</span><span>2TO</span></div>
+        <span className="eos-eyebrow">2TO ERP</span>
         <h1 id="register-title">{ar ? 'إنشاء حساب الشركة' : 'Create your company account'}</h1>
         <p>{ar ? 'ابدأ مساحة عمل ERP آمنة لشركتك.' : 'Start a secure ERP workspace for your company.'}</p>
         <form onSubmit={submit} noValidate>

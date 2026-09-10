@@ -42,12 +42,12 @@ class ThemeConfig:
 
 @dataclass
 class WhiteLabelConfig:
-    system_name: str = "EOS"
-    system_name_ar: str = "إي أو إس"
+    system_name: str = "2TO"
+    system_name_ar: str = "2تو"
     logo_url: str = ""
     favicon_url: str = ""
     login_bg: str = ""
-    primary_color: str = ""
+    primary_color: str = "#006D77"
     show_powered_by: bool = True
     custom_domain: str = ""
     email_template: str = ""

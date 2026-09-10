@@ -1,7 +1,7 @@
 {
-  "name": "EOS — نظام إدارة المؤسسات",
-  "short_name": "EOS",
-  "description": "EOS SaaS ERP — إدارة كاملة لشركتك من الهاتف: مبيعات، مخزون، مشاريع، محاسبة، موارد بشرية وتحليلات تنفيذية",
+  "name": "2TO — نظام إدارة المؤسسات",
+  "short_name": "2TO",
+  "description": "2TO ERP — إدارة كاملة لشركتك من الهاتف: مبيعات، مخزون، مشاريع، محاسبة، موارد بشرية وتحليلات تنفيذية",
   "id": "/",
   "start_url": "/dashboard",
   "scope": "/",
@@ -10,7 +10,7 @@
   "dir": "rtl",
   "lang": "ar",
   "background_color": "#f0f2f5",
-  "theme_color": "#001529",
+  "theme_color": "#006D77",
   "categories": ["business", "productivity", "finance"],
   "icons": [
     {

@@ -31,8 +31,8 @@ const LoginPage: React.FC = () => {
 
   const isRTL = branding?.direction !== 'ltr';
   const loginTitle = isRTL
-    ? branding?.login_title_ar || 'تسجيل الدخول إلى EOS'
-    : branding?.login_title_en || 'Login to EOS';
+    ? branding?.login_title_ar || 'تسجيل الدخول إلى 2TO'
+    : branding?.login_title_en || 'Login to 2TO';
   const loginSubtitle = isRTL
     ? branding?.login_subtitle_ar || 'نظام إدارة المؤسسات'
     : branding?.login_subtitle_en || 'Enterprise Resource Planning';
@@ -118,9 +118,9 @@ const LoginPage: React.FC = () => {
           <div style={{ textAlign: 'center' }}>
             <Text type="secondary">
               {branding?.show_powered_by !== false ? (
-                <>Powered by EOS</>
+                <>Powered by 2TO</>
               ) : (
-                <>EOS Platform</>
+                <>2TO Platform</>
               )}
             </Text>
           </div>

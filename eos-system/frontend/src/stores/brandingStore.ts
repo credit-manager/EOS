@@ -18,16 +18,16 @@ export interface BrandingState {
 }
 
 const PLATFORM_DEFAULTS: PublicBranding = {
-  system_name_en: 'EOS Dynamic Business Platform',
-  system_name_ar: 'EOS — منصة الأعمال المتكاملة',
+  system_name_en: '2TO ERP Platform',
+  system_name_ar: '2TO — منصة إدارة المؤسسات',
   logo_url: null,
   favicon_url: null,
-  primary_color: '#1890ff',
-  secondary_color: '#001529',
+  primary_color: '#006D77',
+  secondary_color: '#4B0082',
   theme_mode: 'light',
   direction: 'rtl',
-  login_title_en: 'Login to EOS',
-  login_title_ar: 'تسجيل الدخول إلى EOS',
+  login_title_en: 'Login to 2TO',
+  login_title_ar: 'تسجيل الدخول إلى 2TO',
   login_subtitle_en: 'Enterprise Resource Planning for your business',
   login_subtitle_ar: 'إدارة موارد مؤسستك في مكان واحد',
 };
