@@ -50,6 +50,7 @@ from eos_v2.interfaces.api.foundation import router as v2_foundation_router
 from eos_v2.interfaces.api.industry import router as v2_industry_router
 from eos_v2.interfaces.api.ai_composer import router as v2_ai_composer_router
 from eos_v2.interfaces.api.web import router as v2_web_router
+from eos_v2.interfaces.api.subcontractor_evaluation import router as v2_subcontractor_evaluation_router
 
 MAX_BODY_BYTES = int(os.getenv("EOS_MAX_BODY_BYTES", str(10 * 1024 * 1024)))
 
@@ -162,6 +163,7 @@ for router in (
     v2_industry_router,
     v2_ai_composer_router,
     v2_web_router,
+    v2_subcontractor_evaluation_router,
 ):
     app.include_router(router)
 
@@ -179,6 +181,7 @@ async def validate_configuration():
         v2_settings = V2Settings.from_env()
         v2_settings.validate()
         app.state.v2_settings = v2_settings
+        app.state.settings = v2_settings
         app.state.database = V2Database(V2DatabaseConfig(v2_settings.database_url)) if v2_settings.database_url else None
         if v2_settings.auth_mode == "oidc":
             from jwt import PyJWKClient
@@ -188,6 +191,7 @@ async def validate_configuration():
     except (ValueError, TypeError) as exc:
         errors.append(f"canonical runtime configuration: {exc}")
         app.state.v2_settings = None
+        app.state.settings = None
         app.state.database = None
         app.state.oidc_jwks_client = None
     if errors:
@@ -238,19 +242,6 @@ if os.path.isdir(_REACT_DIST):
 @app.get("/")
 async def root():
     index_path = os.path.join(_REACT_DIST, "index.html")
-    if os.path.exists(index_path):
+    if os.path.isfile(index_path):
         return FileResponse(index_path, media_type="text/html")
-    return {"message": "2TO ERP Platform is running", "version": "2.0.0", "docs": "/docs", "health": "/health", "ui": "/ui"}
-
-
-@app.get("/app")
-async def serve_landing():
-    index_path = os.path.join(_REACT_DIST, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path, media_type="text/html")
-    return {"message": "Frontend artifact not found", "ui": "/ui"}
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=False)
+    return {"name": "2TO ERP Platform", "version": "2.0.0"}
