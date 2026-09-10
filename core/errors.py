@@ -165,6 +165,11 @@ def secure_db_error(e: Exception, request_id: Optional[str] = None) -> JSONRespo
     # Log the full error internally (in production, use proper logging)
     error_type = type(e).__name__
     error_str = str(e)
+    import logging
+    logging.getLogger("eos.errors").error(
+        f"[{request_id}] {error_type}: {error_str}",
+        exc_info=True,
+    )
     
     # Determine error code based on exception type
     error_code = ErrorCodes.DATABASE_ERROR
