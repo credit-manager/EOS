@@ -227,7 +227,7 @@ async def refresh_token(body: RefreshRequest, response: Response, cookie_token: 
 
 
 @router.post("/logout", dependencies=[Depends(auth_limiter.check)])
-async def logout(body: RefreshRequest | None = None, response: Response, cookie_token: str | None = Cookie(default=None, alias=_REFRESH_COOKIE), db: Session = Depends(get_db)):
+async def logout(response: Response, body: RefreshRequest | None = None, cookie_token: str | None = Cookie(default=None, alias=_REFRESH_COOKIE), db: Session = Depends(get_db)):
     raw = ((body.refresh_token if body else None) or cookie_token or "").strip()
     if raw:
         tenant_token = _auth_tenant(db, "eos_auth_tenant_by_refresh_hash", _refresh_hash(raw))
