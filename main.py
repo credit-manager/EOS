@@ -362,7 +362,7 @@ app.include_router(health_router)
 @app.get("/")
 def root():
     docs_enabled = os.getenv("EOS_DISABLE_DOCS") != "true"
-    return {"message": "EOS DBP Core is running!", "docs": "/docs" if docs_enabled else None}
+    return {"message": "2TO ERP Platform is running!", "version": "2.0.0", "docs": "/docs" if docs_enabled else None, "health": "/health"}
 
 
 @app.get("/app")
