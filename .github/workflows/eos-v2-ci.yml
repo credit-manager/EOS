@@ -5,12 +5,14 @@ on:
     branches: [eos-v2-rebuild]
   pull_request:
     branches: [eos-v2-rebuild]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   v2-tests:
+    if: github.ref == 'refs/heads/eos-v2-rebuild' || github.event_name == 'workflow_dispatch'
     name: v2 unit and integration tests
     runs-on: ubuntu-latest
     services:
