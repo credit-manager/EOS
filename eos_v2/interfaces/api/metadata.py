@@ -40,6 +40,13 @@ class MetadataCreateRequest(BaseModel):
     relationships: list[MetadataRelationshipRequest] = Field(default_factory=list)
 
 
+class MetadataFieldResponse(BaseModel):
+    name: str
+    field_type: FieldType
+    required: bool
+    unique: bool
+
+
 class MetadataResponse(BaseModel):
     id: UUID
     tenant_id: UUID
@@ -47,6 +54,7 @@ class MetadataResponse(BaseModel):
     label: str
     version: int
     published: bool
+    fields: list[MetadataFieldResponse] = Field(default_factory=list)
 
 
 def to_entity(request: MetadataCreateRequest) -> EntityDefinition:
@@ -57,6 +65,41 @@ def to_entity(request: MetadataCreateRequest) -> EntityDefinition:
         fields=tuple(FieldDefinition(**item.model_dump()) for item in request.fields),
         relationships=tuple(RelationshipDefinition(**item.model_dump()) for item in request.relationships),
     )
+
+
+def to_response(entity: EntityDefinition) -> MetadataResponse:
+    return MetadataResponse(
+        id=entity.id,
+        tenant_id=entity.tenant_id,
+        name=entity.name,
+        label=entity.label,
+        version=entity.version,
+        published=entity.published,
+        fields=[
+            MetadataFieldResponse(
+                name=field.name,
+                field_type=field.field_type,
+                required=field.required,
+                unique=field.unique,
+            )
+            for field in entity.fields
+        ],
+    )
+
+
+@router.get("/by-name/{entity_name}", response_model=MetadataResponse)
+def get_published_metadata_by_name(entity_name: str, request: Request, identity=Depends(get_current_identity)) -> MetadataResponse:
+    require_permission(identity, Permission.READ)
+    database = request.app.state.database
+    if database is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    with database.session() as session:
+        repository = SqlAlchemyMetadataRepository(session)
+        try:
+            entity = repository.get_published(entity_name)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Published metadata entity not found") from exc
+    return to_response(entity)
 
 
 @router.get("/{entity_id}", response_model=MetadataResponse)
@@ -71,14 +114,7 @@ def get_metadata(entity_id: UUID, request: Request, identity=Depends(get_current
             entity = repository.get(entity_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Metadata entity not found") from exc
-    return MetadataResponse(
-        id=entity.id,
-        tenant_id=get_tenant_context().tenant_id,
-        name=entity.name,
-        label=entity.label,
-        version=entity.version,
-        published=entity.published,
-    )
+    return to_response(entity)
 
 
 @router.post("", response_model=MetadataResponse, status_code=status.HTTP_201_CREATED)
@@ -107,11 +143,4 @@ def publish_metadata(request: Request, payload: MetadataCreateRequest, identity=
         except ValueError as exc:
             session.rollback()
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return MetadataResponse(
-        id=entity.id,
-        tenant_id=entity.tenant_id,
-        name=entity.name,
-        label=entity.label,
-        version=entity.version,
-        published=entity.published,
-    )
+    return to_response(entity)
