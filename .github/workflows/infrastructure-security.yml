@@ -44,7 +44,7 @@ jobs:
           EOS_SMTP_USERNAME: contract-user
           EOS_SMTP_PASSWORD: contract-password
           EOS_FROM_EMAIL: noreply@example.com
-          EOS_STRIPE_SECRET_KEY: sk_live_ci_9f7a6c3b2e1d4a8c
+          EOS_STRIPE_SECRET_KEY: sk_test_contract_invalid
           EOS_FRONTEND_URL: https://app.example.com
           EOS_CORS_ORIGINS: '["https://app.example.com"]'
           EOS_ALLOWED_HOSTS: app.example.com,api.example.com
@@ -70,6 +70,7 @@ jobs:
             -keyout .ci/eos-tls/privkey.pem \
             -out .ci/eos-tls/fullchain.pem
           docker run --rm \
+            --add-host api:127.0.0.1 \
             -e DOMAIN="$DOMAIN" \
             -v "$PWD/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
             -v "$PWD/nginx/conf.d/eos.conf:/etc/nginx/eos.conf.template:ro" \
