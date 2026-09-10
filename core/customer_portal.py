@@ -3,6 +3,7 @@ P57 Customer Portal Engine — one-stop tenant overview + support tickets.
 Aggregates: company, onboarding, subscription, usage, marketplace,
 builder projects, notifications, support. Defensive per-section.
 """
+import logging
 import uuid
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
@@ -11,6 +12,8 @@ from sqlalchemy import text
 from core.onboarding_engine import OnboardingEngine
 from core.billing_flow import BillingFlowEngine
 from core.marketplace_engine import MarketplaceEngine
+
+logger = logging.getLogger("eos.customer_portal")
 
 
 class CustomerPortalEngine:
@@ -29,8 +32,6 @@ class CustomerPortalEngine:
             "notifications": self._section(self._notifications, tenant_id),
             "support": self._section(self._support, tenant_id),
         }
-
-    # ── SECTIONS ──
 
     def _company(self, tid):
         row = self.db.execute(text(
@@ -77,6 +78,7 @@ class CustomerPortalEngine:
             return {"unread": int(row[0])}
         except Exception:
             self.db.rollback()
+            logger.exception("customer portal notifications lookup failed")
             return {"unread": 0}
 
     def _support(self, tid):
@@ -85,24 +87,29 @@ class CustomerPortalEngine:
             "GROUP BY status"), {"t": tid}).fetchall()
         by_status = {r[0]: int(r[1]) for r in rows}
         return {"tickets_total": sum(by_status.values()),
-                 "open": by_status.get("open", 0)}
+                "open": by_status.get("open", 0)}
 
     def _section(self, fn, tid):
         try:
             return {"data": fn(tid), "error": None}
-        except Exception as exc:
+        except Exception:
             try:
                 self.db.rollback()
             except Exception:
                 pass
-            return {"data": None, "error": str(exc)[:200]}
-
-    # ── SUPPORT TICKETS ──
+            logger.exception("customer portal section failed")
+            return {"data": None, "error": "Section temporarily unavailable"}
 
     def create_ticket(self, tenant_id: str, subject: str, message: str,
                       priority: str, created_by: str) -> Dict[str, Any]:
+        subject = (subject or "").strip()
+        message = (message or "").strip()
         if not subject:
             return {"success": False, "error": "subject required"}
+        if len(subject) > 200:
+            return {"success": False, "error": "subject too long"}
+        if len(message) > 10000:
+            return {"success": False, "error": "message too long"}
         if priority not in ("low", "normal", "high", "urgent"):
             return {"success": False, "error": "invalid priority"}
         n = self.db.execute(text(
@@ -126,9 +133,9 @@ class CustomerPortalEngine:
             cond = "AND status = :st"
             params["st"] = status
         rows = self.db.execute(text(
-            f"SELECT id, ticket_number, subject, priority, status, created_at, resolved_at "
-            f"FROM dbp_support_tickets WHERE tenant_id = :t {cond} ORDER BY created_at DESC"
-        ), params).fetchall()
+            "SELECT id, ticket_number, subject, priority, status, created_at, resolved_at "
+            "FROM dbp_support_tickets WHERE tenant_id = :t " + cond +
+            " ORDER BY created_at DESC"), params).fetchall()
         return [{"id": r[0], "ticket_number": r[1], "subject": r[2],
                  "priority": r[3], "status": r[4],
                  "created_at": str(r[5]) if r[5] else None,
@@ -144,6 +151,6 @@ class CustomerPortalEngine:
             return {"success": False, "error": "Already closed"}
         self.db.execute(text(
             "UPDATE dbp_support_tickets SET status='closed', resolved_at = NOW() "
-            "WHERE id = :id"), {"id": ticket_id})
+            "WHERE id = :id AND tenant_id = :t"), {"id": ticket_id, "t": tenant_id})
         self.db.flush()
         return {"success": True}
