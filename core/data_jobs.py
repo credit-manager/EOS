@@ -13,6 +13,7 @@ All operations are synchronous (same transaction) for now.
 Async/queued execution deferred to P20+.
 """
 import uuid
+from core.query_parser import safe_table_name, safe_column_name
 import json
 import time
 from typing import Optional, Dict, Any, List
@@ -270,13 +271,13 @@ class DataJobEngine:
             return {"rows_processed": 0, "rows_affected": 0,
                     "errors": ["Entity or table_mapping not found"]}
 
-        table_name = entity[0]
+        table_name = safe_table_name(entity[0])
         rows_affected = 0
         errors = []
 
         for i, rec in enumerate(records):
             try:
-                cols = list(rec.keys())
+                cols = [safe_column_name(k) for k in rec.keys()]
                 vals = list(rec.values())
                 placeholders = ", ".join(f":v{j}" for j in range(len(vals)))
                 col_str = ", ".join(cols)
@@ -343,9 +344,9 @@ class DataJobEngine:
             return {"rows_processed": 0, "rows_affected": 0,
                     "errors": ["Entity or table_mapping not found"]}
 
-        table_name = entity[0]
+        table_name = safe_table_name(entity[0])
         updates = config.get("updates", [])
-        filter_field = config.get("filter_field", "id")
+        filter_field = safe_column_name(config.get("filter_field", "id"))
 
         rows_affected = 0
         errors = []
@@ -355,7 +356,8 @@ class DataJobEngine:
                 set_parts = []
                 params: Dict[str, Any] = {}
                 for j, (k, v) in enumerate(upd.get("set", {}).items()):
-                    set_parts.append(f"{k} = :sv{j}")
+                    safe_col = safe_column_name(k)
+                    set_parts.append(f"{safe_col} = :sv{j}")
                     params[f"sv{j}"] = v
 
                 record_id = upd.get("record_id")
@@ -387,7 +389,7 @@ class DataJobEngine:
             return {"rows_processed": 0, "rows_affected": 0,
                     "errors": ["Entity or table_mapping not found"]}
 
-        table_name = entity[0]
+        table_name = safe_table_name(entity[0])
         record_ids = config.get("record_ids", [])
 
         if not record_ids:
@@ -415,8 +417,8 @@ class DataJobEngine:
             return {"rows_processed": 0, "rows_affected": 0,
                     "errors": ["Entity or table_mapping not found"]}
 
-        table_name = entity[0]
-        agg_field = config.get("field", "id")
+        table_name = safe_table_name(entity[0])
+        agg_field = safe_column_name(config.get("field", "id"))
         agg_func = config.get("func", "count").upper()
 
         if agg_func not in ("COUNT", "SUM", "AVG", "MIN", "MAX"):

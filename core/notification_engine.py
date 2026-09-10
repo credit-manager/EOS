@@ -330,7 +330,11 @@ class NotificationEngine:
             {"id": notification_id, "uid": user_id, "now": now},
         )
         self.db.flush()
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         return result.rowcount > 0
 
     def mark_all_read(self, user_id: str, tenant_id: Optional[str] = None) -> int:
@@ -346,7 +350,11 @@ class NotificationEngine:
 
         result = self.db.execute(text(query), params)
         self.db.flush()
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         return result.rowcount
 
 

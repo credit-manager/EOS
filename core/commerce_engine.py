@@ -182,7 +182,11 @@ def create_item(db: Session, tenant_id: str, data: dict, user_id: str = "") -> d
     if user_id:
         audit_log(db, tenant_id, user_id, "create", "commerce_item", item_id,
                   new_values={"item_code": data["item_code"], "name": data["name"]})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return get_item(db, tenant_id, item_id)
 
 
@@ -211,7 +215,11 @@ def update_item(db: Session, tenant_id: str, item_id: str, data: dict, user_id: 
         audit_log(db, tenant_id, user_id, "update", "commerce_item", item_id,
                   old_values={k: old[k] for k in data if k in old},
                   new_values={k: data[k] for k in data})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return get_item(db, tenant_id, item_id)
 
 
@@ -386,7 +394,11 @@ def create_warehouse(db: Session, tenant_id: str, data: dict, user_id: str = "")
     if user_id:
         audit_log(db, tenant_id, user_id, "create", "commerce_warehouse", wh_id,
                   new_values={"code": data["code"], "name": data["name"]})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return get_warehouse(db, tenant_id, wh_id)
 
 
@@ -458,7 +470,11 @@ def create_customer(db: Session, tenant_id: str, data: dict, user_id: str = "") 
     if user_id:
         audit_log(db, tenant_id, user_id, "create", "commerce_customer", cid,
                   new_values={"customer_code": data["customer_code"], "name": data["name"]})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return get_customer(db, tenant_id, cid)
 
 
@@ -485,7 +501,11 @@ def update_customer(db: Session, tenant_id: str, customer_id: str, data: dict,
         audit_log(db, tenant_id, user_id, "update", "commerce_customer", customer_id,
                   old_values={k: old[k] for k in data if k in old},
                   new_values={k: data[k] for k in data})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return get_customer(db, tenant_id, customer_id)
 
 
@@ -554,7 +574,11 @@ def create_supplier(db: Session, tenant_id: str, data: dict, user_id: str = "") 
     if user_id:
         audit_log(db, tenant_id, user_id, "create", "commerce_supplier", sid,
                   new_values={"supplier_code": data["supplier_code"], "name": data["name"]})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return get_supplier(db, tenant_id, sid)
 
 
@@ -581,7 +605,11 @@ def update_supplier(db: Session, tenant_id: str, supplier_id: str, data: dict,
         audit_log(db, tenant_id, user_id, "update", "commerce_supplier", supplier_id,
                   old_values={k: old[k] for k in data if k in old},
                   new_values={k: data[k] for k in data})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return get_supplier(db, tenant_id, supplier_id)
 
 
@@ -617,7 +645,11 @@ def create_price_list(db: Session, tenant_id: str, data: dict, user_id: str = ""
     if user_id:
         audit_log(db, tenant_id, user_id, "create", "commerce_price_list", pid,
                   new_values={"list_name": data["name"]})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return {"id": pid, "list_name": data["name"], "currency": data.get("currency", "SAR")}
 
 

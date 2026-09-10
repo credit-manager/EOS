@@ -181,7 +181,11 @@ def enable_2fa(db, user_id: str, method: str = "totp") -> Dict:
             "VALUES (:id, :uid, :ch, FALSE, :now)"
         ), {"id": uid(), "uid": user_id, "ch": code_hash, "now": now()})
     
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     
     if pyotp:
         totp = pyotp.TOTP(secret)
@@ -210,7 +214,11 @@ def disable_2fa(db, user_id: str) -> bool:
         "DELETE FROM dbp_2fa_recovery_codes WHERE user_id = :uid"
     ), {"uid": user_id})
     
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return True
 
 
@@ -243,7 +251,11 @@ def verify_totp(db, user_id: str, code: str, ip: str = None) -> Tuple[bool, str]
             "UPDATE dbp_2fa_settings SET last_used_at = :now WHERE user_id = :uid"
         ), {"now": now(), "uid": user_id})
     
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return valid, "Invalid code" if not valid else "OK"
 
 
@@ -273,7 +285,11 @@ def verify_recovery_code(db, user_id: str, code: str, ip: str = None) -> Tuple[b
     ), {"now": now(), "uid": user_id})
     
     _log_attempt(db, user_id, True, ip, "recovery")
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     
     return True, "OK"
 

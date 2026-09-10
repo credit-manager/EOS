@@ -42,7 +42,11 @@ class AIEngine:
                 "trained_at": kw.get("trained_at"),
             },
         )
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         return mid
 
     def list_models(
@@ -78,7 +82,11 @@ class AIEngine:
             self.db.execute(
                 text(f"UPDATE dbp_ai_models SET {','.join(sets)} WHERE id=:id AND tenant_id=:tenant_id"), params
             )
-            self.db.commit()
+            try:
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+                raise
         return self.get_model(model_id, tenant_id)
 
     # ------------------------------------------------------------------ predictions
@@ -114,7 +122,11 @@ class AIEngine:
                 "expires_at": kw.get("expires_at"),
             },
         )
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         return pid
 
     def get_prediction(self, prediction_id: str, tenant_id: str) -> Optional[Dict]:
@@ -159,7 +171,11 @@ class AIEngine:
                 "tenant_id": tenant_id,
             },
         )
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         return self.get_prediction(prediction_id, tenant_id)
 
     # ------------------------------------------------------------------ recommendations
@@ -195,7 +211,11 @@ class AIEngine:
                 "impact_score": kw.get("impact_score"),
             },
         )
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         return rid
 
     def list_recommendations(
@@ -223,7 +243,11 @@ class AIEngine:
             ),
             {"ab": acknowledged_by, "id": rec_id, "tenant_id": tenant_id},
         )
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         return self._get_recommendation(rec_id, tenant_id)
 
     def _get_recommendation(self, rec_id: str, tenant_id: str) -> Optional[Dict]:
@@ -271,7 +295,11 @@ class AIEngine:
                 "severity": kw.get("severity", "medium"),
             },
         )
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         return aid
 
     def list_anomalies(
@@ -299,7 +327,11 @@ class AIEngine:
             ),
             {"rb": resolved_by, "id": anomaly_id, "tenant_id": tenant_id},
         )
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         return self._get_anomaly(anomaly_id, tenant_id)
 
     def _get_anomaly(self, anomaly_id: str, tenant_id: str) -> Optional[Dict]:

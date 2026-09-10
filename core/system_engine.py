@@ -26,7 +26,11 @@ class SystemEngine:
                      "WHERE tenant_id=:tid AND config_key=:ck"),
                 {"cv": json.dumps(config_value), "tid": tenant_id, "ck": config_key},
             )
-            self.db.commit()
+            try:
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+                raise
             return existing["id"]
         cid = str(uuid4())
         self.db.execute(
@@ -43,7 +47,11 @@ class SystemEngine:
                 "sens": kw.get("is_sensitive", False),
             },
         )
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         return cid
 
     def list_configs(self, tenant_id: str, category: str = None) -> List[Dict]:
@@ -64,7 +72,11 @@ class SystemEngine:
             text("DELETE FROM dbp_system_config WHERE tenant_id=:tid AND config_key=:ck"),
             {"tid": tenant_id, "ck": config_key},
         )
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         return {"deleted": config_key}
 
     # ---------------------------------------------------------- integration logs
@@ -90,7 +102,11 @@ class SystemEngine:
                 "dur": kw.get("duration_ms"),
             },
         )
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         return lid
 
     def list_integration_logs(self, tenant_id: str, company_id: str = None,
@@ -139,7 +155,11 @@ class SystemEngine:
                 "creator": kw.get("created_by"),
             },
         )
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         return iid
 
     def update_data_import(self, import_id: str, tenant_id: str, **kw) -> Dict:
@@ -158,7 +178,11 @@ class SystemEngine:
                 params[field] = val
         if sets:
             self.db.execute(text(f"UPDATE dbp_data_imports SET {', '.join(sets)} WHERE id=:id AND tenant_id=:tenant_id"), params)
-            self.db.commit()
+            try:
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+                raise
         updated = self.db.execute(
             text("SELECT * FROM dbp_data_imports WHERE id=:id AND tenant_id=:tenant_id"), {"id": import_id, "tenant_id": tenant_id},
         ).mappings().first()
@@ -202,7 +226,11 @@ class SystemEngine:
                 "creator": kw.get("created_by"),
             },
         )
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         return eid
 
     def list_data_exports(self, company_id: str, tenant_id: str = None,
