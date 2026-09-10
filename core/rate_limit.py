@@ -29,16 +29,21 @@ def _get_id(text: str) -> int:
 
 
 def _load_engine():
-    """Lazily obtain the shared SQLAlchemy engine."""
+    """Lazily obtain the shared SQLAlchemy engine — reuse the main database engine."""
     global _ENGINE, _TEXT
     if _ENGINE is None:
-        from sqlalchemy import create_engine, text as stext
-        url = os.getenv("DATABASE_URL")
-        if not url:
-            _ENGINE = None
-            _TEXT = stext
-            return _ENGINE, _TEXT
-        _ENGINE = create_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=10)
+        from sqlalchemy import text as stext
+        try:
+            from database import engine as main_engine
+            _ENGINE = main_engine
+        except ImportError:
+            from sqlalchemy import create_engine
+            url = os.getenv("DATABASE_URL")
+            if not url:
+                _ENGINE = None
+                _TEXT = stext
+                return _ENGINE, _TEXT
+            _ENGINE = create_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=10)
         _TEXT = stext
         with _ENGINE.begin() as conn:
             conn.execute(stext(
@@ -103,8 +108,6 @@ class RateLimiter:
         peer = request.client.host if request.client else ""
         forwarded = request.headers.get("X-Forwarded-For")
         if forwarded and self._trusted_proxy(peer):
-            # The first address is the original client under standard proxy
-            # forwarding semantics; malformed values are rejected from keying.
             candidate = forwarded.split(",")[0].strip()
             try:
                 ipaddress.ip_address(candidate)
@@ -118,11 +121,6 @@ class RateLimiter:
         return f"rl:{_get_id(key):016x}:{self.window_seconds}"
 
     def check(self, request: Request) -> None:
-        """
-        Check if request is allowed atomically against the shared DB.
-
-        Raises HTTPException if rate limit exceeded.
-        """
         engine, stext = _load_engine()
         if engine is None:
             return
@@ -134,32 +132,26 @@ class RateLimiter:
 
         conn = engine.connect()
         try:
-            while True:
-                conn.execute(stext("BEGIN"))
-                row = conn.execute(
+            conn.execute(stext("BEGIN"))
+            row = conn.execute(
+                stext(
+                    "SELECT window_start, request_count FROM dbp_rate_limits "
+                    "WHERE bucket = :b FOR UPDATE"
+                ),
+                {"b": bucket},
+            ).fetchone()
+
+            if row is None:
+                conn.execute(
                     stext(
-                        "SELECT window_start, request_count FROM dbp_rate_limits "
-                        "WHERE bucket = :b FOR UPDATE"
+                        "INSERT INTO dbp_rate_limits "
+                        "(bucket, window_start, request_count) VALUES (:b, :ws, 1)"
                     ),
-                    {"b": bucket},
-                ).fetchone()
-
-                if row is None:
-                    conn.execute(
-                        stext(
-                            "INSERT INTO dbp_rate_limits "
-                            "(bucket, window_start, request_count) "
-                            "VALUES (:b, :ws, 1)"
-                        ),
-                        {"b": bucket, "ws": cur_iso},
-                    )
-                    conn.execute(stext("COMMIT"))
-                    break
-
-                row_start = row[0]
+                    {"b": bucket, "ws": cur_iso},
+                )
+            else:
+                row_iso = str(row[0])[:19] if row[0] else ""
                 count = int(row[1])
-                row_iso = str(row_start)[:19] if row_start else ""
-
                 if row_iso != cur_iso:
                     conn.execute(
                         stext(
@@ -168,10 +160,7 @@ class RateLimiter:
                         ),
                         {"b": bucket, "ws": cur_iso},
                     )
-                    conn.execute(stext("COMMIT"))
-                    break
-
-                if count >= self.max_requests:
+                elif count >= self.max_requests:
                     conn.execute(stext("ROLLBACK"))
                     raise HTTPException(
                         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -180,24 +169,26 @@ class RateLimiter:
                             "Retry-After": str(self.window_seconds),
                             "X-RateLimit-Limit": str(self.max_requests),
                             "X-RateLimit-Remaining": "0",
-                        }
+                        },
                     )
-
-                conn.execute(
-                    stext(
-                        "UPDATE dbp_rate_limits SET request_count = request_count + 1 "
-                        "WHERE bucket = :b"
-                    ),
-                    {"b": bucket},
-                )
-                conn.execute(stext("COMMIT"))
-                break
+                else:
+                    conn.execute(
+                        stext(
+                            "UPDATE dbp_rate_limits SET request_count = request_count + 1 "
+                            "WHERE bucket = :b"
+                        ),
+                        {"b": bucket},
+                    )
+            conn.execute(stext("COMMIT"))
+        except Exception:
+            try:
+                conn.execute(stext("ROLLBACK"))
+            except Exception:
+                pass
+            raise
         finally:
             conn.close()
 
-
-# Pre-configured rate limiters
-# Usage: dependencies=[Depends(default_limiter.check)]
 
 default_limiter = RateLimiter(max_requests=100, window_seconds=60)
 auth_limiter = RateLimiter(max_requests=10, window_seconds=60)
