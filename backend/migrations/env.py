@@ -4,6 +4,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from backend.app.audit.models import AuditEvent
+from backend.app.auth.models import Tenant, TenantMembership, User
 from backend.app.config import get_settings
 from backend.app.db import Base
 from backend.app.metadata.models import MetadataEntity
@@ -15,7 +16,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-_model_registry = (AuditEvent, MetadataEntity, Record)
+_model_registry = (AuditEvent, MetadataEntity, Record, Tenant, TenantMembership, User)
 
 
 def run_migrations_offline() -> None:
