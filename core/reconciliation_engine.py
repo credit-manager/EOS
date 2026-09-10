@@ -3,52 +3,14 @@ EOS Bank Reconciliation Engine
 Links bank statements with payment transactions and accounting entries
 """
 import uuid, json
-from datetime import datetime
 from sqlalchemy import text
 
 
 class BankReconciliationEngine:
+    """Reconciliation operations; database schema is migration-owned."""
+
     def __init__(self, db):
         self.db = db
-        self._ensure_tables()
-
-    def _ensure_tables(self):
-        self.db.execute(text(
-            "CREATE TABLE IF NOT EXISTS dbp_bank_accounts ("
-            "id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text, "
-            "tenant_id TEXT NOT NULL, company_id TEXT, account_name TEXT NOT NULL, "
-            "bank_name TEXT, account_number TEXT, iban TEXT, "
-            "currency TEXT DEFAULT 'SAR', opening_balance DECIMAL(15,2) DEFAULT 0, "
-            "current_balance DECIMAL(15,2) DEFAULT 0, is_active BOOLEAN DEFAULT TRUE, "
-            "created_at TIMESTAMP DEFAULT NOW())"
-        ))
-        self.db.execute(text(
-            "CREATE TABLE IF NOT EXISTS dbp_bank_statements ("
-            "id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text, "
-            "tenant_id TEXT NOT NULL, bank_account_id TEXT NOT NULL, "
-            "statement_date DATE NOT NULL, opening_balance DECIMAL(15,2) NOT NULL, "
-            "closing_balance DECIMAL(15,2) NOT NULL, "
-            "status TEXT DEFAULT 'pending', imported_at TIMESTAMP DEFAULT NOW())"
-        ))
-        self.db.execute(text(
-            "CREATE TABLE IF NOT EXISTS dbp_bank_statement_lines ("
-            "id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text, "
-            "tenant_id TEXT NOT NULL, statement_id TEXT NOT NULL, "
-            "transaction_date DATE NOT NULL, description TEXT, "
-            "debit DECIMAL(15,2) DEFAULT 0, credit DECIMAL(15,2) DEFAULT 0, "
-            "balance DECIMAL(15,2) DEFAULT 0, reference TEXT, "
-            "matched_transaction_id TEXT, match_status TEXT DEFAULT 'unmatched', "
-            "created_at TIMESTAMP DEFAULT NOW())"
-        ))
-        self.db.execute(text(
-            "CREATE TABLE IF NOT EXISTS dbp_reconciliation_logs ("
-            "id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text, "
-            "tenant_id TEXT NOT NULL, bank_account_id TEXT NOT NULL, "
-            "statement_id TEXT, action TEXT NOT NULL, "
-            "details JSONB DEFAULT '{}', reconciled_by TEXT, "
-            "created_at TIMESTAMP DEFAULT NOW())"
-        ))
-        self.db.commit()
 
     def list_bank_accounts(self, tenant_id):
         rows = self.db.execute(text(
@@ -61,7 +23,7 @@ class BankReconciliationEngine:
         bid = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_bank_accounts "
-            "(id, tenant_id, company_id, account_name, bank_name, account_number, iban, currency_code, current_balance) "
+            "(id, tenant_id, company_id, account_name, bank_name, account_number, iban, currency, current_balance) "
             "VALUES (:id, :t, :t, :name, :bank, :acct, :iban, :cur, :cb)"
         ), {"id": bid, "t": tenant_id, "name": account_name, "bank": bank_name,
              "acct": account_number, "iban": iban, "cur": currency,
@@ -124,8 +86,8 @@ class BankReconciliationEngine:
             if payment_rows:
                 self.db.execute(text(
                     "UPDATE dbp_bank_statement_lines SET matched_transaction_id = :mid, match_status = 'auto_matched' "
-                    "WHERE id = :id"
-                ), {"mid": dict(payment_rows._mapping)["id"], "id": ld["id"]})
+                    "WHERE id = :id AND tenant_id = :t"
+                ), {"mid": dict(payment_rows._mapping)["id"], "id": ld["id"], "t": tenant_id})
                 matched += 1
         self.db.commit()
         self._log(tenant_id, None, statement_id, "auto_match", {"matched": matched})
@@ -134,8 +96,8 @@ class BankReconciliationEngine:
     def manual_match(self, tenant_id, line_id, transaction_id):
         self.db.execute(text(
             "UPDATE dbp_bank_statement_lines SET matched_transaction_id = :mid, match_status = 'manual_matched' "
-            "WHERE id = :id"
-        ), {"mid": transaction_id, "id": line_id})
+            "WHERE id = :id AND tenant_id = :t"
+        ), {"mid": transaction_id, "id": line_id, "t": tenant_id})
         self.db.commit()
         self._log(tenant_id, None, None, "manual_match", {"line_id": line_id, "transaction_id": transaction_id})
         return {"line_id": line_id, "transaction_id": transaction_id, "status": "manual_matched"}
@@ -143,8 +105,8 @@ class BankReconciliationEngine:
     def unreconcile(self, tenant_id, line_id):
         self.db.execute(text(
             "UPDATE dbp_bank_statement_lines SET matched_transaction_id = NULL, match_status = 'unmatched' "
-            "WHERE id = :id"
-        ), {"id": line_id})
+            "WHERE id = :id AND tenant_id = :t"
+        ), {"id": line_id, "t": tenant_id})
         self.db.commit()
         return {"line_id": line_id, "status": "unmatched"}
 
