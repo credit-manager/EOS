@@ -1,106 +1,19 @@
-# Dependencies
-node_modules/
-.venv/
-venv/
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
-ENV/
-.eggs/
-*.egg
-
-# Build artifacts
-dist/
-build/
-*.egg-info/
-.installed.cfg
-
-# Logs
-*.log
-logs/
-
-# Environment variables (NEVER commit secrets)
-.env
-.env.local
-.env.development
-.env.staging
-.env.production
-.env.production.local
-.env.*.local
-!.env.example
-!.env.production.example
-
-# IDE specific
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS generated
-.DS_Store
-Thumbs.db
-
-# Coverage
-.coverage
-htmlcov/
-.coverage.*
-coverage.xml
-
-# Testing
+*.py[cod]
 .pytest_cache/
 .mypy_cache/
-.tox/
 .ruff_cache/
-
-# SQLite databases
-*.db
-*.db-journal
-*.db-wal
-*.db-shm
-
-# Backups
-backups/
-*.bak
-*.backup
-
-# Alembic versions (managed by migrations)
-alembic/versions/*.pyc
-
-# Docker
-.dockerenv
-
-# Profiling
-profile.log
-cProfile.prof
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# Temp/status files
-P*.md
-P*.json
-p*_*.py
-IMPLEMENTATION*.md
-FINAL_*.md
-RELEASE*.md
-openapi_release_*.json
-SECURITY_REVIEW_*.md
-SECURITY_AUDIT.md
-
-# Duplicate directories
-load_tests/
-loadtests/
-
-# Old bootstrap
-eos_dbp_project/
-master_bootstrap.py
-
-# Secret files (NEVER commit)
-*.pem
-*.key
-*.cert
-*.crt
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+frontend/dist/
+coverage/
+htmlcov/
+*.log
+.DS_Store
+.vscode/
+.idea/

@@ -1,32 +1,12 @@
-# EOS / 2TO — Production Dockerfile
-# Single-project build: root frontend + root Python runtime.
-
-FROM node:20-bookworm-slim AS frontend-builder
-WORKDIR /frontend
-COPY frontend/package.json ./package.json
-COPY frontend/package-lock.json ./package-lock.json
-RUN npm ci --no-audit --no-fund
-COPY frontend/ ./
-RUN npm run build
-
-FROM python:3.12-slim AS python-builder
-WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev && rm -rf /var/lib/apt/lists/*
-COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
-
 FROM python:3.12-slim
-WORKDIR /app
-RUN groupadd -r eos && useradd -r -g eos eos
-RUN apt-get update && apt-get install -y --no-install-recommends libpq5 curl && rm -rf /var/lib/apt/lists/*
-COPY --from=python-builder /root/.local /home/eos/.local
-COPY --chown=eos:eos . .
-RUN rm -rf /app/frontend/dist
-COPY --from=frontend-builder --chown=eos:eos /frontend/dist /app/frontend/dist
-RUN chmod 0755 /app/docker/entrypoint.sh
-USER eos
-ENV PATH=/home/eos/.local/bin:$PATH
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 CMD curl -f http://localhost:8000/health || exit 1
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /app
+
+COPY pyproject.toml ./
+RUN pip install --no-cache-dir '.[test]'
+COPY backend ./backend
+COPY main.py ./main.py
+
 EXPOSE 8000
-ENTRYPOINT ["/app/docker/entrypoint.sh"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
