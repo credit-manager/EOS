@@ -5,12 +5,26 @@ from fastapi.testclient import TestClient
 from backend.app.main import app
 
 client = TestClient(app)
-TENANT_A = uuid4()
-TENANT_B = uuid4()
+
+
+def _register() -> tuple[dict[str, str], UUID]:
+    email = f"user-{uuid4()}@example.com"
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": email,
+            "password": "Correct-Horse-Battery-42",
+            "tenant_name": f"Tenant {uuid4()}",
+        },
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    return {"Authorization": f"Bearer {payload['access_token']}"}, UUID(payload["tenant_id"])
 
 
 def test_metadata_to_generic_crud_and_tenant_isolation() -> None:
-    headers = {"X-Tenant-ID": str(TENANT_A)}
+    headers, tenant_id = _register()
+    other_headers, _ = _register()
     payload = {
         "code": "subcontractor_evaluation",
         "name": "Subcontractor Evaluation",
@@ -30,6 +44,7 @@ def test_metadata_to_generic_crud_and_tenant_isolation() -> None:
     assert created.status_code == 201
     record = created.json()
     record_id = UUID(record["id"])
+    assert record["tenant_id"] == str(tenant_id)
     assert record["version"] == 1
 
     listing = client.get("/api/v1/entities/subcontractor_evaluation/records", headers=headers)
@@ -45,14 +60,13 @@ def test_metadata_to_generic_crud_and_tenant_isolation() -> None:
 
     other_tenant = client.get(
         f"/api/v1/entities/subcontractor_evaluation/records/{record_id}",
-        headers={"X-Tenant-ID": str(TENANT_B)},
+        headers=other_headers,
     )
     assert other_tenant.status_code == 404
 
 
 def test_generic_record_type_validation() -> None:
-    tenant = uuid4()
-    headers = {"X-Tenant-ID": str(tenant)}
+    headers, _ = _register()
     payload = {
         "code": "typed_example",
         "name": "Typed Example",
@@ -89,8 +103,7 @@ def test_generic_record_type_validation() -> None:
 
 
 def test_duplicate_metadata_field_codes_are_rejected() -> None:
-    tenant = uuid4()
-    headers = {"X-Tenant-ID": str(tenant)}
+    headers, _ = _register()
     payload = {
         "code": "duplicate_fields",
         "name": "Duplicate Fields",
@@ -101,3 +114,24 @@ def test_duplicate_metadata_field_codes_are_rejected() -> None:
     }
     response = client.post("/api/v1/metadata/entities", json=payload, headers=headers)
     assert response.status_code == 422
+
+
+def test_metadata_administration_requires_admin_role() -> None:
+    headers, _ = _register()
+    from backend.app.auth.models import TenantMembership
+    from backend.app.auth.models import User
+    from backend.app.db import SessionLocal
+
+    me = client.get("/api/v1/auth/me", headers=headers).json()
+    with SessionLocal() as db:
+        user = db.get(User, UUID(me["user_id"]))
+        assert user is not None
+        membership = db.scalar(
+            __import__("sqlalchemy").select(TenantMembership).where(TenantMembership.user_id == user.id)
+        )
+        assert membership is not None
+        membership.role = "member"
+        db.commit()
+
+    payload = {"code": "member_blocked", "name": "Blocked", "fields": [{"code": "name", "type": "text"}]}
+    assert client.post("/api/v1/metadata/entities", json=payload, headers=headers).status_code == 403
