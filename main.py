@@ -1,15 +1,10 @@
 """
 EOS / 2TO ERP Platform — single canonical application entrypoint.
 
-The repository is one deployable project. The root application remains the
-compatibility/runtime surface while eos_v2 is treated as an internal bounded
-architecture being integrated into this same application, not as a second
-standalone product.
+The repository is one deployable project. The root application is the only
+runtime surface; eos_v2 is integrated as internal application/domain code.
 """
 
-# The existing production runtime is intentionally retained during convergence:
-# it contains the broadest verified module/API surface. New capabilities should
-# be implemented in the canonical architecture and exposed through this app.
 from fastapi import FastAPI, Request, Response, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -44,6 +39,17 @@ from routers import (
     payment_api, currency_api, reconciliation_api, portal_customer_api,
     reporting_api,
 )
+
+from eos_v2.app.config import Settings as V2Settings
+from eos_v2.infrastructure.db.session import Database as V2Database, DatabaseConfig as V2DatabaseConfig
+from eos_v2.interfaces.api.auth import router as v2_auth_router
+from eos_v2.interfaces.api.metadata import router as v2_metadata_router
+from eos_v2.interfaces.api.records import router as v2_records_router
+from eos_v2.interfaces.api.accounting import router as v2_accounting_router
+from eos_v2.interfaces.api.foundation import router as v2_foundation_router
+from eos_v2.interfaces.api.industry import router as v2_industry_router
+from eos_v2.interfaces.api.ai_composer import router as v2_ai_composer_router
+from eos_v2.interfaces.api.web import router as v2_web_router
 
 MAX_BODY_BYTES = int(os.getenv("EOS_MAX_BODY_BYTES", str(10 * 1024 * 1024)))
 
@@ -147,6 +153,18 @@ for router, dependencies in (
 ):
     app.include_router(router, dependencies=dependencies or [])
 
+for router in (
+    v2_auth_router,
+    v2_metadata_router,
+    v2_records_router,
+    v2_accounting_router,
+    v2_foundation_router,
+    v2_industry_router,
+    v2_ai_composer_router,
+    v2_web_router,
+):
+    app.include_router(router)
+
 app.include_router(health_router)
 
 
@@ -157,6 +175,21 @@ async def validate_configuration():
         errors.append("DATABASE_URL not set")
     if auth_mode == "production" and not os.getenv("EOS_SECRET_KEY"):
         errors.append("EOS_SECRET_KEY required in production mode")
+    try:
+        v2_settings = V2Settings.from_env()
+        v2_settings.validate()
+        app.state.v2_settings = v2_settings
+        app.state.database = V2Database(V2DatabaseConfig(v2_settings.database_url)) if v2_settings.database_url else None
+        if v2_settings.auth_mode == "oidc":
+            from jwt import PyJWKClient
+            app.state.oidc_jwks_client = PyJWKClient(v2_settings.oidc_jwks_url, cache_jwk_set=True, lifespan=300)
+        else:
+            app.state.oidc_jwks_client = None
+    except (ValueError, TypeError) as exc:
+        errors.append(f"canonical runtime configuration: {exc}")
+        app.state.v2_settings = None
+        app.state.database = None
+        app.state.oidc_jwks_client = None
     if errors:
         print(f"CONFIGURATION ERRORS: {', '.join(errors)}")
         if auth_mode == "production":
@@ -173,11 +206,13 @@ async def graceful_shutdown():
         from database import engine
         engine.dispose()
     except Exception as exc:
-        logging.getLogger("eos.shutdown").warning("Error disposing engine: %s", exc)
+        logging.getLogger("eos.shutdown").warning("Error disposing legacy engine: %s", exc)
+    database = getattr(app.state, "database", None)
+    if database is not None:
+        database.engine.dispose()
     audit_logger.log_event(event="platform_shutdown", details={"version": "2.0.0"})
 
 
-# Canonical frontend: /frontend is the only source/artifact location.
 _REACT_DIST = os.path.join(os.path.dirname(__file__), "frontend", "dist")
 if os.path.isdir(_REACT_DIST):
     assets_dir = os.path.join(_REACT_DIST, "assets")
@@ -218,4 +253,4 @@ async def serve_landing():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=False)
