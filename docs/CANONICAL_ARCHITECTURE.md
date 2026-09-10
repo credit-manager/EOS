@@ -1,38 +1,39 @@
-# EOS / 2TO — Canonical Single-Project Architecture
+# EOS / 2TO Canonical Architecture
 
-## Decision
+## Status
 
-EOS / 2TO is one deployable project and one production runtime. The repository root `main.py` is the sole application entrypoint.
+The repository is **one deployable project** with **one application entrypoint**: `main.py`.
 
-`eos_v2/` is an internal architecture/package inside this same project. It is not a second application, product, deployment, or executable entrypoint.
+`eos_v2/` is not a second application. Its domain, application, infrastructure and API components are internal modules being integrated into the root runtime. No standalone `eos_v2` ASGI application or entrypoint remains.
 
-## Runtime
+The legacy implementation (`core/`, `routers/`) is retained only where it still provides production capabilities that have not yet been replaced by the integrated architecture. It is frozen for new feature development except for required security/reliability fixes.
 
-- Production server: `main:app`
-- Frontend source: `frontend/`
-- Frontend artifact: `frontend/dist/`
-- Backend: root application plus internal packages
-- Database/migrations: repository-wide canonical database
-- CI/CD: repository-wide workflows
+## Current integration
 
-The former `eos_v2/main.py` executable entrypoint has been removed so the repository no longer advertises a second runnable application.
+The root FastAPI application includes the integrated v2 metadata, records, accounting, foundation, industry and AI API routers. They run in the same process and use the same deployment configuration and PostgreSQL connection.
 
-## Integration rule
+The React application is sourced only from `frontend/` and is served from its build artifact under `frontend/dist`.
 
-Legacy capability is migrated into the canonical root runtime before deletion. A capability is considered migrated only when its implementation, API contract, persistence, security/tenant behavior, tests, frontend usage where applicable, and CI coverage all work through the canonical runtime.
+## Deletion gate for remaining legacy code
 
-The `core/`, `routers/`, and `eos_v2/` directories may coexist temporarily as internal packages during convergence, but they do not represent separate projects.
+Legacy modules must be deleted only after every capability they provide has a verified replacement in the integrated architecture and the following gates pass:
 
-## Deletion gate
+1. PostgreSQL migration on a disposable database.
+2. Metadata -> records -> accounting E2E through real application/API boundaries.
+3. Authentication and tenant isolation tests.
+4. Frontend build and functional tests against the canonical API.
+5. CI green on the single root runtime.
+6. Migration ledger closed with no unresolved capability gaps.
+7. No remaining production imports or routes depend on the legacy implementation being removed.
 
-A legacy package/file may be deleted only after:
+Until all gates pass, deleting `core/` or `routers/` wholesale would risk removing verified functionality. The correct migration operation is capability-by-capability replacement followed by deletion of the obsolete implementation.
 
-1. Its production capability has a canonical replacement.
-2. API consumers have been migrated.
-3. Database behavior and migrations remain compatible.
-4. Tenant isolation/authentication is covered by integration tests.
-5. Frontend behavior is covered by the canonical frontend build/tests.
-6. CI passes using only the canonical runtime.
-7. No remaining import/reference points to the deleted capability.
+## Runtime contract
 
-Deletion is the final cleanup phase of the merge, not the merge itself.
+Run the platform through:
+
+```text
+uvicorn main:app
+```
+
+There is no second `eos_v2.main` runtime.
