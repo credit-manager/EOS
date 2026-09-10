@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextvars
+import re
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, event
@@ -18,6 +19,7 @@ current_tenant_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "current_tenant_id", default=None
 )
 RLS_CONTEXT_PARAM = "app.tenant_id"
+_TENANT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
 def _get_database_url() -> str:
@@ -58,12 +60,17 @@ if is_production:
 
 @event.listens_for(engine, "begin")
 def _set_tenant_on_begin(conn):
-    """Apply the authenticated tenant id as a transaction-local RLS context."""
+    """Apply authenticated tenant id as transaction-local RLS context."""
     tid = current_tenant_id.get()
     if tid is None:
         return
-    safe = str(tid).replace("'", "''")
-    conn.exec_driver_sql(f"SET LOCAL {RLS_CONTEXT_PARAM} = '{safe}'")
+    tenant = str(tid)
+    if not _TENANT_ID_RE.fullmatch(tenant):
+        raise ValueError("invalid tenant identifier")
+    conn.exec_driver_sql(
+        "SELECT set_config('app.tenant_id', %s, true)",
+        (tenant,),
+    )
 
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
