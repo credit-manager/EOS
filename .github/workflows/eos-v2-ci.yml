@@ -81,3 +81,10 @@ jobs:
         run: python -c "import locust; print('locust', locust.__version__)"
       - name: Validate Locust scenario
         run: python -c "import loadtests.locustfile; print('loadtest scenario: PASS')"
+
+  legacy-skip:
+    if: github.ref != 'refs/heads/eos-v2-rebuild' && github.event_name != 'workflow_dispatch'
+    name: legacy v2 pipeline not applicable to commercial branch
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "EOS v2 CI is intentionally isolated from the commercial readiness branch."
