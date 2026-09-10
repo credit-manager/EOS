@@ -9,12 +9,10 @@ from database import get_db
 from core.auth import require_permission, get_current_user
 from core.rate_limit import read_limiter, write_limiter
 from core.accounting_engine import AccountingEngine
-
+from core.schemas import AccountCreate, JournalEntryCreate, JournalLineCreate
 
 router = APIRouter(prefix="/api/v1/dynamic", tags=["Accounting Engine"])
 
-
-# ── CHART OF ACCOUNTS ──
 
 @router.get("/companies/{company_id}/accounts", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def list_accounts(company_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -27,19 +25,20 @@ async def get_account_tree(company_id: str, user: dict = Depends(get_current_use
 
 
 @router.post("/companies/{company_id}/accounts", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_account(company_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    if not body.get("code") or not body.get("name_en") or not body.get("account_type"):
-        raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": "code, name_en, account_type required"}})
-    aid = AccountingEngine(db).create_account(user.get("tenant_id"), company_id, body["code"], body["name_en"],
-                                              body["account_type"], parent_id=body.get("parent_id"),
-                                              name_ar=body.get("name_ar"), opening_balance=body.get("opening_balance", 0))
+async def create_account(company_id: str, body: AccountCreate, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    name_en = body.name_en or body.name
+    if not name_en:
+        raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": "name_en or name is required"}})
+    aid = AccountingEngine(db).create_account(
+        user.get("tenant_id"), company_id, body.code, name_en, body.account_type,
+        parent_id=body.parent_id, name_ar=body.name_ar, currency_code=body.currency_code,
+        opening_balance=body.opening_balance, description=body.description,
+    )
     if not aid:
         raise HTTPException(409, detail={"status": "error", "error": {"code": "DUPLICATE", "message": "Account code already exists or invalid type"}})
     db.commit()
     return {"status": "success", "data": {"id": aid}}
 
-
-# ── JOURNAL ENTRIES ──
 
 @router.get("/companies/{company_id}/journal-entries", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def list_journal_entries(company_id: str, status: Optional[str] = None,
@@ -48,14 +47,13 @@ async def list_journal_entries(company_id: str, status: Optional[str] = None,
 
 
 @router.post("/companies/{company_id}/journal-entries", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def create_journal_entry(company_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    if not body.get("entry_date") or not body.get("entry_type"):
-        raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": "entry_date and entry_type required"}})
+async def create_journal_entry(company_id: str, body: JournalEntryCreate, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     jeid = AccountingEngine(db).create_journal_entry(
-        user.get("tenant_id"), company_id, body["entry_date"], body["entry_type"],
-        description=body.get("description"), reference=body.get("reference"),
-        fiscal_year_id=body.get("fiscal_year_id"),
-        created_by=user.get("id") or user.get("user_id"))
+        user.get("tenant_id"), company_id, body.entry_date.isoformat(), body.entry_type,
+        description=body.description, reference=body.reference,
+        fiscal_year_id=body.fiscal_year_id,
+        created_by=user.get("id") or user.get("user_id"),
+    )
     if not jeid:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "INVALID", "message": "Invalid entry type"}})
     db.commit()
@@ -71,15 +69,14 @@ async def get_journal_entry(je_id: str, user: dict = Depends(get_current_user), 
 
 
 @router.post("/journal-entries/{je_id}/lines", dependencies=[Depends(require_permission("dynamic", "create")), Depends(write_limiter.check)])
-async def add_journal_line(je_id: str, body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    if not body.get("account_id"):
-        raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": "account_id required"}})
+async def add_journal_line(je_id: str, body: JournalLineCreate, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     lid = AccountingEngine(db).add_journal_line(
-        je_id, body["account_id"], user.get("tenant_id"),
-        debit=body.get("debit", 0), credit=body.get("credit", 0),
-        description=body.get("description"), cost_center_id=body.get("cost_center_id"))
+        je_id, body.account_id, user.get("tenant_id"),
+        debit=body.debit, credit=body.credit,
+        description=body.description, cost_center_id=body.cost_center_id,
+    )
     if not lid:
-        raise HTTPException(400, detail={"status": "error", "error": {"code": "INVALID", "message": "Must specify debit or credit (non-zero)"}})
+        raise HTTPException(400, detail={"status": "error", "error": {"code": "INVALID", "message": "Must specify exactly one non-zero debit or credit"}})
     db.commit()
     return {"status": "success", "data": {"id": lid}}
 
@@ -92,8 +89,6 @@ async def post_journal_entry(je_id: str, user: dict = Depends(get_current_user),
     db.commit()
     return {"status": "success", "data": result}
 
-
-# ── TRIAL BALANCE ──
 
 @router.get("/companies/{company_id}/trial-balance", dependencies=[Depends(require_permission("dynamic", "read")), Depends(read_limiter.check)])
 async def get_trial_balance(company_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
