@@ -9,7 +9,13 @@ from ..config import get_settings
 from ..db import get_db
 from .models import Tenant, TenantMembership, User
 from .schemas import MeResponse, RegisterRequest, TokenRequest, TokenResponse
-from .security import Principal, create_access_token, hash_password, require_principal, verify_password
+from .security import (
+    Principal,
+    create_access_token,
+    hash_password,
+    require_principal,
+    verify_password,
+)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
