@@ -2,14 +2,14 @@
 
 The legacy initial migration does not create these API tables on a fresh
 PostgreSQL database. This additive migration is attached to the canonical
-release head so a fresh install and an existing production database converge
+release chain so a fresh install and an existing production database converge
 to the same schema. Existing tables and indexes are left intact.
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = "20260905_restore_api_core_tables"
-down_revision = "20260910_refresh_mfa_state"
+down_revision = "20260910_builder_ddl_hardening"
 branch_labels = None
 depends_on = None
 
