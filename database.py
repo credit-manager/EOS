@@ -1,7 +1,8 @@
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 import os
 import contextvars
+import re
 from dotenv import load_dotenv
 
 # Load .env file from project root
@@ -19,12 +20,7 @@ RLS_CONTEXT_PARAM = "app.tenant_id"
 
 
 def _get_database_url() -> str:
-    """
-    Get DATABASE_URL from environment.
-
-    No hardcoded passwords. No fallback to credentials.
-    Raises ValueError if not set.
-    """
+    """Get DATABASE_URL from the environment; never use hardcoded credentials."""
     url = os.getenv("DATABASE_URL")
     if not url:
         raise ValueError(
@@ -57,34 +53,34 @@ if is_production:
 
 @event.listens_for(engine, "begin")
 def _set_tenant_on_begin(conn):
-    """Inject current request tenant into the transaction so RLS policies filter rows."""
-    import re
+    """Inject the authenticated tenant into the transaction for PostgreSQL RLS."""
     tid = current_tenant_id.get()
-    if tid is not None:
-        tid_str = str(tid).strip()
-        # Validate tenant_id is a safe identifier (UUID or alphanumeric with underscores/hyphens)
-        # '*' is a special wildcard used for cross-tenant operations (email verification, password reset)
-        if tid_str != "*" and not re.match(r'^[a-zA-Z0-9_-]{1,128}$', tid_str):
-            raise ValueError(f"Invalid tenant_id format: {tid_str!r}")
-        # Use dollar-quoting for safety — no spaces around value
-        conn.exec_driver_sql(f"SET LOCAL {RLS_CONTEXT_PARAM} = $${tid_str}$$")
+    if tid is None:
+        return
+
+    tid_str = str(tid).strip()
+    # '*' is reserved for explicitly approved cross-tenant operations.
+    if tid_str != "*" and not re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", tid_str):
+        raise ValueError(f"Invalid tenant_id format: {tid_str!r}")
+
+    conn.exec_driver_sql(f"SET LOCAL {RLS_CONTEXT_PARAM} = $${tid_str}$$")
 
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+
 def get_db():
-    """Yield a DB session. If a tenant is bound to the current context (via
-    authentication), it is applied as app.tenant_id for RLS on this session."""
+    """Yield a DB session with the current tenant RLS context when authenticated."""
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
 
+
 def get_db_no_rls():
-    """Yield a DB session with RLS disabled. For operations that need cross-tenant
-    access (email verification, password reset, etc.)."""
+    """Yield a session for explicitly authorized cross-tenant operations."""
     db = SessionLocal()
     try:
         db.execute(text("SET LOCAL row_security = off"))
