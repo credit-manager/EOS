@@ -1,26 +1,33 @@
-# EOS v2 Migration Gate
+# EOS / 2TO — Single Project Consolidation Status
 
 ## Decision
 
-`eos_v2/` is the canonical target. Legacy code is frozen and remains temporarily as migration source.
+The repository is now treated as **one deployable project**. The canonical runtime is the root `main.py`; the canonical frontend source is `frontend/`.
 
-## Verified from `main`
+`eos_v2/` is retained only as an internal architecture/library being progressively integrated into the root application. It is not a second deployable project.
 
-- `eos_v2/main.py` creates the application through `eos_v2.app.create_app()`.
-- v2 exposes authentication, metadata, records, accounting, foundation, industry, and AI-composer API boundaries.
-- The construction lifecycle test exercises metadata definitions, dynamic records, purchasing, inventory, project cost, lifecycle transitions, and accounting posting.
-- The construction lifecycle test currently uses in-memory record/accounting repositories; therefore it is not yet proof of a PostgreSQL/API production path.
+## Completed in this consolidation step
 
-## Blocking gates before deletion
+- Removed the nested `erp-system/` project tree.
+- Removed the nested `eos-system/` project tree.
+- Promoted `erp-system/frontend/` to the repository-root `frontend/` path so its real metadata-driven UI and authentication work are not discarded.
+- Updated the root Docker build to install/build `frontend/` and serve `frontend/dist`.
+- Updated frontend CI to build/test `frontend/` rather than the deleted nested path.
+- Kept the broad root backend runtime and its API surface intact while convergence proceeds.
 
-- [ ] Real PostgreSQL record repository path proven by integration test.
-- [ ] Real HTTP API E2E for metadata -> record -> accounting.
-- [ ] Frontend canonical source/build/functional path proven against v2.
-- [ ] Authentication and tenant isolation proven on v2 through integration tests.
-- [ ] Capability inventory for legacy `core/`, `routers/`, and `eos-system/` has zero unresolved production capabilities.
-- [ ] CI runs the canonical v2 backend, database integration, and frontend path.
-- [ ] Legacy deletion performed only after all gates are checked.
+## Important architectural rule
 
-## Rule
+There is one product, one runtime entrypoint, one frontend source, one deployment pipeline and one repository. `eos_v2/` is not independently deployable and must not acquire a second deployment path.
 
-Do not delete legacy directories merely because v2 has a cleaner architecture. Deletion is a controlled migration operation, not a refactor-by-assumption.
+## Remaining convergence work
+
+- Integrate proven v2 domain/application/infrastructure capabilities into the root runtime without losing existing production capabilities.
+- Remove duplicate legacy router/engine implementations only after their behavior is represented by the unified application layer and regression tests pass.
+- Consolidate database migration ownership into one authoritative migration path.
+- Make the v2 PostgreSQL/API E2E path run through the root application.
+- Remove remaining obsolete v2-specific deployment/workflow artifacts once their checks are incorporated into the single root CI.
+- Run the complete root CI and frontend certification before merging this branch.
+
+## Non-negotiable
+
+No functionality is deleted merely to make the tree look clean. A component may be removed only after its behavior is either migrated into the unified root application or proven redundant by tests.
