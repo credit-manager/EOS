@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_ALEMBIC_HEAD: 20260910_refresh_mfa_state
+  EXPECTED_ALEMBIC_HEAD: 20260910_commercial_schema_merge
 
 jobs:
   frontend-build:
@@ -80,9 +80,7 @@ jobs:
           POSTGRES_DB: eos_migration
         options: >-
           --health-cmd "pg_isready -U migration_user -d eos_migration"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          --health-interval 5s --health-timeout 5s --health-retries 10
         ports:
           - 5432:5432
     steps:
@@ -101,7 +99,7 @@ jobs:
           SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
           EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
           ENVIRONMENT: testing
-          EXPECTED_ALEMBIC_HEAD: 20260910_refresh_mfa_state
+          EXPECTED_ALEMBIC_HEAD: 20260910_commercial_schema_merge
         run: |
           alembic upgrade head
           test "$(alembic heads | grep -c "^${EXPECTED_ALEMBIC_HEAD}")" -eq 1
@@ -154,9 +152,7 @@ jobs:
           POSTGRES_DB: eos_rls_e2e
         options: >-
           --health-cmd "pg_isready -U test_user -d eos_rls_e2e"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          --health-interval 5s --health-timeout 5s --health-retries 10
         ports:
           - 5432:5432
     steps:
@@ -188,9 +184,7 @@ jobs:
           POSTGRES_DB: eos_api_e2e
         options: >-
           --health-cmd "pg_isready -U test_user -d eos_api_e2e"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          --health-interval 5s --health-timeout 5s --health-retries 10
         ports:
           - 5432:5432
     steps:
@@ -253,19 +247,14 @@ jobs:
           POSTGRES_DB: eos_test
         options: >-
           --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          --health-interval 10s --health-timeout 5s --health-retries 5
         ports:
           - 5432:5432
       redis:
         image: redis:7
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        
+          --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
