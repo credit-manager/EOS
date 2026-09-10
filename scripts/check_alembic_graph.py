@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSIONS = ROOT / "alembic" / "versions"
-EXPECTED_HEAD = "20260910_commercial_schema_merge"
+EXPECTED_HEAD = "20260910_rate_limits"
 
 
 def parse_parents(node: ast.AST | None) -> list[str]:
