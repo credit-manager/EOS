@@ -8,10 +8,10 @@ import os
 import secrets
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from database import current_tenant_id, get_db
 from core.auth import get_current_user, require_permission
@@ -23,6 +23,7 @@ from core.schemas import RegisterRequest, LoginRequest
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 _REFRESH_DAYS = 30
+_REFRESH_COOKIE = "eos_refresh_token"
 
 
 class TokenRequest(BaseModel):
@@ -30,7 +31,9 @@ class TokenRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str = Field(..., min_length=40, max_length=512)
+    # Legacy clients may still send this field. Browser clients should use the
+    # HttpOnly cookie, which is not readable from JavaScript.
+    refresh_token: str | None = Field(default=None, min_length=40, max_length=512)
 
 
 class PasswordResetRequest(BaseModel):
@@ -53,6 +56,22 @@ def _err(sc, code, msg):
 
 def _refresh_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=_REFRESH_COOKIE,
+        value=token,
+        max_age=_REFRESH_DAYS * 24 * 60 * 60,
+        httponly=True,
+        secure=resolve_auth_mode() == "production",
+        samesite="lax",
+        path="/api/v1/auth",
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(key=_REFRESH_COOKIE, path="/api/v1/auth")
 
 
 def _auth_tenant(db: Session, function_name: str, value: str):
@@ -83,20 +102,12 @@ def _issue_access_token(result: dict, *, mfa_verified: bool = False) -> str:
         mode = resolve_auth_mode()
         if mode == "production":
             from core.production_auth import create_access_token
-            return create_access_token(
-                subject=str(result["user_id"]),
-                extra_data={
-                    "tenant_id": result["tenant_id"],
-                    "email": result["email"],
-                    "roles": [result["role"]],
-                    "mfa_verified": bool(mfa_verified),
-                },
-            )
+            return create_access_token(subject=str(result["user_id"]), extra_data={
+                "tenant_id": result["tenant_id"], "email": result["email"],
+                "roles": [result["role"]], "mfa_verified": bool(mfa_verified),
+            })
         from core.auth import create_test_token
-        return create_test_token(
-            tenant_id=result["tenant_id"], user_id=str(result["user_id"]),
-            email=result["email"], roles=[result["role"]],
-        )
+        return create_test_token(tenant_id=result["tenant_id"], user_id=str(result["user_id"]), email=result["email"], roles=[result["role"]])
     except (HTTPException, ValueError) as exc:
         if isinstance(exc, HTTPException):
             raise
@@ -117,16 +128,8 @@ async def register(body: RegisterRequest, request: Request, db: Session = Depend
         company_name = body.company_name
         company_id = str(uuid.uuid4())
         company_code = (body.company_code or company_name.lower().replace(" ", "_"))[:30]
-        db.execute(
-            text("INSERT INTO dbp_companies (id, tenant_id, code, name_en, name_ar) VALUES (:id, :tid, :code, :name, :name)"),
-            {"id": company_id, "tid": tenant_id, "code": company_code, "name": company_name},
-        )
-        result = UserEngine(db).register(
-            tenant_id=tenant_id, email=body.email, password=body.password,
-            first_name=body.first_name, last_name=body.last_name,
-            first_name_ar=body.first_name_ar, last_name_ar=body.last_name_ar,
-            phone=body.phone, role="admin",
-        )
+        db.execute(text("INSERT INTO dbp_companies (id, tenant_id, code, name_en, name_ar) VALUES (:id, :tid, :code, :name, :name)"), {"id": company_id, "tid": tenant_id, "code": company_code, "name": company_name})
+        result = UserEngine(db).register(tenant_id=tenant_id, email=body.email, password=body.password, first_name=body.first_name, last_name=body.last_name, first_name_ar=body.first_name_ar, last_name_ar=body.last_name_ar, phone=body.phone, role="admin")
         if not result["success"]:
             db.rollback()
             raise _err(400, "REGISTER_FAILED", result["error"])
@@ -134,16 +137,9 @@ async def register(body: RegisterRequest, request: Request, db: Session = Depend
         email_svc = get_email_service()
         frontend_url = os.getenv("EOS_FRONTEND_URL", "http://localhost:3000")
         verification_token = result.get("verification_token", "")
-        tpl = EmailTemplateEngine.verification_email(
-            f"{frontend_url}/verify-email?token={verification_token}", body.first_name
-        )
+        tpl = EmailTemplateEngine.verification_email(f"{frontend_url}/verify-email?token={verification_token}", body.first_name)
         email_svc.send(to_email=body.email, subject=tpl["subject"], html_body=tpl["html"], text_body=tpl.get("text"))
-        return {"status": "success", "data": {
-            "user_id": result["user_id"], "tenant_id": tenant_id, "company_id": company_id,
-            "email": result["email"], "requires_verification": result["requires_verification"],
-            "verification_token": verification_token if email_svc.__class__.__name__ == "ConsoleEmailProvider" else None,
-            "message": "Registration successful. Please verify your email.",
-        }}
+        return {"status": "success", "data": {"user_id": result["user_id"], "tenant_id": tenant_id, "company_id": company_id, "email": result["email"], "requires_verification": result["requires_verification"], "verification_token": verification_token if email_svc.__class__.__name__ == "ConsoleEmailProvider" else None, "message": "Registration successful. Please verify your email."}}
     except HTTPException:
         raise
     except Exception:
@@ -175,7 +171,7 @@ async def verify_email(body: TokenRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", dependencies=[Depends(auth_limiter.check)])
-async def login(body: LoginRequest, db: Session = Depends(get_db)):
+async def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
     email = body.email
     tenant_token = _auth_tenant(db, "eos_auth_tenant_by_email", email)
     if tenant_token is None:
@@ -185,14 +181,12 @@ async def login(body: LoginRequest, db: Session = Depends(get_db)):
         if not result["success"]:
             raise _err(403 if result.get("requires_verification") else 401, "LOGIN_FAILED", result["error"])
         mfa_required = _mfa_enabled(db, str(result["user_id"]))
-        token = _issue_access_token(result, mfa_verified=not mfa_required)
-        refresh_token = _issue_refresh_token(db, result["user_id"], result["tenant_id"], mfa_verified=not mfa_required)
+        access = _issue_access_token(result, mfa_verified=not mfa_required)
+        refresh = _issue_refresh_token(db, result["user_id"], result["tenant_id"], mfa_verified=not mfa_required)
         company = db.execute(text("SELECT id FROM dbp_companies WHERE tenant_id = :tenant_id ORDER BY id LIMIT 1"), {"tenant_id": result["tenant_id"]}).fetchone()
         db.commit()
-        return {"status": "success", "data": {
-            "access_token": token, "refresh_token": refresh_token, "token_type": "bearer", "expires_in": 1800,
-            "user": {"id": result["user_id"], "email": result["email"], "first_name": result.get("first_name"), "last_name": result.get("last_name"), "tenant_id": result["tenant_id"], "company_id": company[0] if company else None, "role": result["role"], "mfa_required": mfa_required},
-        }}
+        _set_refresh_cookie(response, refresh)
+        return {"status": "success", "data": {"access_token": access, "token_type": "bearer", "expires_in": 1800, "user": {"id": result["user_id"], "email": result["email"], "first_name": result.get("first_name"), "last_name": result.get("last_name"), "tenant_id": result["tenant_id"], "company_id": company[0] if company else None, "role": result["role"], "mfa_required": mfa_required}}}
     except HTTPException:
         db.rollback()
         raise
@@ -204,29 +198,34 @@ async def login(body: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/refresh", dependencies=[Depends(auth_limiter.check)])
-async def refresh_token(body: RefreshRequest, db: Session = Depends(get_db)):
-    raw = body.refresh_token.strip()
+async def refresh_token(body: RefreshRequest, response: Response, cookie_token: str | None = Cookie(default=None, alias=_REFRESH_COOKIE), db: Session = Depends(get_db)):
+    raw = (body.refresh_token or cookie_token or "").strip()
+    if not raw or len(raw) < 40:
+        _clear_refresh_cookie(response)
+        raise _err(401, "INVALID_REFRESH_TOKEN", "Invalid refresh token")
     token_hash = _refresh_hash(raw)
     tenant_token = _auth_tenant(db, "eos_auth_tenant_by_refresh_hash", token_hash)
     if tenant_token is None:
+        _clear_refresh_cookie(response)
         raise _err(401, "INVALID_REFRESH_TOKEN", "Invalid refresh token")
     try:
         now = datetime.now(timezone.utc)
         row = db.execute(text("SELECT id, user_id, tenant_id, family_id, mfa_verified, expires_at, rotated_at, revoked_at FROM dbp_refresh_tokens WHERE token_hash = :hash FOR UPDATE"), {"hash": token_hash}).mappings().first()
         if not row:
+            _clear_refresh_cookie(response)
             raise _err(401, "INVALID_REFRESH_TOKEN", "Invalid refresh token")
         if row["revoked_at"] is not None or row["rotated_at"] is not None:
             db.execute(text("UPDATE dbp_refresh_tokens SET revoked_at = COALESCE(revoked_at, :now) WHERE family_id = :family_id AND revoked_at IS NULL"), {"now": now, "family_id": row["family_id"]})
-            db.commit()
+            db.commit(); _clear_refresh_cookie(response)
             raise _err(401, "REFRESH_REUSE_DETECTED", "Refresh session has been revoked")
         if row["expires_at"] <= now:
             db.execute(text("UPDATE dbp_refresh_tokens SET revoked_at = :now WHERE id = :id"), {"now": now, "id": row["id"]})
-            db.commit()
+            db.commit(); _clear_refresh_cookie(response)
             raise _err(401, "REFRESH_EXPIRED", "Refresh token expired")
         user = UserEngine(db).get_user_by_id_tenant(row["user_id"], row["tenant_id"])
         if not user or not user.get("is_active", True):
             db.execute(text("UPDATE dbp_refresh_tokens SET revoked_at = :now WHERE family_id = :family_id AND revoked_at IS NULL"), {"now": now, "family_id": row["family_id"]})
-            db.commit()
+            db.commit(); _clear_refresh_cookie(response)
             raise _err(401, "SESSION_REVOKED", "User session is no longer active")
         mfa_required = _mfa_enabled(db, str(row["user_id"]))
         if mfa_required and not bool(row["mfa_verified"]):
@@ -238,7 +237,8 @@ async def refresh_token(body: RefreshRequest, db: Session = Depends(get_db)):
         db.execute(text("UPDATE dbp_refresh_tokens SET rotated_at = :now, last_used_at = :now, replaced_by_hash = :new_hash WHERE id = :id AND rotated_at IS NULL AND revoked_at IS NULL"), {"now": now, "new_hash": new_hash, "id": row["id"]})
         access = _issue_access_token(result, mfa_verified=bool(row["mfa_verified"]))
         db.commit()
-        return {"status": "success", "data": {"access_token": access, "refresh_token": new_raw, "token_type": "bearer", "expires_in": 1800}}
+        _set_refresh_cookie(response, new_raw)
+        return {"status": "success", "data": {"access_token": access, "token_type": "bearer", "expires_in": 1800}}
     except HTTPException:
         db.rollback()
         raise
@@ -250,8 +250,8 @@ async def refresh_token(body: RefreshRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/logout", dependencies=[Depends(auth_limiter.check)])
-async def logout(body: RefreshRequest | None = None, db: Session = Depends(get_db)):
-    raw = body.refresh_token.strip() if body else ""
+async def logout(body: RefreshRequest | None, response: Response, cookie_token: str | None = Cookie(default=None, alias=_REFRESH_COOKIE), db: Session = Depends(get_db)):
+    raw = ((body.refresh_token if body else None) or cookie_token or "").strip()
     if raw:
         tenant_token = _auth_tenant(db, "eos_auth_tenant_by_refresh_hash", _refresh_hash(raw))
         if tenant_token is not None:
@@ -260,6 +260,7 @@ async def logout(body: RefreshRequest | None = None, db: Session = Depends(get_d
                 db.commit()
             finally:
                 current_tenant_id.reset(tenant_token)
+    _clear_refresh_cookie(response)
     return {"status": "success", "data": {"message": "Logged out"}}
 
 
