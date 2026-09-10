@@ -43,7 +43,7 @@ describe('EOS API client functional contract', () => {
   });
 
   it('uses the configured API facade for authentication', async () => {
-    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: { access_token: 'access', refresh_token: 'refresh' } } } as never);
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: { access_token: 'access' } } } as never);
     await authAPI.login('user@example.com', 'password');
     expect(apiClient.post).toHaveBeenCalledWith('/auth/login', { email: 'user@example.com', password: 'password' });
   });
@@ -54,34 +54,35 @@ describe('EOS API client functional contract', () => {
     expect(apiClient.post).toHaveBeenCalledWith('/auth/verify-email', { token: 'verification-token' });
   });
 
-  it('persists tokens and company context returned by the response interceptor', async () => {
+  it('keeps access tokens in memory while persisting only tenant/company context', async () => {
     expect(interceptorHandlers.responseSuccess).toBeDefined();
-    await interceptorHandlers.responseSuccess!({ data: { data: { access_token: 'access-1', refresh_token: 'refresh-1', user: { tenant_id: 't1', company_id: 'c1' } } } });
-    expect(localStorage.getItem('access_token')).toBe('access-1'); expect(localStorage.getItem('refresh_token')).toBe('refresh-1');
-    expect(localStorage.getItem('eos_tenant_id')).toBe('t1'); expect(localStorage.getItem('eos_company_id')).toBe('c1');
+    await interceptorHandlers.responseSuccess!({ data: { data: { access_token: 'access-1', user: { tenant_id: 't1', company_id: 'c1' } } } });
+    expect(localStorage.getItem('access_token')).toBeNull();
+    expect(localStorage.getItem('refresh_token')).toBeNull();
+    expect(localStorage.getItem('eos_tenant_id')).toBe('t1');
+    expect(localStorage.getItem('eos_company_id')).toBe('c1');
   });
 
-  it('attaches the current bearer token to requests', () => {
-    localStorage.setItem('access_token', 'access-2');
+  it('attaches the in-memory bearer token to requests', async () => {
+    await interceptorHandlers.responseSuccess!({ data: { data: { access_token: 'access-2' } } });
     const config = interceptorHandlers.request!({ headers: {} });
     expect((config as { headers: Record<string, string> }).headers.Authorization).toBe('Bearer access-2');
   });
 
-  it('refreshes a failed request and rotates both tokens', async () => {
-    localStorage.setItem('refresh_token', 'refresh-old');
-    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: { access_token: 'access-new', refresh_token: 'refresh-new' } } } as never);
+  it('refreshes a failed request through the HttpOnly-cookie session and retries once', async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: { access_token: 'access-new' } } } as never);
     vi.mocked(apiClient.request).mockResolvedValueOnce({ data: { ok: true } } as never);
     const result = await interceptorHandlers.responseError!({ response: { status: 401 }, config: { url: '/sales/customers', headers: {} } });
-    expect(apiClient.post).toHaveBeenCalledWith('/auth/refresh', { refresh_token: 'refresh-old' });
-    expect(localStorage.getItem('access_token')).toBe('access-new'); expect(localStorage.getItem('refresh_token')).toBe('refresh-new');
+    expect(apiClient.post).toHaveBeenCalledWith('/auth/refresh', {});
+    expect(localStorage.getItem('refresh_token')).toBeNull();
     expect(result).toEqual({ data: { ok: true } });
   });
 
   it('clears the local session when refresh fails', async () => {
-    localStorage.setItem('access_token', 'access-old'); localStorage.setItem('refresh_token', 'refresh-old');
     vi.mocked(apiClient.post).mockRejectedValueOnce(new Error('refresh failed'));
     await expect(interceptorHandlers.responseError!({ response: { status: 401 }, config: { url: '/reports/sales', headers: {} } })).rejects.toBeDefined();
-    expect(localStorage.getItem('access_token')).toBeNull(); expect(localStorage.getItem('refresh_token')).toBeNull();
+    expect(localStorage.getItem('access_token')).toBeNull();
+    expect(localStorage.getItem('refresh_token')).toBeNull();
   });
 
   it('routes customer, supplier and product CRUD through canonical APIs', async () => {
