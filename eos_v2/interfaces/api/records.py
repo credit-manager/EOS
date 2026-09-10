@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select, func
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import func, select
 
 from eos_v2.application.audit.service import record_event
 from eos_v2.application.records.service import DynamicRecordService
@@ -57,8 +57,8 @@ def list_records(
     entity_id: UUID,
     request: Request,
     identity=Depends(get_current_identity),
-    limit: int = Field(default=50, ge=1, le=200),
-    offset: int = Field(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
 ) -> RecordListResponse:
     require_permission(identity, Permission.READ)
     database = request.app.state.database
@@ -85,10 +85,7 @@ def list_records(
                 DynamicRecordModel.tenant_id == tenant_id,
             )
         ) or 0
-        records = [
-            DynamicRecordService(SqlAlchemyRecordRepository(session)).get(model.id)
-            for model in models
-        ]
+        records = [DynamicRecordService(SqlAlchemyRecordRepository(session)).get(model.id) for model in models]
     return RecordListResponse(
         data=[to_response(record) for record in records],
         count=len(records), total=total, limit=limit, offset=offset,
@@ -108,15 +105,7 @@ def create_record(entity_id: UUID, payload: RecordRequest, request: Request, ide
         try:
             definition = metadata.get(entity_id)
             record = DynamicRecordService(records).create(definition, payload.data)
-            record_event(
-                session,
-                action="record.created",
-                resource_type="dynamic_record",
-                resource_id=record.id,
-                actor_id=identity.actor.id,
-                request_id=request.headers.get("X-Request-ID"),
-                metadata={"entity_id": str(record.entity_id), "entity_version": record.entity_version},
-            )
+            record_event(session, action="record.created", resource_type="dynamic_record", resource_id=record.id, actor_id=identity.actor.id, request_id=request.headers.get("X-Request-ID"), metadata={"entity_id": str(record.entity_id), "entity_version": record.entity_version})
             session.commit()
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Metadata entity not found") from exc
@@ -141,7 +130,7 @@ def get_record(record_id: UUID, request: Request, identity=Depends(get_current_i
 
 
 @router.put("/records/{record_id}", response_model=RecordResponse)
-def update_record(record_id: UUID, payload: RecordRequest, request: Request, identity=Depends(get_current_identity), expected_row_version: int = 1) -> RecordResponse:
+def update_record(record_id: UUID, payload: RecordRequest, request: Request, identity=Depends(get_current_identity), expected_row_version: int = Query(default=1, ge=1)) -> RecordResponse:
     require_permission(identity, Permission.WRITE)
     database = request.app.state.database
     if database is None:
@@ -154,15 +143,7 @@ def update_record(record_id: UUID, payload: RecordRequest, request: Request, ide
             current = service.get(record_id)
             definition = metadata.get(current.entity_id)
             updated = service.update(definition, record_id, payload.data, expected_row_version)
-            record_event(
-                session,
-                action="record.updated",
-                resource_type="dynamic_record",
-                resource_id=updated.id,
-                actor_id=identity.actor.id,
-                request_id=request.headers.get("X-Request-ID"),
-                metadata={"entity_id": str(updated.entity_id), "row_version": updated.row_version},
-            )
+            record_event(session, action="record.updated", resource_type="dynamic_record", resource_id=updated.id, actor_id=identity.actor.id, request_id=request.headers.get("X-Request-ID"), metadata={"entity_id": str(updated.entity_id), "row_version": updated.row_version})
             session.commit()
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Record or metadata not found") from exc
@@ -179,7 +160,7 @@ def update_record(record_id: UUID, payload: RecordRequest, request: Request, ide
 
 
 @router.delete("/records/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_record(record_id: UUID, request: Request, identity=Depends(get_current_identity), expected_row_version: int = 1) -> None:
+def delete_record(record_id: UUID, request: Request, identity=Depends(get_current_identity), expected_row_version: int = Query(default=1, ge=1)) -> None:
     require_permission(identity, Permission.WRITE)
     database = request.app.state.database
     if database is None:
@@ -187,14 +168,7 @@ def delete_record(record_id: UUID, request: Request, identity=Depends(get_curren
     with database.session() as session:
         try:
             DynamicRecordService(SqlAlchemyRecordRepository(session)).delete(record_id, expected_row_version)
-            record_event(
-                session,
-                action="record.deleted",
-                resource_type="dynamic_record",
-                resource_id=record_id,
-                actor_id=identity.actor.id,
-                request_id=request.headers.get("X-Request-ID"),
-            )
+            record_event(session, action="record.deleted", resource_type="dynamic_record", resource_id=record_id, actor_id=identity.actor.id, request_id=request.headers.get("X-Request-ID"))
             session.commit()
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Record not found") from exc
