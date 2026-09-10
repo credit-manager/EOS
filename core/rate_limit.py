@@ -3,14 +3,13 @@ RATE LIMITING MODULE
 ====================
 DB-backed rate limiter for FastAPI endpoints.
 
-Fixed H1: The in-memory limiter reset on restart and was per-worker,
-allowing rate limits to be bypassed across processes/restarts.
-Now uses a shared PostgreSQL table so limits are enforced
-consistently across workers and after restarts.
+The rate-limit table is created by Alembic migrations, never by the
+long-running API process. The limiter reuses the application's shared
+SQLAlchemy engine so all workers participate in one bounded connection pool.
 
 Forwarded client addresses are only honored when the immediate peer is
-explicitly configured as a trusted proxy, preventing clients from
-spoofing X-Forwarded-For to bypass per-IP limits.
+explicitly configured as a trusted proxy, preventing clients from spoofing
+X-Forwarded-For to bypass per-IP limits.
 """
 
 import ipaddress
@@ -20,16 +19,16 @@ from datetime import datetime, timezone
 from fastapi import Request, HTTPException, status
 
 
-def _get_id(text: str) -> int:
+def _get_id(value: str) -> int:
     """Deterministic 64-bit hash for rate-limit keying."""
     h = 1469598103934665603
-    for ch in text.encode("utf-8"):
+    for ch in value.encode("utf-8"):
         h = ((h ^ ch) * 1099511628211) & 0xFFFFFFFFFFFFFFFF
     return h
 
 
 def _load_engine():
-    """Lazily obtain the shared SQLAlchemy engine — reuse the main database engine."""
+    """Lazily obtain the shared SQLAlchemy engine; schema is migration-owned."""
     global _ENGINE, _TEXT
     if _ENGINE is None:
         from sqlalchemy import text as stext
@@ -45,14 +44,6 @@ def _load_engine():
                 return _ENGINE, _TEXT
             _ENGINE = create_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=10)
         _TEXT = stext
-        with _ENGINE.begin() as conn:
-            conn.execute(stext(
-                "CREATE TABLE IF NOT EXISTS dbp_rate_limits (\n"
-                "    bucket TEXT PRIMARY KEY,\n"
-                "    window_start TIMESTAMP NOT NULL,\n"
-                "    request_count INTEGER NOT NULL DEFAULT 0\n"
-                ")"
-            ))
     return _ENGINE, _TEXT
 
 
@@ -61,23 +52,11 @@ _TEXT = None
 
 
 class RateLimiter:
-    """
-    DB-backed fixed-window rate limiter.
+    """DB-backed fixed-window rate limiter."""
 
-    Usage:
-        limiter = RateLimiter(max_requests=100, window_seconds=60)
-
-        @router.get("/endpoint", dependencies=[Depends(limiter.check)])
-        async def endpoint():
-            ...
-    """
-
-    def __init__(
-        self,
-        max_requests: int = 100,
-        window_seconds: int = 60,
-        key_func=None
-    ):
+    def __init__(self, max_requests: int = 100, window_seconds: int = 60, key_func=None):
+        if max_requests < 1 or window_seconds < 1:
+            raise ValueError("max_requests and window_seconds must be >= 1")
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.key_func = key_func or self._default_key_func
@@ -121,6 +100,7 @@ class RateLimiter:
         return f"rl:{_get_id(key):016x}:{self.window_seconds}"
 
     def check(self, request: Request) -> None:
+        """Atomically consume one request from the current database bucket."""
         engine, stext = _load_engine()
         if engine is None:
             return
@@ -135,7 +115,7 @@ class RateLimiter:
             conn.execute(stext("BEGIN"))
             row = conn.execute(
                 stext(
-                    "SELECT window_start, request_count FROM dbp_rate_limits "
+                    "SELECT window_start, request_count FROM public.dbp_rate_limits "
                     "WHERE bucket = :b FOR UPDATE"
                 ),
                 {"b": bucket},
@@ -144,7 +124,7 @@ class RateLimiter:
             if row is None:
                 conn.execute(
                     stext(
-                        "INSERT INTO dbp_rate_limits "
+                        "INSERT INTO public.dbp_rate_limits "
                         "(bucket, window_start, request_count) VALUES (:b, :ws, 1)"
                     ),
                     {"b": bucket, "ws": cur_iso},
@@ -155,7 +135,7 @@ class RateLimiter:
                 if row_iso != cur_iso:
                     conn.execute(
                         stext(
-                            "UPDATE dbp_rate_limits SET window_start = :ws, "
+                            "UPDATE public.dbp_rate_limits SET window_start = :ws, "
                             "request_count = 1 WHERE bucket = :b"
                         ),
                         {"b": bucket, "ws": cur_iso},
@@ -174,7 +154,7 @@ class RateLimiter:
                 else:
                     conn.execute(
                         stext(
-                            "UPDATE dbp_rate_limits SET request_count = request_count + 1 "
+                            "UPDATE public.dbp_rate_limits SET request_count = request_count + 1 "
                             "WHERE bucket = :b"
                         ),
                         {"b": bucket},
