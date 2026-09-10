@@ -10,7 +10,7 @@ concurrency:
   group: eos-commercial-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 env:
-  EXPECTED_ALEMBIC_HEAD: 20260910_financial_integrity_constraints
+  EXPECTED_ALEMBIC_HEAD: 20260910_rate_limits
 jobs:
   contract:
     runs-on: ubuntu-latest
