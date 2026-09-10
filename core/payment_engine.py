@@ -21,6 +21,11 @@ class PaymentGatewayEngine:
     _MAX_LIST_LIMIT = 200
     _GATEWAY_TYPES = {"stripe", "mada", "stc_pay", "bank_transfer", "cash", "manual"}
     _TRANSACTION_TYPES = {"payment", "refund", "authorization", "capture"}
+    _SECRET_CONFIG_KEYS = {
+        "api_key", "apikey", "secret", "secret_key", "client_secret", "password",
+        "token", "access_token", "refresh_token", "private_key", "webhook_secret",
+        "signing_secret", "encryption_key",
+    }
 
     def __init__(self, db):
         self.db = db
@@ -48,6 +53,28 @@ class PaymentGatewayEngine:
         if len(currency) != 3 or not currency.isalpha():
             raise ValueError("Currency must be a 3-letter ISO code")
         return currency
+
+    @classmethod
+    def _safe_gateway_config(cls, config: Optional[dict]) -> dict:
+        """Return a log/UI-safe copy of gateway configuration without secrets."""
+        if config is None:
+            return {}
+        if not isinstance(config, dict):
+            raise ValueError("Gateway config must be an object")
+
+        def redact(value: Any, key: str = "") -> Any:
+            normalized = key.strip().lower().replace("-", "_")
+            if normalized in cls._SECRET_CONFIG_KEYS or any(
+                marker in normalized for marker in ("secret", "password", "token", "private_key")
+            ):
+                return "[REDACTED]"
+            if isinstance(value, dict):
+                return {str(k): redact(v, str(k)) for k, v in value.items()}
+            if isinstance(value, list):
+                return [redact(item, key) for item in value]
+            return value
+
+        return redact(config)
 
     @staticmethod
     def _serialize_gateway_config(config: Optional[dict]) -> str:
