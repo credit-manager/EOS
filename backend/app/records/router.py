@@ -66,10 +66,7 @@ def _validate_value(code: str, value: object, field: dict) -> None:
             valid = False
 
     if not valid:
-        raise HTTPException(
-            status_code=422,
-            detail={"invalid_fields": [f"{code}: expected {field_type}"]},
-        )
+        raise HTTPException(status_code=422, detail={"invalid_fields": [f"{code}: expected {field_type}"]})
 
 
 def _validate(payload: dict, metadata: MetadataEntity) -> None:
@@ -106,6 +103,7 @@ def create_record(
     audit_record(
         db,
         tenant_id=tenant_id,
+        actor_id=request.state.user_id,
         action="record.created",
         resource_type=entity_code,
         resource_id=row.id,
@@ -179,6 +177,7 @@ def update_record(
     audit_record(
         db,
         tenant_id=tenant_id,
+        actor_id=request.state.user_id,
         action="record.updated",
         resource_type=entity_code,
         resource_id=row.id,
@@ -211,6 +210,7 @@ def delete_record(
     audit_record(
         db,
         tenant_id=tenant_id,
+        actor_id=request.state.user_id,
         action="record.deleted",
         resource_type=entity_code,
         resource_id=row.id,
