@@ -67,22 +67,22 @@ def test_include_target_lookup_must_not_be_code_only():
 
 
 def test_many_to_many_include_is_tenant_scoped():
-    """Regression test: the many_to_many relationship-expansion branch of
-    /records?include=<relation> must enforce the same tenant boundary as
-    every other relationship type in the same function. A prior version
-    built its own raw SQL against the junction table without any tenant
-    condition on the target table, allowing cross-tenant record leakage.
-    """
     src = _source()
-    m2m_block = re.search(
-        r'elif rel_type == "many_to_many":.*?\n(?=\s*else:)',
-        src,
-        re.DOTALL,
-    )
+    m2m_block = re.search(r'elif rel_type == "many_to_many":.*?\n(?=\s*else:)', src, re.DOTALL)
     assert m2m_block, "many_to_many branch not found in dynamic_crud"
     block = m2m_block.group(0)
-    assert "tenant_scope" in block, "many_to_many branch must check tenant_scope"
-    assert "tenant_id" in block, "many_to_many branch must reference tenant_id"
-    assert re.search(r"tenant_id\s*=\s*:tid", block), (
-        "many_to_many query must filter the target table on tenant_id"
-    )
+    assert "target_has_tenant" in block
+    assert "tenant_id" in block
+    assert re.search(r"tenant_id\s*=\s*:tid", block)
+
+
+def test_all_tenant_backed_include_targets_are_filtered():
+    """A relationship must not rely only on tenant_scope metadata.
+
+    Once the target table physically has tenant_id, tenant isolation is a
+    mandatory query boundary. Global metadata rows may additionally be NULL.
+    """
+    src = _source()
+    assert "target_has_tenant = \"tenant_id\" in target_columns" in src
+    assert "target_is_global_metadata" in src
+    assert "target_has_tenant and tenant_id and not target_is_global_metadata" in src
