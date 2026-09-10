@@ -25,14 +25,14 @@ jobs:
   contract:
     name: Canonical frontend runtime contract
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
-      - name: Install contract test dependency
-        run: python -m pip install --disable-pip-version-check pytest==9.0.3
+      - name: Install contract test dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
       - name: Run frontend runtime contract tests
         run: pytest -q tests/test_frontend_runtime_contract.py --tb=short
       - name: Build canonical React frontend
