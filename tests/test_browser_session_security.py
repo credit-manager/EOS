@@ -10,8 +10,14 @@ FRONTEND_API = ROOT / "erp-system" / "frontend" / "src" / "services" / "api.ts"
 def test_backend_sets_refresh_token_as_httponly_cookie():
     source = AUTH.read_text(encoding="utf-8")
     assert "httponly=True" in source
+    assert "samesite=\"lax\"" in source
     assert "_set_refresh_cookie" in source
     assert "_REFRESH_COOKIE" in source
+
+
+def test_production_refresh_cookie_is_secure():
+    source = AUTH.read_text(encoding="utf-8")
+    assert "secure=resolve_auth_mode() == \"production\"" in source
 
 
 def test_backend_refresh_accepts_cookie_without_exposing_new_refresh_token():
@@ -19,6 +25,7 @@ def test_backend_refresh_accepts_cookie_without_exposing_new_refresh_token():
     assert "cookie_token: str | None = Cookie" in source
     assert '"refresh_token": new_raw' not in source
     assert '"refresh_token": refresh' not in source
+    assert 'async def logout(response: Response, body: RefreshRequest | None = None' in source
 
 
 def test_frontend_does_not_persist_refresh_tokens():
