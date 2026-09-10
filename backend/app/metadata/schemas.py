@@ -1,20 +1,31 @@
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+FieldType = Literal["text", "integer", "decimal", "boolean", "date", "uuid"]
 
 
 class MetadataField(BaseModel):
     code: str = Field(min_length=1, max_length=100, pattern=r"^[a-z][a-z0-9_]*$")
-    type: str = Field(pattern=r"^(text|integer|decimal|boolean|date|uuid)$")
+    type: FieldType
     required: bool = False
-    label: str | None = None
+    nullable: bool = False
+    label: str | None = Field(default=None, max_length=200)
 
 
 class MetadataDefinition(BaseModel):
     code: str = Field(min_length=1, max_length=100, pattern=r"^[a-z][a-z0-9_]*$")
     name: str = Field(min_length=1, max_length=200)
     fields: list[MetadataField] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_unique_fields(self) -> "MetadataDefinition":
+        codes = [field.code for field in self.fields]
+        duplicates = sorted({code for code in codes if codes.count(code) > 1})
+        if duplicates:
+            raise ValueError(f"duplicate field codes: {', '.join(duplicates)}")
+        return self
 
 
 class MetadataResponse(BaseModel):

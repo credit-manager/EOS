@@ -1,4 +1,5 @@
-from datetime import UTC, datetime
+from datetime import date
+from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -30,6 +31,47 @@ def _get_published(db: Session, tenant_id: UUID, entity_code: str) -> MetadataEn
     return row
 
 
+def _validate_value(code: str, value: object, field: dict) -> None:
+    if value is None:
+        if not field.get("nullable", False):
+            raise HTTPException(status_code=422, detail={"invalid_fields": [f"{code}: null is not allowed"]})
+        return
+
+    field_type = field["type"]
+    valid = True
+    if field_type == "text":
+        valid = isinstance(value, str)
+    elif field_type == "integer":
+        valid = isinstance(value, int) and not isinstance(value, bool)
+    elif field_type == "decimal":
+        try:
+            decimal_value = Decimal(str(value))
+            valid = decimal_value.is_finite()
+        except (InvalidOperation, ValueError, TypeError):
+            valid = False
+    elif field_type == "boolean":
+        valid = isinstance(value, bool)
+    elif field_type == "date":
+        if isinstance(value, str):
+            try:
+                date.fromisoformat(value)
+            except ValueError:
+                valid = False
+        else:
+            valid = False
+    elif field_type == "uuid":
+        try:
+            UUID(str(value))
+        except (ValueError, AttributeError, TypeError):
+            valid = False
+
+    if not valid:
+        raise HTTPException(
+            status_code=422,
+            detail={"invalid_fields": [f"{code}: expected {field_type}"]},
+        )
+
+
 def _validate(payload: dict, metadata: MetadataEntity) -> None:
     fields = {field["code"]: field for field in metadata.definition["fields"]}
     unknown = set(payload) - set(fields)
@@ -41,6 +83,8 @@ def _validate(payload: dict, metadata: MetadataEntity) -> None:
         if missing:
             detail["missing_fields"] = sorted(missing)
         raise HTTPException(status_code=422, detail=detail)
+    for code, value in payload.items():
+        _validate_value(code, value, fields[code])
 
 
 def _response(row: Record) -> RecordResponse:
