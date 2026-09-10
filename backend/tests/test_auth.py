@@ -7,16 +7,19 @@ from backend.app.main import app
 client = TestClient(app)
 
 
+def _register(email: str, password: str = "Correct-Horse-Battery-42") -> dict:
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": password, "tenant_name": f"Tenant {email}"},
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
 def test_register_login_and_current_identity() -> None:
     email = "owner@example.com"
     password = "Correct-Horse-Battery-42"
-    registered = client.post(
-        "/api/v1/auth/register",
-        json={"email": email, "password": password, "tenant_name": "Acme Construction"},
-    )
-    assert registered.status_code == 201
-    token = registered.json()
-    assert token["token_type"] == "bearer"
+    token = _register(email, password)
     tenant_id = UUID(token["tenant_id"])
 
     me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token['access_token']}"})
@@ -48,3 +51,48 @@ def test_registration_enforces_strong_password_and_unique_email() -> None:
 
     weak = {"email": "weak@example.com", "password": "short", "tenant_name": "Weak"}
     assert client.post("/api/v1/auth/register", json=weak).status_code == 422
+
+
+def test_admin_can_add_member_and_cannot_remove_last_admin() -> None:
+    admin = _register("admin@example.com")
+    member = _register("member@example.com")
+    admin_headers = {"Authorization": f"Bearer {admin['access_token']}"}
+
+    added = client.post(
+        "/api/v1/auth/members",
+        json={"email": "member@example.com", "role": "member"},
+        headers=admin_headers,
+    )
+    assert added.status_code == 201
+    assert added.json()["role"] == "member"
+
+    member_login = client.post(
+        "/api/v1/auth/token",
+        json={"email": "member@example.com", "password": "Correct-Horse-Battery-42", "tenant_id": admin["tenant_id"]},
+    )
+    assert member_login.status_code == 200
+    member_headers = {"Authorization": f"Bearer {member_login.json()['access_token']}"}
+    assert client.get("/api/v1/auth/members", headers=member_headers).status_code == 403
+
+    member_id = UUID(added.json()["user_id"])
+    promoted = client.patch(
+        f"/api/v1/auth/members/{member_id}",
+        json={"role": "admin"},
+        headers=admin_headers,
+    )
+    assert promoted.status_code == 200
+
+    admins = client.get("/api/v1/auth/members", headers=admin_headers).json()
+    assert sum(item["role"] == "admin" for item in admins) == 2
+
+    demoted = client.patch(
+        f"/api/v1/auth/members/{member_id}",
+        json={"role": "member"},
+        headers=admin_headers,
+    )
+    assert demoted.status_code == 200
+
+    listed = client.get("/api/v1/auth/members", headers=admin_headers)
+    assert listed.status_code == 200
+    assert any(item["email"] == "admin@example.com" and item["role"] == "admin" for item in listed.json())
+    assert member["tenant_id"] != admin["tenant_id"]
