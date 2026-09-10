@@ -1,14 +1,23 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from ..audit.service import record as audit_record
 from ..config import get_settings
 from ..db import get_db
 from .models import Tenant, TenantMembership, User
-from .schemas import MeResponse, RegisterRequest, TokenRequest, TokenResponse
+from .schemas import (
+    MeResponse,
+    MemberCreateRequest,
+    MemberResponse,
+    MemberRoleUpdate,
+    RegisterRequest,
+    TokenRequest,
+    TokenResponse,
+)
 from .security import (
     Principal,
     create_access_token,
@@ -80,3 +89,109 @@ def me(principal: Principal = Depends(require_principal), db: Session = Depends(
         tenant_id=principal.tenant_id,
         role=principal.role,
     )
+
+
+@router.get("/members", response_model=list[MemberResponse])
+def list_members(
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+) -> list[MemberResponse]:
+    if principal.role != "admin":
+        raise HTTPException(status_code=403, detail="admin role required")
+    rows = db.execute(
+        select(TenantMembership, User)
+        .join(User, User.id == TenantMembership.user_id)
+        .where(TenantMembership.tenant_id == principal.tenant_id)
+        .order_by(User.email)
+    ).all()
+    return [
+        MemberResponse(
+            user_id=user.id,
+            email=user.email,
+            tenant_id=membership.tenant_id,
+            role=membership.role,
+        )
+        for membership, user in rows
+    ]
+
+
+@router.post("/members", response_model=MemberResponse, status_code=201)
+def add_member(
+    payload: MemberCreateRequest,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+) -> MemberResponse:
+    if principal.role != "admin":
+        raise HTTPException(status_code=403, detail="admin role required")
+    email = payload.email.strip().lower()
+    user = db.scalar(select(User).where(User.email == email))
+    if user is None:
+        raise HTTPException(status_code=404, detail="user must register before being added to a tenant")
+    existing = db.scalar(
+        select(TenantMembership).where(
+            TenantMembership.tenant_id == principal.tenant_id,
+            TenantMembership.user_id == user.id,
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="user is already a tenant member")
+    membership = TenantMembership(tenant_id=principal.tenant_id, user_id=user.id, role=payload.role)
+    db.add(membership)
+    audit_record(
+        db,
+        tenant_id=principal.tenant_id,
+        actor_id=principal.user_id,
+        action="tenant.member_added",
+        resource_type="tenant_membership",
+        resource_id=membership.id,
+        metadata={"user_id": str(user.id), "role": payload.role},
+        request_id=request.headers.get("X-Request-ID"),
+    )
+    db.commit()
+    return MemberResponse(user_id=user.id, email=user.email, tenant_id=membership.tenant_id, role=membership.role)
+
+
+@router.patch("/members/{user_id}", response_model=MemberResponse)
+def update_member_role(
+    user_id: UUID,
+    payload: MemberRoleUpdate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+) -> MemberResponse:
+    if principal.role != "admin":
+        raise HTTPException(status_code=403, detail="admin role required")
+    membership = db.scalar(
+        select(TenantMembership).where(
+            TenantMembership.tenant_id == principal.tenant_id,
+            TenantMembership.user_id == user_id,
+        )
+    )
+    if membership is None:
+        raise HTTPException(status_code=404, detail="tenant member not found")
+    if membership.role == "admin" and payload.role != "admin":
+        admin_count = db.scalar(
+            select(func.count()).select_from(TenantMembership).where(
+                TenantMembership.tenant_id == principal.tenant_id,
+                TenantMembership.role == "admin",
+            )
+        )
+        if admin_count == 1:
+            raise HTTPException(status_code=409, detail="cannot remove the last tenant admin")
+    membership.role = payload.role
+    audit_record(
+        db,
+        tenant_id=principal.tenant_id,
+        actor_id=principal.user_id,
+        action="tenant.member_role_changed",
+        resource_type="tenant_membership",
+        resource_id=membership.id,
+        metadata={"user_id": str(user_id), "role": payload.role},
+        request_id=request.headers.get("X-Request-ID"),
+    )
+    db.commit()
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    return MemberResponse(user_id=user.id, email=user.email, tenant_id=membership.tenant_id, role=membership.role)
