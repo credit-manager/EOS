@@ -22,12 +22,7 @@ router = APIRouter(prefix="/api/v1/dynamic", tags=["Dynamic CRUD"])
 BULK_MAX_RECORDS = 500
 
 
-def get_verification_engine(
-    entity_code: str,
-    db: Session = Depends(get_db),
-    current_user: Optional[dict] = Depends(optional_get_current_user),
-):
-    """Resolve entity metadata only within the authenticated tenant context."""
+def get_verification_engine(entity_code: str, db: Session = Depends(get_db), current_user: Optional[dict] = Depends(optional_get_current_user)):
     tenant_id = current_user.get("tenant_id") if current_user else None
     return DynamicVerificationEngine(db, entity_code, tenant_id=tenant_id)
 
@@ -126,6 +121,11 @@ async def list_records(entity_code: str, filters: Optional[str] = None, sort: Op
             if not tgt or not tgt[0]:
                 continue
             target_table = _validate_identifier(tgt[0])
+            target_col = _validate_identifier(target_col)
+            source_col = _validate_identifier(source_col)
+            target_columns = {row[0].lower() for row in db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = :tname"), {"tname": target_table}).fetchall()}
+            target_has_tenant = "tenant_id" in target_columns
+            target_is_global_metadata = tgt[1] is None
             for record in records:
                 source_value = record.get(source_col)
                 if source_value is None:
@@ -133,8 +133,11 @@ async def list_records(entity_code: str, filters: Optional[str] = None, sort: Op
                     continue
                 where_parts = [f"{target_col} = :sv"]
                 rel_params = {"sv": source_value}
-                if tenant_scope and tenant_id:
+                if target_has_tenant and tenant_id and not target_is_global_metadata:
                     where_parts.append("tenant_id = :tid")
+                    rel_params["tid"] = tenant_id
+                elif target_has_tenant and tenant_id and target_is_global_metadata:
+                    where_parts.append("(tenant_id = :tid OR tenant_id IS NULL)")
                     rel_params["tid"] = tenant_id
                 rel_where = " AND ".join(where_parts)
                 if rel_type == "lookup":
@@ -148,8 +151,11 @@ async def list_records(entity_code: str, filters: Optional[str] = None, sort: Op
                     junction, j_src, j_tgt = map(_validate_identifier, (junction, j_src, j_tgt))
                     m2m_where = [f"j.{j_src} = :sv"]
                     m2m_params = {"sv": source_value}
-                    if tenant_scope and tenant_id:
+                    if target_has_tenant and tenant_id and not target_is_global_metadata:
                         m2m_where.append("t.tenant_id = :tid")
+                        m2m_params["tid"] = tenant_id
+                    elif target_has_tenant and tenant_id and target_is_global_metadata:
+                        m2m_where.append("(t.tenant_id = :tid OR t.tenant_id IS NULL)")
                         m2m_params["tid"] = tenant_id
                     m2m_where_sql = " AND ".join(m2m_where)
                     rows = db.execute(
@@ -223,10 +229,8 @@ async def delete_record(entity_code: str, record_id: str, request: Request, db: 
     tenant_id = current_user.get("tenant_id") if current_user else None
     ent_sql = "SELECT table_mapping, tenant_id FROM dbp_entities WHERE code = :code"
     ent_params = {"code": entity_code}
-    if tenant_id:
-        ent_sql += " AND (tenant_id = :tenant_id OR tenant_id IS NULL)"; ent_params["tenant_id"] = tenant_id
-    else:
-        ent_sql += " AND tenant_id IS NULL"
+    if tenant_id: ent_sql += " AND (tenant_id = :tenant_id OR tenant_id IS NULL)"; ent_params["tenant_id"] = tenant_id
+    else: ent_sql += " AND tenant_id IS NULL"
     ent = db.execute(text(ent_sql), ent_params).fetchone()
     if not ent: raise HTTPException(status_code=404, detail=f"الكيان '{entity_code}' غير موجود")
     table_name = _validate_identifier(ent[0])
