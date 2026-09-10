@@ -38,3 +38,34 @@ def test_payment_link_expiry_is_bounded():
         PaymentGatewayEngine(db).create_payment_link("tenant-a", "10", expires_hours=0)
     with pytest.raises(ValueError):
         PaymentGatewayEngine(db).create_payment_link("tenant-a", "10", expires_hours=721)
+
+
+def test_payment_idempotency_replays_same_request_without_insert():
+    db = MagicMock()
+    existing = MagicMock()
+    existing.__getitem__.side_effect = ["tx-existing", "pending", "same-fingerprint"]
+    db.execute.return_value.fetchone.return_value = existing
+    engine = PaymentGatewayEngine(db)
+
+    result = engine.create_transaction(
+        "tenant-a", "10.00", "sar", "payment", "invoice", "inv-1", "cust-1", "cash",
+        idempotency_key="request-123",
+    )
+
+    assert result["transaction_id"] == "tx-existing"
+    assert result["idempotent"] is True
+    db.commit.assert_not_called()
+
+
+def test_payment_idempotency_rejects_same_key_for_different_request():
+    db = MagicMock()
+    existing = MagicMock()
+    existing.__getitem__.side_effect = ["tx-existing", "pending", "different-fingerprint"]
+    db.execute.return_value.fetchone.return_value = existing
+    engine = PaymentGatewayEngine(db)
+
+    with pytest.raises(ValueError, match="different payment parameters"):
+        engine.create_transaction(
+            "tenant-a", "10.00", "sar", "payment", "invoice", "inv-1", "cust-1", "cash",
+            idempotency_key="request-123",
+        )
