@@ -57,6 +57,7 @@ def test_payment_creation_is_pending_and_cannot_cross_tenants():
         engine.create_payment("tenant-a", "invoice-from-b", "10.00")
 
     db.execute.reset_mock()
+    db.execute.return_value.fetchone.side_effect = None
     db.execute.return_value.fetchone.return_value = _row(1)
     payment_id = engine.create_payment("tenant-a", "invoice-a", "10.00")
 
