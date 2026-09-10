@@ -63,7 +63,8 @@ def _set_tenant_on_begin(conn):
     if tid is not None:
         tid_str = str(tid).strip()
         # Validate tenant_id is a safe identifier (UUID or alphanumeric with underscores/hyphens)
-        if not re.match(r'^[a-zA-Z0-9_-]{1,128}$', tid_str):
+        # '*' is a special wildcard used for cross-tenant operations (email verification, password reset)
+        if tid_str != "*" and not re.match(r'^[a-zA-Z0-9_-]{1,128}$', tid_str):
             raise ValueError(f"Invalid tenant_id format: {tid_str!r}")
         # Use dollar-quoting for safety — no spaces around value
         conn.exec_driver_sql(f"SET LOCAL {RLS_CONTEXT_PARAM} = $${tid_str}$$")
@@ -77,6 +78,16 @@ def get_db():
     authentication), it is applied as app.tenant_id for RLS on this session."""
     db = SessionLocal()
     try:
+        yield db
+    finally:
+        db.close()
+
+def get_db_no_rls():
+    """Yield a DB session with RLS disabled. For operations that need cross-tenant
+    access (email verification, password reset, etc.)."""
+    db = SessionLocal()
+    try:
+        db.execute(text("SET LOCAL row_security = off"))
         yield db
     finally:
         db.close()

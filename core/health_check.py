@@ -146,7 +146,7 @@ def _check_process() -> Dict[str, Any]:
 @router.get("/health")
 async def simple_health():
     """Simple health check (load balancer compatible)."""
-    return {"status": "healthy", "service": "eos-dbp", "version": "1.0.0"}
+    return {"status": "healthy", "service": "eos-dbp", "version": "2.0.0"}
 
 
 @router.get("/health/full")
@@ -186,7 +186,7 @@ async def full_health(response: Response):
     return {
         "status": overall_status,
         "service": "eos-dbp",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "checks": checks,
         "duration_ms": duration_ms,
