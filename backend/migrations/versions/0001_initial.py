@@ -1,6 +1,6 @@
 """initial platform schema"""
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "0001_initial"
 down_revision = None
@@ -22,7 +22,8 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("tenant_id", "code", "version", name="uq_metadata_version"),
     )
-    op.create_index("ix_metadata_entities_tenant_id", "metadata_entities", ["tenant_id"])
+    op.create_index(op.f("ix_metadata_entities_tenant_id"), "metadata_entities", ["tenant_id"], unique=False)
+
     op.create_table(
         "records",
         sa.Column("id", sa.Uuid(), nullable=False),
@@ -33,10 +34,10 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("tenant_id", "entity_code", "id", name="uq_record_tenant_id"),
+        sa.UniqueConstraint("tenant_id", "entity_code", "id", name="uq_record_tenant_entity_id"),
     )
-    op.create_index("ix_records_tenant_id", "records", ["tenant_id"])
-    op.create_index("ix_records_entity_code", "records", ["entity_code"])
+    op.create_index(op.f("ix_records_tenant_id"), "records", ["tenant_id"], unique=False)
+
     op.create_table(
         "audit_events",
         sa.Column("id", sa.Uuid(), nullable=False),
@@ -49,16 +50,15 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_audit_events_tenant_id", "audit_events", ["tenant_id"])
-    op.create_index("ix_audit_events_resource_id", "audit_events", ["resource_id"])
+    op.create_index(op.f("ix_audit_events_tenant_id"), "audit_events", ["tenant_id"], unique=False)
+    op.create_index(op.f("ix_audit_events_resource_id"), "audit_events", ["resource_id"], unique=False)
 
 
 def downgrade() -> None:
-    op.drop_index("ix_audit_events_resource_id", table_name="audit_events")
-    op.drop_index("ix_audit_events_tenant_id", table_name="audit_events")
+    op.drop_index(op.f("ix_audit_events_resource_id"), table_name="audit_events")
+    op.drop_index(op.f("ix_audit_events_tenant_id"), table_name="audit_events")
     op.drop_table("audit_events")
-    op.drop_index("ix_records_entity_code", table_name="records")
-    op.drop_index("ix_records_tenant_id", table_name="records")
+    op.drop_index(op.f("ix_records_tenant_id"), table_name="records")
     op.drop_table("records")
-    op.drop_index("ix_metadata_entities_tenant_id", table_name="metadata_entities")
+    op.drop_index(op.f("ix_metadata_entities_tenant_id"), table_name="metadata_entities")
     op.drop_table("metadata_entities")

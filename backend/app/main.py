@@ -1,13 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .audit.models import AuditEvent
 from .config import get_settings
 from .db import Base, engine
 from .health import router as health_router
-from .metadata.models import MetadataEntity
 from .metadata.router import router as metadata_router
-from .records.models import Record
 from .records.router import router as records_router
 
 settings = get_settings()
