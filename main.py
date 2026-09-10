@@ -127,9 +127,48 @@ setup_logging()
 
 app = FastAPI(
     title="EOS Dynamic Business Platform",
-    version="1.0.0",
+    description=(
+        "Enterprise-grade multi-tenant ERP/CRM platform with:\n"
+        "- Multi-tenant architecture with Row-Level Security (RLS)\n"
+        "- Dynamic CRUD engine with API generation\n"
+        "- Industry-specific modules (Construction, Trading, Retail, Restaurant, Manufacturing, Services)\n"
+        "- AI-powered features (composer, copilot, OCR, predictions)\n"
+        "- Workflow engine with approval chains\n"
+        "- Real-time notifications and webhooks\n"
+        "- Blockchain integration\n"
+        "- E-Signature capabilities\n"
+        "- Advanced analytics and reporting\n"
+        "- Role-Based Access Control (RBAC)\n"
+        "- Two-Factor Authentication (2FA)\n"
+        "- Circuit breaker and retry patterns for resilience"
+    ),
+    version="2.0.0",
     docs_url=None if os.getenv("EOS_DISABLE_DOCS") == "true" else "/docs",
     redoc_url=None if os.getenv("EOS_DISABLE_DOCS") == "true" else "/redoc",
+    contact={"name": "EOS Platform Support", "email": "support@eos-platform.com"},
+    license_info={"name": "Proprietary", "url": "https://eos-platform.com/license"},
+    openapi_tags=[
+        {"name": "Auth", "description": "Registration, login, email verification, password reset, 2FA"},
+        {"name": "Accounting", "description": "Chart of accounts, journal entries, financial reports"},
+        {"name": "HR", "description": "Employee management, payroll, attendance"},
+        {"name": "Inventory", "description": "Products, stock management, warehouses"},
+        {"name": "Sales", "description": "CRM, customers, leads, opportunities, quotations, invoices"},
+        {"name": "Procurement", "description": "Purchase orders, suppliers"},
+        {"name": "Projects", "description": "Project management, tasks, milestones"},
+        {"name": "Finance", "description": "Budgets, fixed assets, bank reconciliation"},
+        {"name": "Billing", "description": "SaaS billing, subscriptions, invoices, plans"},
+        {"name": "Workflows", "description": "Workflow definitions, states, transitions, instances"},
+        {"name": "Analytics", "description": "Dashboards, widgets, data pipelines, reporting"},
+        {"name": "AI", "description": "AI composer, copilot, OCR, predictions"},
+        {"name": "Blockchain", "description": "Blockchain nodes, smart contracts, audit trail"},
+        {"name": "E-Signature", "description": "Document signing and signature requests"},
+        {"name": "Control Plane", "description": "Tenant provisioning, platform administration, plans"},
+        {"name": "Dynamic CRUD", "description": "Dynamic entity management and API generation"},
+        {"name": "Industry", "description": "Industry-specific modules and configurations"},
+        {"name": "Notifications", "description": "Real-time notifications, webhooks, email"},
+        {"name": "Security", "description": "RBAC, API quotas, security audit"},
+        {"name": "System", "description": "Health checks, metrics, version info, monitoring"},
+    ],
 )
 
 cors_origins = json.loads(os.getenv("EOS_CORS_ORIGINS", "[]"))
@@ -289,7 +328,7 @@ async def validate_configuration():
             sys.exit(1)
     else:
         print(f"Configuration OK: auth_mode={auth_mode}")
-    audit_logger.log_event(event="platform_startup", details={"auth_mode": auth_mode, "version": "1.0.0"})
+    audit_logger.log_event(event="platform_startup", details={"auth_mode": auth_mode, "version": "2.0.0"})
     print(f"Security: CORS={bool(cors_origins)}, body_limit={MAX_BODY_BYTES}, hosts={allowed_hosts}, trusted_hosts={auth_mode == 'production' or trusted_hosts_enabled}")
 
 
