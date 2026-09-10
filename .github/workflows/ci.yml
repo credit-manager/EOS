@@ -8,6 +8,20 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: eos
+          POSTGRES_USER: eos
+          POSTGRES_PASSWORD: eos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U eos -d eos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -15,12 +29,22 @@ jobs:
           python-version: '3.12'
       - run: pip install '.[test]'
       - run: ruff check backend main.py
-      - run: alembic upgrade head
+      - name: Validate SQLite migrations
+        run: alembic upgrade head
         env:
           DATABASE_URL: sqlite+pysqlite:///./eos_ci.db
-      - run: pytest
+      - name: Test SQLite
+        run: pytest
         env:
           DATABASE_URL: sqlite+pysqlite:///./eos_ci_test.db
+      - name: Validate PostgreSQL migrations
+        run: alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+psycopg://eos:eos@localhost:5432/eos
+      - name: Test PostgreSQL
+        run: pytest
+        env:
+          DATABASE_URL: postgresql+psycopg://eos:eos@localhost:5432/eos
 
   frontend:
     runs-on: ubuntu-latest
