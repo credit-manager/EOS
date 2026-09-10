@@ -4,13 +4,12 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-
 VERSIONS = Path(__file__).resolve().parents[1] / "alembic" / "versions"
-EXPECTED_HEAD = "20260910_commercial_schema_merge"
+EXPECTED_HEAD = "20260910_rate_limits"
 
 
 def _literal_string_or_tuple(node: ast.AST | None) -> list[str]:
-    if node is None or isinstance(node, ast.Constant) and node.value is None:
+    if node is None or (isinstance(node, ast.Constant) and node.value is None):
         return []
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return [node.value]
