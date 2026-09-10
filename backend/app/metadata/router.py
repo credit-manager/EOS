@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..audit.service import record as audit_record
 from ..db import get_db
 from ..tenant import require_tenant
 from .models import MetadataEntity
@@ -28,6 +29,7 @@ def _response(row: MetadataEntity) -> MetadataResponse:
 @router.post("/entities", response_model=MetadataResponse, status_code=201)
 def create_entity(
     payload: MetadataDefinition,
+    request: Request,
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ) -> MetadataResponse:
@@ -45,6 +47,7 @@ def create_entity(
         definition=payload.model_dump(),
     )
     db.add(row)
+    audit_record(db, tenant_id=tenant_id, action="metadata.created", resource_type=payload.code, metadata={"version": version}, request_id=request.headers.get("X-Request-ID"))
     db.commit()
     db.refresh(row)
     return _response(row)
@@ -53,6 +56,7 @@ def create_entity(
 @router.post("/entities/{code}/publish", response_model=MetadataResponse)
 def publish_entity(
     code: str,
+    request: Request,
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ) -> MetadataResponse:
@@ -65,6 +69,7 @@ def publish_entity(
         raise HTTPException(status_code=404, detail="metadata entity not found")
     if row.published_at is None:
         row.published_at = datetime.now(timezone.utc)
+        audit_record(db, tenant_id=tenant_id, action="metadata.published", resource_type=code, resource_id=row.id, metadata={"version": row.version}, request_id=request.headers.get("X-Request-ID"))
         db.commit()
         db.refresh(row)
     return _response(row)

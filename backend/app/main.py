@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .audit.models import AuditEvent
 from .config import get_settings
 from .db import Base, engine
 from .health import router as health_router
@@ -10,7 +11,7 @@ from .records.models import Record
 from .records.router import router as records_router
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="0.3.0")
+app = FastAPI(title=settings.app_name, version="0.4.0")
 
 app.add_middleware(
     CORSMiddleware,
