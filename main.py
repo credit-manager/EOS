@@ -360,7 +360,11 @@ app.include_router(health_router)
 
 
 @app.get("/")
-def root():
+async def root():
+    from fastapi.responses import FileResponse
+    index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path, media_type="text/html")
     docs_enabled = os.getenv("EOS_DISABLE_DOCS") != "true"
     return {"message": "2TO ERP Platform is running!", "version": "2.0.0", "docs": "/docs" if docs_enabled else None, "health": "/health"}
 
