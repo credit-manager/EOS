@@ -2,42 +2,16 @@
 EOS Multi-Currency Engine
 Supports: Currency definitions, exchange rates, conversions, gain/loss tracking
 """
-import uuid, json
-from datetime import datetime, date
+import uuid
+from datetime import date
 from sqlalchemy import text
 
 
 class MultiCurrencyEngine:
+    """Currency operations; database schema is migration-owned."""
+
     def __init__(self, db):
         self.db = db
-        self._ensure_tables()
-
-    def _ensure_tables(self):
-        self.db.execute(text(
-            "CREATE TABLE IF NOT EXISTS dbp_currencies ("
-            "id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text, "
-            "tenant_id TEXT NOT NULL, code TEXT NOT NULL, name_en TEXT NOT NULL, "
-            "name_ar TEXT, symbol TEXT, decimal_places INT DEFAULT 2, is_base BOOLEAN DEFAULT FALSE, "
-            "is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP DEFAULT NOW())"
-        ))
-        self.db.execute(text(
-            "CREATE TABLE IF NOT EXISTS dbp_exchange_rates ("
-            "id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text, "
-            "tenant_id TEXT NOT NULL, from_currency TEXT NOT NULL, to_currency TEXT NOT NULL, "
-            "rate DECIMAL(20,8) NOT NULL, source TEXT DEFAULT 'manual', "
-            "rate_date DATE NOT NULL, created_at TIMESTAMP DEFAULT NOW())"
-        ))
-        self.db.execute(text(
-            "CREATE TABLE IF NOT EXISTS dbp_currency_transactions ("
-            "id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text, "
-            "tenant_id TEXT NOT NULL, transaction_id TEXT, "
-            "original_currency TEXT NOT NULL, original_amount DECIMAL(15,2) NOT NULL, "
-            "base_currency TEXT NOT NULL, base_amount DECIMAL(15,2) NOT NULL, "
-            "exchange_rate DECIMAL(20,8) NOT NULL, "
-            "gain_loss DECIMAL(15,2) DEFAULT 0, "
-            "created_at TIMESTAMP DEFAULT NOW())"
-        ))
-        self.db.commit()
 
     def list_currencies(self, tenant_id):
         rows = self.db.execute(text(
@@ -128,8 +102,9 @@ class MultiCurrencyEngine:
 
     def calculate_gain_loss(self, tenant_id, transaction_id, settlement_rate):
         row = self.db.execute(text(
-            "SELECT * FROM dbp_currency_transactions WHERE transaction_id = :tid"
-        ), {"tid": transaction_id}).fetchone()
+            "SELECT * FROM dbp_currency_transactions "
+            "WHERE tenant_id = :t AND transaction_id = :tid"
+        ), {"t": tenant_id, "tid": transaction_id}).fetchone()
         if not row:
             return {"error": "Currency transaction not found"}
         rd = dict(row._mapping)
@@ -137,8 +112,9 @@ class MultiCurrencyEngine:
         actual_base = float(rd["original_amount"]) * float(settlement_rate)
         gain_loss = actual_base - expected_base
         self.db.execute(text(
-            "UPDATE dbp_currency_transactions SET gain_loss = :gl WHERE id = :id"
-        ), {"gl": round(gain_loss, 2), "id": rd["id"]})
+            "UPDATE dbp_currency_transactions SET gain_loss = :gl "
+            "WHERE id = :id AND tenant_id = :t"
+        ), {"gl": round(gain_loss, 2), "id": rd["id"], "t": tenant_id})
         self.db.commit()
         return {
             "transaction_id": transaction_id,
