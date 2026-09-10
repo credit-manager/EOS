@@ -30,7 +30,11 @@ async def create_subscription(body: dict,
         user["tenant_id"], body["plan_id"],
         billing_cycle=body.get("billing_cycle", "monthly"),
         trial_end=body.get("trial_end"))
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to create subscription")
     return {"status": "success", "data": {"id": sid, "message": "Subscription created"}}
 
 
@@ -38,7 +42,11 @@ async def create_subscription(body: dict,
                dependencies=[Depends(require_permission("dynamic", "delete")), Depends(write_limiter.check)])
 async def cancel_subscription(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     result = SubscriptionEngine(db).cancel_subscription(user["tenant_id"])
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to cancel subscription")
     return {"status": "success", "data": result}
 
 
@@ -72,7 +80,11 @@ async def create_invoice(body: dict,
         user["tenant_id"], body["subscription_id"], body["invoice_number"],
         body["amount"], currency=body.get("currency", "USD"),
         due_date=body.get("due_date"), line_items=body.get("line_items"))
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to create invoice")
     return {"status": "success", "data": {"id": inv_id, "message": "Invoice created"}}
 
 
@@ -96,7 +108,11 @@ async def update_invoice(invoice_id: str, body: dict,
             "error": {"code": "MISSING", "message": "status required"}})
     result = SubscriptionEngine(db).update_invoice_status(
         user["tenant_id"], invoice_id, body["status"])
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to update invoice")
     return {"status": "success", "data": result}
 
 
@@ -122,7 +138,11 @@ async def create_payment(body: dict,
         currency=body.get("currency", "USD"),
         payment_method=body.get("payment_method"),
         transaction_id=body.get("transaction_id"))
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to record payment")
     return {"status": "success", "data": {"id": pid, "message": "Payment recorded"}}
 
 
@@ -150,7 +170,11 @@ async def create_license(body: dict,
         valid_from=body.get("valid_from"),
         valid_until=body.get("valid_until"),
         features=body.get("features"))
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to create license")
     return {"status": "success", "data": {"id": lid, "message": "License created"}}
 
 
@@ -173,7 +197,11 @@ async def update_license(license_id: str, body: dict,
     if not result:
         raise HTTPException(400, detail={"status": "error",
             "error": {"code": "INVALID", "message": "No fields to update"}})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to update license")
     return {"status": "success", "data": result}
 
 
@@ -201,5 +229,9 @@ async def record_usage(body: dict,
         period_start=body.get("period_start"),
         period_end=body.get("period_end"),
         overage_rate=body.get("overage_rate", 0))
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to record usage")
     return {"status": "success", "data": {"id": uid, "message": "Usage recorded"}}

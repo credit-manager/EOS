@@ -37,7 +37,11 @@ async def create_company(body: dict, user: dict = Depends(get_current_user), db:
     cid = eng.create_company(_tenant(user), body["code"], body["name_en"], **{k: v for k, v in body.items() if k not in ("code", "name_en")})
     if not cid:
         raise HTTPException(409, detail={"status": "error", "error": {"code": "DUPLICATE", "message": f"Company code '{body['code']}' already exists"}})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to create company")
     return {"status": "success", "data": {"id": cid}}
 
 
@@ -54,7 +58,11 @@ async def update_company(company_id: str, body: dict, user: dict = Depends(get_c
     ok = ERPFoundationEngine(db).update_company(company_id, body, _tenant(user))
     if not ok:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "NO_CHANGES", "message": "No valid fields to update"}})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to update company")
     return {"status": "success", "message": "Company updated"}
 
 
@@ -73,7 +81,11 @@ async def create_branch(company_id: str, body: dict, user: dict = Depends(get_cu
                                                  name_ar=body.get("name_ar"), address=body.get("address"),
                                                  city=body.get("city"), country=body.get("country"),
                                                  is_headquarters=body.get("is_headquarters", False))
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to create branch")
     return {"status": "success", "data": {"id": bid}}
 
 
@@ -96,7 +108,11 @@ async def create_department(company_id: str, body: dict, user: dict = Depends(ge
     did = ERPFoundationEngine(db).create_department(_tenant(user), company_id, body["code"], body["name_en"],
                                                      parent_id=body.get("parent_id"), branch_id=body.get("branch_id"),
                                                      manager_id=body.get("manager_id"))
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to create department")
     return {"status": "success", "data": {"id": did}}
 
 
@@ -115,7 +131,11 @@ async def create_fiscal_year(company_id: str, body: dict, user: dict = Depends(g
             raise HTTPException(400, detail={"status": "error", "error": {"code": "MISSING", "message": f"{f} required"}})
     fyid = ERPFoundationEngine(db).create_fiscal_year(_tenant(user), company_id, body["code"], body["name"],
                                                        body["start_date"], body["end_date"])
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to create fiscal year")
     return {"status": "success", "data": {"id": fyid}}
 
 
@@ -124,7 +144,11 @@ async def close_fiscal_year(fy_id: str, user: dict = Depends(get_current_user), 
     ok = ERPFoundationEngine(db).close_fiscal_year(fy_id, _tenant(user))
     if not ok:
         raise HTTPException(400, detail={"status": "error", "error": {"code": "NOT_CLOSEABLE", "message": "Year not found or already closed"}})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to close fiscal year")
     return {"status": "success", "message": "Fiscal year closed"}
 
 
@@ -149,5 +173,9 @@ async def create_cost_center(company_id: str, body: dict, user: dict = Depends(g
     ccid = ERPFoundationEngine(db).create_cost_center(_tenant(user), company_id, body["code"], body["name_en"],
                                                        name_ar=body.get("name_ar"), parent_id=body.get("parent_id"),
                                                        budget_amount=body.get("budget_amount", 0))
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to create cost center")
     return {"status": "success", "data": {"id": ccid}}

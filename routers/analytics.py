@@ -32,7 +32,11 @@ async def create_dashboard(body: dict,
         layout_config=body.get("layout_config"),
         is_shared=body.get("is_shared", False),
         owner_id=user.get("user_id"))
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to create dashboard")
     return {"status": "success", "data": {"id": did, "message": "Dashboard created"}}
 
 
@@ -55,7 +59,11 @@ async def delete_dashboard(dashboard_id: str,
     if not result:
         raise HTTPException(404, detail={"status": "error",
             "error": {"code": "NOT_FOUND", "message": "Dashboard not found"}})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to delete dashboard")
     return {"status": "success", "data": {"deleted": True}}
 
 
@@ -81,7 +89,11 @@ async def create_widget(dashboard_id: str, body: dict,
         position_x=body.get("position_x", 0),
         position_y=body.get("position_y", 0),
         width=body.get("width", 6), height=body.get("height", 4))
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to create widget")
     return {"status": "success", "data": {"id": wid, "message": "Widget created"}}
 
 
@@ -93,7 +105,11 @@ async def delete_widget(widget_id: str,
     if not result:
         raise HTTPException(404, detail={"status": "error",
             "error": {"code": "NOT_FOUND", "message": "Widget not found"}})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to delete widget")
     return {"status": "success", "data": {"deleted": True}}
 
 
@@ -119,7 +135,11 @@ async def create_pipeline(body: dict,
         user["tenant_id"], body["pipeline_name"], body["source_type"],
         body["target_type"], config=body.get("config"),
         schedule=body.get("schedule"))
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to create pipeline")
     return {"status": "success", "data": {"id": pid, "message": "Pipeline created"}}
 
 
@@ -139,7 +159,11 @@ async def get_pipeline(pipeline_id: str,
 async def update_pipeline(pipeline_id: str, body: dict,
                         user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     result = AnalyticsEngine(db).update_pipeline(user["tenant_id"], pipeline_id, **body)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to update pipeline")
     return {"status": "success", "data": result}
 
 
@@ -162,7 +186,11 @@ async def create_pipeline_run(body: dict,
             "error": {"code": "MISSING", "message": "pipeline_id required"}})
     rid = AnalyticsEngine(db).create_pipeline_run(
         body["pipeline_id"], user["tenant_id"])
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to create pipeline run")
     return {"status": "success", "data": {"id": rid, "message": "Pipeline run started"}}
 
 
@@ -175,7 +203,11 @@ async def complete_pipeline_run(run_id: str, body: dict,
         records_processed=body.get("records_processed", 0),
         records_failed=body.get("records_failed", 0),
         error_message=body.get("error_message"))
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to complete pipeline run")
     return {"status": "success", "data": result}
 
 
@@ -201,7 +233,11 @@ async def create_alert(body: dict,
         user["tenant_id"], body["alert_name"], body["metric_name"],
         body["condition"], body["threshold_value"],
         notification_channels=body.get("notification_channels"))
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to create alert")
     return {"status": "success", "data": {"id": aid, "message": "Alert created"}}
 
 
@@ -210,7 +246,11 @@ async def create_alert(body: dict,
 async def trigger_alert(alert_id: str,
                        user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     result = AnalyticsEngine(db).trigger_alert(user["tenant_id"], alert_id)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to trigger alert")
     return {"status": "success", "data": result}
 
 
@@ -222,5 +262,9 @@ async def delete_alert(alert_id: str,
     if not result:
         raise HTTPException(404, detail={"status": "error",
             "error": {"code": "NOT_FOUND", "message": "Alert not found"}})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to delete alert")
     return {"status": "success", "data": {"deleted": True}}

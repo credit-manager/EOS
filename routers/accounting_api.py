@@ -102,7 +102,11 @@ async def create_account(body: dict, user: dict = Depends(get_current_user), db:
          "at": body.get("account_type", "asset"), "pid": body.get("parent_id"),
          "cur": body.get("currency_code", "SAR"), "desc": body.get("description"), "now": now},
     )
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to create account")
     return {"id": aid, "name": body["name"], "message": "Account created"}
 
 
@@ -120,7 +124,11 @@ async def update_account(account_id: str, body: dict, user: dict = Depends(get_c
             params[col] = body[col]
     if fields:
         db.execute(text(f"UPDATE dbp_accounts SET {', '.join(fields)} WHERE id = :id AND tenant_id = :tid"), params)
-        db.commit()
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise HTTPException(500, detail="Failed to update account")
     return {"message": "Account updated"}
 
 
@@ -134,7 +142,11 @@ async def delete_account(account_id: str, user: dict = Depends(get_current_user)
     if existing[0]:
         raise HTTPException(400, detail="Cannot delete system account")
     db.execute(text("DELETE FROM dbp_accounts WHERE id = :id AND tenant_id = :tid"), {"id": account_id, "tid": tid})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to delete account")
     return {"message": "Account deleted"}
 
 
@@ -255,7 +267,11 @@ async def create_journal_entry(body: dict, user: dict = Depends(get_current_user
              "cur": line.get("currency_code", "SAR"), "desc": line.get("description"),
              "cc": line.get("cost_center_id"), "lo": i, "now": now},
         )
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to create journal entry")
     return {"id": eid, "message": "Journal entry created"}
 
 
@@ -288,7 +304,11 @@ async def post_journal_entry(entry_id: str, user: dict = Depends(get_current_use
     db.execute(text(
         "UPDATE dbp_journal_entries SET status = 'posted', is_posted = true, posted_at = :now WHERE id = :id AND tenant_id = :tid"
     ), {"id": entry_id, "now": now, "tid": tid})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to post journal entry")
     return {"message": "Journal entry posted"}
 
 
@@ -318,7 +338,11 @@ async def reverse_journal_entry(entry_id: str, user: dict = Depends(get_current_
     db.execute(text(
         "UPDATE dbp_journal_entries SET status = 'reversed' WHERE id = :id AND tenant_id = :tid"
     ), {"id": entry_id, "tid": tid})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to reverse journal entry")
     return {"message": "Journal entry reversed"}
 
 

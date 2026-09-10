@@ -103,7 +103,11 @@ async def create_entity(body: dict, db: Session = Depends(get_db), current_user:
     ver = VersioningEngine(db).create_version(entity_id=entity_id, change_type="create_entity",
         changed_by=current_user.get("id", current_user.get("user_id", "unknown")), change_summary=f"Entity '{code}' created")
     EventBus(db).emit("entity.created", code, tenant_id=tenant_id, user_id=current_user.get("id", current_user.get("user_id")), payload={"entity_id": entity_id})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to create entity")
     return {"status": "success", "entity_id": entity_id, "version": ver["version_number"]}
 
 
@@ -124,7 +128,11 @@ async def update_entity(entity_code: str, body: dict, db: Session = Depends(get_
     ver = VersioningEngine(db).create_version(entity_id=entity.id, change_type="update_entity",
         changed_by=current_user.get("id", current_user.get("user_id", "unknown")), change_summary=f"Updated: {', '.join(changed_fields)}")
     EventBus(db).emit("entity.updated", entity_code, tenant_id=entity.tenant_id, user_id=current_user.get("id", current_user.get("user_id")), payload={"changed_fields": changed_fields})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to update entity")
     return {"status": "success", "version": ver["version_number"], "changed": changed_fields}
 
 
@@ -141,7 +149,11 @@ async def delete_entity(entity_code: str, db: Session = Depends(get_db), current
     tenant_id = entity.tenant_id
     db.delete(entity)
     EventBus(db).emit("entity.deleted", entity_code, tenant_id=tenant_id, user_id=current_user.get("id", current_user.get("user_id")))
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to delete entity")
     return {"status": "success", "deleted": entity_code}
 
 
@@ -173,7 +185,11 @@ async def add_field(entity_code: str, body: dict, db: Session = Depends(get_db),
     ver = VersioningEngine(db).create_version(entity_id=entity.id, change_type="add_field",
         changed_by=current_user.get("id", current_user.get("user_id", "unknown")), change_summary=f"Added field '{fcode}' ({ftype})")
     EventBus(db).emit("field.added", entity_code, tenant_id=entity.tenant_id, user_id=current_user.get("id", current_user.get("user_id")), payload={"field_code": fcode, "field_type": ftype})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to add field")
     return {"status": "success", "field_code": fcode, "version": ver["version_number"]}
 
 
@@ -198,7 +214,11 @@ async def update_field(entity_code: str, field_code: str, body: dict, db: Sessio
     ver = VersioningEngine(db).create_version(entity_id=entity.id, change_type="update_field",
         changed_by=current_user.get("id", current_user.get("user_id", "unknown")), change_summary=f"Updated field '{field_code}': {', '.join(changed)}")
     EventBus(db).emit("field.updated", entity_code, tenant_id=entity.tenant_id, user_id=current_user.get("id", current_user.get("user_id")), payload={"field_code": field_code, "changed": changed})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to update field")
     return {"status": "success", "version": ver["version_number"], "changed": changed}
 
 
@@ -214,7 +234,11 @@ async def remove_field(entity_code: str, field_code: str, db: Session = Depends(
     ver = VersioningEngine(db).create_version(entity_id=entity.id, change_type="remove_field",
         changed_by=current_user.get("id", current_user.get("user_id", "unknown")), change_summary=f"Removed field '{field_code}'")
     EventBus(db).emit("field.removed", entity_code, tenant_id=entity.tenant_id, user_id=current_user.get("id", current_user.get("user_id")), payload={"field_code": field_code})
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, detail="Failed to remove field")
     return {"status": "success", "version": ver["version_number"]}
 
 

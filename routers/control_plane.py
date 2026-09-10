@@ -343,16 +343,32 @@ async def update_tenant(tenant_id: str, body: dict, user: dict = Depends(require
     if not existing:
         raise HTTPException(404, detail="Tenant not found")
 
+    # Whitelist only allowed fields to prevent mass assignment
+    allowed_fields = {"name", "status", "plan_id", "max_users", "max_companies"}
     fields, params = [], {"tid": tenant_id}
-    for col in ("name", "status", "plan_id", "max_users", "max_companies"):
+    for col in allowed_fields:
         if col in body:
+            val = body[col]
+            if col == "status" and val not in ("active", "suspended", "cancelled"):
+                raise HTTPException(400, detail=f"Invalid status: {val}")
+            if col in ("max_users", "max_companies"):
+                try:
+                    val = int(val)
+                except (TypeError, ValueError):
+                    raise HTTPException(400, detail=f"{col} must be an integer")
+                if val < 1:
+                    raise HTTPException(400, detail=f"{col} must be >= 1")
             fields.append(f"{col} = :{col}")
-            params[col] = body[col]
+            params[col] = val
     if fields:
         fields.append("updated_at = :now")
         params["now"] = datetime.now(timezone.utc)
-        db.execute(text(f"UPDATE dbp_saas_tenants SET {', '.join(fields)} WHERE tenant_id = :tid"), params)
-        db.commit()
+        try:
+            db.execute(text(f"UPDATE dbp_saas_tenants SET {', '.join(fields)} WHERE tenant_id = :tid"), params)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise HTTPException(500, detail="Failed to update tenant")
     return {"message": "Tenant updated"}
 
 

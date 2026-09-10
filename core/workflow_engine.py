@@ -93,15 +93,20 @@ class WorkflowEngine:
         self.db.flush()
         return wf_id
 
-    def publish_workflow(self, workflow_id: str) -> bool:
+    def publish_workflow(self, workflow_id: str, tenant_id: Optional[str] = None) -> bool:
         """Publish a workflow definition (makes it usable)."""
+        where = "id = :id"
+        params: Dict[str, Any] = {"id": workflow_id}
+        if tenant_id:
+            where += " AND tenant_id = :tid"
+            params["tid"] = tenant_id
         result = self.db.execute(
             text(
                 "UPDATE dbp_workflow_definitions "
                 "SET is_published = true, is_active = true "
-                "WHERE id = :id"
+                f"WHERE {where}"
             ),
-            {"id": workflow_id},
+            params,
         )
         self.db.flush()
         return result.rowcount > 0
@@ -168,15 +173,20 @@ class WorkflowEngine:
         self.db.flush()
         return trans_id
 
-    def get_workflow_detail(self, workflow_id: str) -> Optional[Dict[str, Any]]:
+    def get_workflow_detail(self, workflow_id: str, tenant_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Get full workflow definition with states and transitions."""
+        where = "id = :id"
+        params: Dict[str, Any] = {"id": workflow_id}
+        if tenant_id:
+            where += " AND tenant_id = :tid"
+            params["tid"] = tenant_id
         wf = self.db.execute(
             text(
                 "SELECT id, code, name_en, name_ar, entity_code, "
                 "is_active, is_published, sla_hours, created_at "
-                "FROM dbp_workflow_definitions WHERE id = :id"
+                f"FROM dbp_workflow_definitions WHERE {where}"
             ),
-            {"id": workflow_id},
+            params,
         ).fetchone()
 
         if not wf:
@@ -247,12 +257,17 @@ class WorkflowEngine:
         priority: int = 0,
     ) -> Optional[str]:
         """Start a new workflow instance for a record."""
+        wf_where = "id = :id"
+        wf_params: Dict[str, Any] = {"id": workflow_id}
+        if tenant_id:
+            wf_where += " AND (tenant_id = :tid OR tenant_id IS NULL)"
+            wf_params["tid"] = tenant_id
         wf = self.db.execute(
             text(
                 "SELECT id, entity_code, is_published, sla_hours "
-                "FROM dbp_workflow_definitions WHERE id = :id"
+                f"FROM dbp_workflow_definitions WHERE {wf_where}"
             ),
-            {"id": workflow_id},
+            wf_params,
         ).fetchone()
 
         if not wf or not wf[2]:
@@ -304,6 +319,7 @@ class WorkflowEngine:
         performed_by: str,
         comment: Optional[str] = None,
         user_roles: Optional[List[str]] = None,
+        tenant_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Execute a transition on a workflow instance.
@@ -313,13 +329,18 @@ class WorkflowEngine:
         if action not in self.VALID_ACTIONS:
             return {"success": False, "error": f"Invalid action: {action}"}
 
-        # Get instance
+        # Get instance — with tenant isolation
+        inst_where = "id = :id"
+        inst_params: Dict[str, Any] = {"id": instance_id}
+        if tenant_id:
+            inst_where += " AND tenant_id = :tid"
+            inst_params["tid"] = tenant_id
         inst = self.db.execute(
             text(
                 "SELECT id, current_state_id, status, workflow_id "
-                "FROM dbp_workflow_instances WHERE id = :id"
+                f"FROM dbp_workflow_instances WHERE {inst_where}"
             ),
-            {"id": instance_id},
+            inst_params,
         ).fetchone()
 
         if not inst:
@@ -398,11 +419,16 @@ class WorkflowEngine:
             "status": params.get("status", "active"),
         }
 
-    def cancel_instance(self, instance_id: str, performed_by: str) -> Dict[str, Any]:
+    def cancel_instance(self, instance_id: str, performed_by: str, tenant_id: Optional[str] = None) -> Dict[str, Any]:
         """Cancel a workflow instance."""
+        inst_where = "id = :id"
+        inst_params: Dict[str, Any] = {"id": instance_id}
+        if tenant_id:
+            inst_where += " AND tenant_id = :tid"
+            inst_params["tid"] = tenant_id
         inst = self.db.execute(
-            text("SELECT status FROM dbp_workflow_instances WHERE id = :id"),
-            {"id": instance_id},
+            text(f"SELECT status FROM dbp_workflow_instances WHERE {inst_where}"),
+            inst_params,
         ).fetchone()
 
         if not inst:
@@ -411,21 +437,31 @@ class WorkflowEngine:
             return {"success": False, "error": f"Instance is {inst[0]}"}
 
         now = datetime.now(timezone.utc)
+        update_where = "id = :id"
+        update_params: Dict[str, Any] = {"id": instance_id, "now": now}
+        if tenant_id:
+            update_where += " AND tenant_id = :tid"
+            update_params["tid"] = tenant_id
         self.db.execute(
             text(
                 "UPDATE dbp_workflow_instances "
-                "SET status = 'cancelled', completed_at = :now "
-                "WHERE id = :id"
+                f"SET status = 'cancelled', completed_at = :now "
+                f"WHERE {update_where}"
             ),
-            {"id": instance_id, "now": now},
+            update_params,
         )
 
         self._log_action(instance_id, None, "cancelled", None, "cancelled", performed_by)
         self.db.flush()
         return {"success": True, "status": "cancelled"}
 
-    def get_instance(self, instance_id: str) -> Optional[Dict[str, Any]]:
+    def get_instance(self, instance_id: str, tenant_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Get workflow instance with history."""
+        inst_where = "i.id = :id"
+        inst_params: Dict[str, Any] = {"id": instance_id}
+        if tenant_id:
+            inst_where += " AND i.tenant_id = :tid"
+            inst_params["tid"] = tenant_id
         inst = self.db.execute(
             text(
                 "SELECT i.id, i.workflow_id, i.entity_code, i.record_id, "
@@ -436,9 +472,9 @@ class WorkflowEngine:
                 "FROM dbp_workflow_instances i "
                 "LEFT JOIN dbp_workflow_states s ON i.current_state_id = s.id "
                 "JOIN dbp_workflow_definitions w ON i.workflow_id = w.id "
-                "WHERE i.id = :id"
+                f"WHERE {inst_where}"
             ),
-            {"id": instance_id},
+            inst_params,
         ).fetchone()
 
         if not inst:

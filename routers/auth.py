@@ -10,7 +10,7 @@ from core.auth import get_current_user, require_permission, require_admin_role
 from core.user_engine import UserEngine
 from core.email_adapter import get_email_service, EmailTemplateEngine
 from core.rate_limit import write_limiter, auth_limiter
-from core.schemas import RegisterRequest, LoginRequest
+from core.schemas import RegisterRequest, LoginRequest, VerifyEmailRequest, RefreshTokenRequest, ForgotPasswordRequest, ResetPasswordRequest, ChangePasswordRequest
 from datetime import datetime, timedelta, timezone
 import hashlib
 import jwt
@@ -96,12 +96,9 @@ async def register(body: RegisterRequest, request: Request, db: Session = Depend
 
 
 @router.post("/verify-email", dependencies=[Depends(auth_limiter.check)])
-async def verify_email(body: dict, db: Session = Depends(get_db)):
-    token = body.get("token")
-    if not token:
-        raise _err(400, "MISSING", "token required")
+async def verify_email(body: VerifyEmailRequest, db: Session = Depends(get_db)):
     engine = UserEngine(db)
-    result = engine.verify_email(token)
+    result = engine.verify_email(body.token)
     if not result["success"]:
         raise _err(400, "VERIFY_FAILED", result["error"])
     db.commit()
@@ -141,9 +138,9 @@ async def login(body: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/refresh", dependencies=[Depends(auth_limiter.check)])
-async def refresh_token(body: dict, db: Session = Depends(get_db)):
-    raw = str(body.get("refresh_token") or "").strip()
-    if not raw or len(raw) < 40:
+async def refresh_token(body: RefreshTokenRequest, db: Session = Depends(get_db)):
+    raw = body.refresh_token.strip()
+    if len(raw) < 40:
         raise _err(401, "INVALID_REFRESH_TOKEN", "Invalid refresh token")
     now = datetime.now(timezone.utc)
     token_hash = _refresh_hash(raw)
@@ -199,12 +196,9 @@ async def logout(body: dict | None = None, db: Session = Depends(get_db)):
 
 
 @router.post("/forgot-password", dependencies=[Depends(auth_limiter.check)])
-async def forgot_password(body: dict, request: Request, db: Session = Depends(get_db)):
-    email = body.get("email")
-    if not email:
-        raise _err(400, "MISSING", "email required")
+async def forgot_password(body: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
     engine = UserEngine(db)
-    result = engine.request_password_reset(email)
+    result = engine.request_password_reset(body.email)
     db.commit()
     if result.get("reset_token"):
         user = engine.get_user_by_id(result.get("user_id", "")) if result.get("user_id") else None
@@ -212,18 +206,14 @@ async def forgot_password(body: dict, request: Request, db: Session = Depends(ge
         frontend_url = os.getenv("EOS_FRONTEND_URL", "http://localhost:3000")
         tpl = EmailTemplateEngine.password_reset_email(f"{frontend_url}/reset-password?token={result['reset_token']}", first_name)
         email_svc = get_email_service()
-        email_svc.send(to_email=email, subject=tpl["subject"], html_body=tpl["html"], text_body=tpl.get("text"))
+        email_svc.send(to_email=body.email, subject=tpl["subject"], html_body=tpl["html"], text_body=tpl.get("text"))
     return {"status": "success", "data": {"message": "If email exists, reset link sent",
             "reset_token": result.get("reset_token") if os.getenv("EOS_EMAIL_PROVIDER", "console") == "console" else None}}
 
 
 @router.post("/reset-password", dependencies=[Depends(auth_limiter.check)])
-async def reset_password(body: dict, db: Session = Depends(get_db)):
-    token = body.get("token")
-    new_password = body.get("new_password")
-    if not token or not new_password:
-        raise _err(400, "MISSING", "token and new_password required")
-    result = UserEngine(db).reset_password(token, new_password)
+async def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+    result = UserEngine(db).reset_password(body.token, body.new_password)
     if not result["success"]:
         raise _err(400, "RESET_FAILED", result["error"])
     db.commit()
@@ -231,12 +221,8 @@ async def reset_password(body: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/change-password", dependencies=[Depends(require_permission("dynamic", "update"))])
-async def change_password(body: dict, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    current = body.get("current_password")
-    new = body.get("new_password")
-    if not current or not new:
-        raise _err(400, "MISSING", "current_password and new_password required")
-    result = UserEngine(db).change_password(user["id"], current, new)
+async def change_password(body: ChangePasswordRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    result = UserEngine(db).change_password(user["id"], body.current_password, body.new_password)
     if not result["success"]:
         raise _err(400, "CHANGE_FAILED", result["error"])
     db.commit()
