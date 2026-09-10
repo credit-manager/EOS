@@ -13,9 +13,13 @@ describe('EOS frontend functional API flows', () => {
   });
   afterEach(() => { vi.restoreAllMocks(); });
 
-  it('uses the canonical same-origin API base and Arabic headers', async () => {
+  it('uses the canonical same-origin API base and credentialed browser sessions', async () => {
     const axios = await import('axios'); await loadApi();
-    expect(vi.mocked(axios.default.create)).toHaveBeenCalledWith({ baseURL: 'http://localhost:3000/api/v1', headers: { 'Content-Type': 'application/json', 'Accept-Language': 'ar' } });
+    expect(vi.mocked(axios.default.create)).toHaveBeenCalledWith({
+      baseURL: 'http://localhost:3000/api/v1',
+      withCredentials: true,
+      headers: { 'Content-Type': 'application/json', 'Accept-Language': 'ar' },
+    });
   });
 
   it('maps supported customer, supplier, product and report actions to backend contracts', async () => {
