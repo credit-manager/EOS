@@ -3,7 +3,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, 'commercial-readiness-hardening-*']
 permissions:
   contents: read
 concurrency:
@@ -64,6 +64,8 @@ jobs:
             tests/test_marketplace_regressions.py \
             tests/test_identity_engine_regressions.py \
             tests/test_financial_validation_contract.py \
+            tests/test_browser_session_security.py \
+            tests/test_alembic_graph_contract.py \
             --tb=short
       - name: Canonical frontend certification
         working-directory: erp-system/frontend
