@@ -10,7 +10,7 @@ concurrency:
   group: eos-commercial-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 env:
-  EXPECTED_ALEMBIC_HEAD: 20260910_commercial_schema_merge
+  EXPECTED_ALEMBIC_HEAD: 20260910_financial_integrity_constraints
 jobs:
   contract:
     runs-on: ubuntu-latest
@@ -63,6 +63,7 @@ jobs:
             tests/test_builder_engine_regressions.py \
             tests/test_marketplace_regressions.py \
             tests/test_identity_engine_regressions.py \
+            tests/test_financial_validation_contract.py \
             --tb=short
       - name: Canonical frontend certification
         working-directory: erp-system/frontend
