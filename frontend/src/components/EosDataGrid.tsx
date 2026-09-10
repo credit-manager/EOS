@@ -5,13 +5,6 @@ import { dynamicAPI, type DynamicColumn, type DynamicListSchema } from '../servi
 type Props = { entityCode: string; language: 'ar' | 'en' };
 type Filter = { field: string; operator: 'eq' | 'like'; value: string };
 
-const demoRows: Record<string, unknown>[] = [
-  { name: 'Acme Industries', email: 'finance@acme.example', amount: '€24,500', status: 'Active' },
-  { name: 'Northstar Group', email: 'ops@northstar.example', amount: '€18,200', status: 'Active' },
-  { name: 'Cedar Trading', email: 'hello@cedar.example', amount: '€9,840', status: 'Pending' },
-  { name: 'Atlas Construction', email: 'accounts@atlas.example', amount: '€7,620', status: 'Active' },
-];
-
 export default function EosDataGrid({ entityCode, language }: Props) {
   const [schema, setSchema] = useState<DynamicListSchema | null>(null);
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
@@ -26,14 +19,9 @@ export default function EosDataGrid({ entityCode, language }: Props) {
   const [showColumns, setShowColumns] = useState(false);
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
   const [loading, setLoading] = useState(true);
-  const [remoteError, setRemoteError] = useState(false);
+  const [error, setError] = useState('');
 
-  const columns = useMemo<DynamicColumn[]>(() => schema?.columns?.length ? schema.columns : [
-    { field: 'name', label: 'Customer', label_ar: 'العميل', sortable: true },
-    { field: 'email', label: 'Email', label_ar: 'البريد الإلكتروني' },
-    { field: 'amount', label: 'Amount', label_ar: 'القيمة', sortable: true },
-    { field: 'status', label: 'Status', label_ar: 'الحالة' },
-  ], [schema]);
+  const columns = useMemo<DynamicColumn[]>(() => schema?.columns || [], [schema]);
   const visibleColumns = columns.filter((column) => !hidden.has(column.field));
   const storageKey = `eos-grid:${entityCode}`;
 
@@ -44,25 +32,33 @@ export default function EosDataGrid({ entityCode, language }: Props) {
       if (Array.isArray(saved.hidden)) setHidden(new Set(saved.hidden));
       if (saved.density === 'compact' || saved.density === 'comfortable') setDensity(saved.density);
     } catch { /* ignore corrupt local preferences */ }
-    dynamicAPI.listSchema(entityCode).then((response) => alive && setSchema(response.data.data)).catch(() => alive && setSchema(null));
+    dynamicAPI.listSchema(entityCode)
+      .then((response) => alive && setSchema(response.data.data))
+      .catch(() => alive && setError(language === 'ar' ? 'تعذر تحميل تعريف الجدول.' : 'Unable to load the list schema.'));
     return () => { alive = false; };
-  }, [entityCode, storageKey]);
+  }, [entityCode, language, storageKey]);
 
   useEffect(() => { localStorage.setItem(storageKey, JSON.stringify({ hidden: [...hidden], density })); }, [storageKey, hidden, density]);
 
   useEffect(() => {
     let alive = true;
-    setLoading(true); setRemoteError(false);
+    setLoading(true); setError('');
     const normalize = (value: string) => value.replace(/,/g, ' ');
     const activeFilter = filter.field && filter.value ? `${filter.field}:${filter.operator}:${normalize(filter.value)}` : undefined;
     const searchFilter = search ? `name:like:${normalize(search)}` : undefined;
     const filters = [activeFilter, searchFilter].filter(Boolean).join(',') || undefined;
     dynamicAPI.records(entityCode, { filters, sort: sort || undefined, limit, offset })
-      .then((response) => { if (alive) { setRows(response.data.data || []); setTotal(response.data.pagination?.total ?? response.data.count ?? 0); setSelected(new Set()); } })
-      .catch(() => { if (alive) { setRows(demoRows); setTotal(demoRows.length); setRemoteError(true); } })
+      .then((response) => {
+        if (alive) {
+          setRows(response.data.data || []);
+          setTotal(response.data.pagination?.total ?? response.data.count ?? 0);
+          setSelected(new Set());
+        }
+      })
+      .catch(() => alive && setError(language === 'ar' ? 'تعذر تحميل سجلات الشركة.' : 'Unable to load tenant records.'))
       .finally(() => alive && setLoading(false));
     return () => { alive = false; };
-  }, [entityCode, filter.field, filter.operator, filter.value, limit, offset, search, sort]);
+  }, [entityCode, filter.field, filter.operator, filter.value, limit, offset, search, sort, language]);
 
   const toggleSort = (column: DynamicColumn) => {
     if (!column.sortable) return;
@@ -93,7 +89,7 @@ export default function EosDataGrid({ entityCode, language }: Props) {
     </div>
     {showColumns && <div className="eos-column-panel" role="group" aria-label={language === 'ar' ? 'إظهار الأعمدة' : 'Column visibility'}>{columns.map((column) => <label key={column.field}><input type="checkbox" checked={!hidden.has(column.field)} onChange={() => setHidden((current) => { const next = new Set(current); next.has(column.field) ? next.delete(column.field) : next.add(column.field); return next; })} />{language === 'ar' ? column.label_ar || column.label : column.label || column.field}</label>)}<button className="eos-ghost-button" type="button" onClick={() => setDensity(density === 'comfortable' ? 'compact' : 'comfortable')}>{density === 'comfortable' ? 'Compact' : 'Comfortable'}</button></div>}
     {selected.size > 0 && <div className="eos-grid-selection" role="status">{language === 'ar' ? `تم تحديد ${selected.size} سجل` : `${selected.size} records selected`}</div>}
-    {remoteError && <div className="eos-grid-demo-note">{language === 'ar' ? 'وضع العرض التجريبي — سجّل الدخول لتحميل بيانات شركتك.' : 'Demo mode — sign in to load your tenant data.'}</div>}
+    {error && <div className="eos-form-error" role="alert">{error}</div>}
     <div className="eos-table-wrap"><table><thead><tr><th className="eos-select-cell"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAll} aria-label={language === 'ar' ? 'تحديد الكل' : 'Select all'} /></th>{visibleColumns.map((column) => <th key={column.field}><button className="eos-sort-button" type="button" onClick={() => toggleSort(column)}>{language === 'ar' ? column.label_ar || column.label : column.label || column.field}{column.sortable && <FiChevronDown />}</button></th>)}</tr></thead>
       <tbody>{loading ? <tr><td colSpan={visibleColumns.length + 1} className="eos-grid-state">{language === 'ar' ? 'جاري التحميل…' : 'Loading…'}</td></tr> : rows.length === 0 ? <tr><td colSpan={visibleColumns.length + 1} className="eos-grid-state">{language === 'ar' ? 'لا توجد سجلات' : 'No records found'}</td></tr> : rows.map((row, index) => { const key = rowKey(row, index); return <tr key={key} className={selected.has(key) ? 'is-selected' : ''}><td className="eos-select-cell"><input type="checkbox" checked={selected.has(key)} onChange={() => toggleRow(key)} aria-label={`${language === 'ar' ? 'تحديد السجل' : 'Select row'} ${index + 1}`} /></td>{visibleColumns.map((column) => <td key={column.field}>{column.maskable ? '••••••' : String(row[column.field] ?? '—')}</td>)}</tr>; })}</tbody>
     </table></div>
