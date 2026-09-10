@@ -7,6 +7,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 RUNTIME_DDL_MARKERS = (
     "CREATE TABLE IF NOT EXISTS",
+    "CREATE TABLE ",
+    "ALTER TABLE ",
+    "DROP TABLE ",
     "Base.metadata.create_all",
 )
 STUB_MARKERS = (
@@ -25,11 +28,21 @@ def fail_if_present(path: Path, markers: tuple[str, ...]) -> list[str]:
 def main() -> int:
     violations: list[str] = []
 
-    payment_engine = ROOT / "core" / "payment_engine.py"
-    if payment_engine.exists():
-        markers = fail_if_present(payment_engine, RUNTIME_DDL_MARKERS)
-        violations.extend(f"{payment_engine.relative_to(ROOT)}: runtime DDL marker {marker!r}" for marker in markers)
+    # Runtime application code must never own database schema mutation.
+    # DDL belongs in Alembic migrations or explicitly privileged builder SQL.
+    for root_name in ("core", "routers"):
+        root = ROOT / root_name
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*.py"):
+            markers = fail_if_present(path, RUNTIME_DDL_MARKERS)
+            violations.extend(
+                f"{path.relative_to(ROOT)}: runtime DDL marker {marker!r}"
+                for marker in markers
+            )
 
+    # Builder code has its own strict contract and may only reference the
+    # dedicated privileged database function; direct table DDL is forbidden.
     builder_engine = ROOT / "core" / "builder_engine.py"
     if builder_engine.exists():
         markers = fail_if_present(builder_engine, ("CREATE TABLE IF NOT EXISTS", "ALTER TABLE public."))
@@ -39,6 +52,13 @@ def main() -> int:
     if reporting.exists():
         markers = fail_if_present(reporting, STUB_MARKERS)
         violations.extend(f"{reporting.relative_to(ROOT)}: financial/reporting stub {marker!r}" for marker in markers)
+
+    control_plane = ROOT / "routers" / "control_plane.py"
+    if control_plane.exists():
+        # Passwords may be accepted once for provisioning, never returned in an API response.
+        text = control_plane.read_text(encoding="utf-8")
+        if '"admin_password": admin_password' in text or "'admin_password': admin_password" in text:
+            violations.append("routers/control_plane.py: plaintext admin password must never be returned")
 
     frontend_wrapper = ROOT / "app_server.py"
     entrypoint = ROOT / "docker" / "entrypoint.sh"
