@@ -10,7 +10,7 @@ concurrency:
   group: eos-commercial-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 env:
-  EXPECTED_ALEMBIC_HEAD: 20260910_refresh_mfa_state
+  EXPECTED_ALEMBIC_HEAD: 20260910_commercial_schema_merge
 jobs:
   contract:
     runs-on: ubuntu-latest
