@@ -22,7 +22,6 @@ def test_real_commercial_cycle_posts_to_general_ledger():
 
     db = SessionLocal()
     try:
-        db.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": tenant_id})
         user = db.execute(text("SELECT id, tenant_id FROM dbp_users WHERE email = :email"), {"email": email}).fetchone()
         assert user
         assert user[1] == tenant_id
@@ -50,7 +49,6 @@ def test_real_commercial_cycle_posts_to_general_ledger():
     assert payment.json()["data"]["status"] == "paid"
     db = SessionLocal()
     try:
-        db.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": tenant_id})
         entries = db.execute(text("SELECT id, reference FROM dbp_journal_entries WHERE tenant_id = :tid AND company_id = :cid AND reference IN (:invoice_ref, :payment_ref) ORDER BY reference"), {"tid": tenant_id, "cid": company_id, "invoice_ref": f"invoice:{invoice_id}", "payment_ref": f"payment:{invoice_id}:1150"}).fetchall()
         assert len(entries) == 2
         for entry_id, _ in entries:

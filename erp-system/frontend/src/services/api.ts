@@ -35,7 +35,7 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const original = error.config as (typeof error.config & { _retry?: boolean }) | undefined;
     const url = original?.url || '';
-    const isAuthEndpoint = ['/auth/login', '/auth/refresh', '/auth/register', '/auth/verify-email'].some((p) => url.includes(p));
+    const isAuthEndpoint = ['/auth/login', '/auth/refresh', '/auth/register', '/auth/verify-email', '/auth/2fa/verify', '/auth/2fa/verify-recovery'].some((p) => url.includes(p));
     if (error.response?.status === 401 && original && !original._retry && !isAuthEndpoint) {
       const refreshToken = typeof localStorage !== 'undefined' ? localStorage.getItem('refresh_token') : null;
       if (refreshToken) {
@@ -63,6 +63,8 @@ export const authAPI = {
   login: (email: string, password: string) => apiClient.post('/auth/login', { email, password }),
   register: (userData: unknown) => apiClient.post('/auth/register', userData),
   verifyEmail: (token: string) => apiClient.post('/auth/verify-email', { token }),
+  verify2FA: (code: string) => apiClient.post('/auth/2fa/verify', { code }),
+  verifyRecoveryCode: (code: string) => apiClient.post('/auth/2fa/verify-recovery', { code }),
   logout: async () => {
     const refreshToken = typeof localStorage !== 'undefined' ? localStorage.getItem('refresh_token') : null;
     try { if (refreshToken) await apiClient.post('/auth/logout', { refresh_token: refreshToken }); }

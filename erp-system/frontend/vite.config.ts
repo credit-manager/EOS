@@ -28,6 +28,8 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // Production builds should not publish source maps by default. CI or a
+    // controlled diagnostic build can opt in with SOURCEMAP=true.
+    sourcemap: process.env.SOURCEMAP === 'true',
   },
 })

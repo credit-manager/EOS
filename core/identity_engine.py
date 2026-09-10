@@ -1,17 +1,43 @@
 """
 P47 Identity Federation & SSO Engine
 """
-import uuid, hashlib, secrets
+import uuid, hashlib, secrets, json
 from typing import Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+
+from core.secret_store import encrypt_text
 
 
 class IdentityEngine:
     def __init__(self, db: Session):
         self.db = db
 
-    # -------------------------------------------------- SSO providers
+    def _require_user_tenant(self, tenant_id: str, user_id: str) -> None:
+        row = self.db.execute(
+            text("SELECT 1 FROM dbp_users WHERE id=:uid AND tenant_id=:tid"),
+            {"uid": user_id, "tid": tenant_id},
+        ).fetchone()
+        if not row:
+            raise ValueError("user does not belong to tenant")
+
+    def _require_provider_tenant(self, tenant_id: str, provider_id: str) -> None:
+        row = self.db.execute(
+            text("SELECT 1 FROM dbp_sso_providers WHERE id=:pid AND tenant_id=:tid"),
+            {"pid": provider_id, "tid": tenant_id},
+        ).fetchone()
+        if not row:
+            raise ValueError("provider does not belong to tenant")
+
+    @staticmethod
+    def _encrypt_secret(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value)
+        if not normalized:
+            return None
+        return encrypt_text(normalized)
+
     def create_provider(self, tenant_id, provider_name, provider_type,
                         client_id, client_secret=None, metadata_url=None):
         pid = str(uuid.uuid4())
@@ -21,7 +47,7 @@ class IdentityEngine:
             "VALUES (:id,:tid,:pn,:pt,:ci,:cs,:mu,NOW())"
         ), {"id": pid, "tid": tenant_id, "pn": provider_name,
             "pt": provider_type, "ci": client_id,
-            "cs": client_secret, "mu": metadata_url})
+            "cs": self._encrypt_secret(client_secret), "mu": metadata_url})
         return pid
 
     def list_providers(self, tenant_id, is_active=None):
@@ -38,16 +64,27 @@ class IdentityEngine:
     def update_provider(self, tenant_id, provider_id, **kwargs):
         if not kwargs:
             return None
-        sets = [f"{k}=:{k}" for k in kwargs]
-        params = {"id": provider_id, "tid": tenant_id, **kwargs}
-        self.db.execute(text(
+        allowed = {"provider_name", "provider_type", "client_id", "client_secret", "metadata_url", "is_active"}
+        unknown = set(kwargs) - allowed
+        if unknown:
+            raise ValueError(f"unsupported provider fields: {sorted(unknown)}")
+        params = {"id": provider_id, "tid": tenant_id}
+        sets = []
+        for key, value in kwargs.items():
+            column = "client_secret_enc" if key == "client_secret" else key
+            params[key] = self._encrypt_secret(value) if key == "client_secret" else value
+            sets.append(f"{column}=:{key}")
+        result = self.db.execute(text(
             f"UPDATE dbp_sso_providers SET {', '.join(sets)} WHERE id=:id AND tenant_id=:tid"
         ), params)
+        if result.rowcount == 0:
+            raise ValueError("provider not found")
         return {"id": provider_id, "updated": True}
 
-    # -------------------------------------------------- SSO sessions
     def create_session(self, tenant_id, user_id, provider_id, sso_session_id,
                        ip_address=None, user_agent=None, expires_at=None):
+        self._require_user_tenant(tenant_id, user_id)
+        self._require_provider_tenant(tenant_id, provider_id)
         sid = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_sso_sessions "
@@ -62,6 +99,7 @@ class IdentityEngine:
         q = "SELECT id, user_id, provider_id, sso_session_id, ip_address, created_at FROM dbp_sso_sessions WHERE tenant_id=:tid"
         params: Dict[str, Any] = {"tid": tenant_id}
         if user_id:
+            self._require_user_tenant(tenant_id, user_id)
             q += " AND user_id=:ui"
             params["ui"] = user_id
         q += " ORDER BY created_at DESC LIMIT 50"
@@ -70,8 +108,10 @@ class IdentityEngine:
                  "sso_session_id": r[3], "ip_address": r[4],
                  "created_at": str(r[5]) if r[5] else None} for r in rows]
 
-    # -------------------------------------------------- MFA
     def setup_mfa(self, tenant_id, user_id, mfa_type):
+        self._require_user_tenant(tenant_id, user_id)
+        if mfa_type != "totp":
+            raise ValueError("unsupported MFA type")
         mid = str(uuid.uuid4())
         secret = secrets.token_hex(20)
         self.db.execute(text(
@@ -79,36 +119,39 @@ class IdentityEngine:
             "(id, tenant_id, user_id, mfa_type, secret_enc, is_enabled, created_at) "
             "VALUES (:id,:tid,:ui,:mt,:se,false,NOW())"
         ), {"id": mid, "tid": tenant_id, "ui": user_id,
-            "mt": mfa_type, "se": secret})
+            "mt": mfa_type, "se": self._encrypt_secret(secret)})
         return {"id": mid, "secret": secret}
 
     def enable_mfa(self, tenant_id, mfa_id):
-        self.db.execute(text(
+        result = self.db.execute(text(
             "UPDATE dbp_mfa_configs SET is_enabled=true WHERE id=:id AND tenant_id=:tid"
         ), {"id": mfa_id, "tid": tenant_id})
+        if result.rowcount == 0:
+            raise ValueError("MFA configuration not found")
         return {"id": mfa_id, "enabled": True}
 
     def list_mfa(self, tenant_id, user_id=None):
         q = "SELECT id, user_id, mfa_type, is_enabled, last_used_at, created_at FROM dbp_mfa_configs WHERE tenant_id=:tid"
         params: Dict[str, Any] = {"tid": tenant_id}
         if user_id:
+            self._require_user_tenant(tenant_id, user_id)
             q += " AND user_id=:ui"
             params["ui"] = user_id
         rows = self.db.execute(text(q), params).fetchall()
         return [{"id": r[0], "user_id": r[1], "mfa_type": r[2],
-                 "is_enabled": r[3],
-                 "last_used_at": str(r[4]) if r[4] else None,
+                 "is_enabled": r[3], "last_used_at": str(r[4]) if r[4] else None,
                  "created_at": str(r[5]) if r[5] else None} for r in rows]
 
     def disable_mfa(self, tenant_id, mfa_id):
-        self.db.execute(text(
+        result = self.db.execute(text(
             "UPDATE dbp_mfa_configs SET is_enabled=false WHERE id=:id AND tenant_id=:tid"
         ), {"id": mfa_id, "tid": tenant_id})
+        if result.rowcount == 0:
+            raise ValueError("MFA configuration not found")
         return {"id": mfa_id, "disabled": True}
 
-    # ------------------------------------------------ role mappings
-    def create_role_mapping(self, tenant_id, provider_id, external_role,
-                            internal_role):
+    def create_role_mapping(self, tenant_id, provider_id, external_role, internal_role):
+        self._require_provider_tenant(tenant_id, provider_id)
         rid = str(uuid.uuid4())
         self.db.execute(text(
             "INSERT INTO dbp_role_mappings "
@@ -122,21 +165,32 @@ class IdentityEngine:
         q = "SELECT id, provider_id, external_role, internal_role, created_at FROM dbp_role_mappings WHERE tenant_id=:tid"
         params: Dict[str, Any] = {"tid": tenant_id}
         if provider_id:
+            self._require_provider_tenant(tenant_id, provider_id)
             q += " AND provider_id=:pi"
             params["pi"] = provider_id
         rows = self.db.execute(text(q), params).fetchall()
         return [{"id": r[0], "provider_id": r[1], "external_role": r[2],
-                 "internal_role": r[3],
-                 "created_at": str(r[4]) if r[4] else None} for r in rows]
+                 "internal_role": r[3], "created_at": str(r[4]) if r[4] else None} for r in rows]
 
     def delete_role_mapping(self, tenant_id, mapping_id):
-        r = self.db.execute(text(
+        result = self.db.execute(text(
             "DELETE FROM dbp_role_mappings WHERE id=:id AND tenant_id=:tid"
         ), {"id": mapping_id, "tid": tenant_id})
-        return r.rowcount > 0
+        if result.rowcount == 0:
+            raise ValueError("role mapping not found")
+        return True
 
-    # ----------------------------------------------------- API keys
     def create_api_key(self, tenant_id, key_name, permissions=None, expires_at=None):
+        if permissions is not None and not isinstance(permissions, (list, tuple)):
+            raise ValueError("permissions must be a list")
+        allowed_permissions = {
+            "dynamic:read", "dynamic:create", "dynamic:update", "dynamic:delete",
+            "payments:read", "reports:read", "inventory:read", "sales:read",
+        }
+        normalized_permissions = sorted({str(p).strip() for p in (permissions or []) if str(p).strip()})
+        invalid = set(normalized_permissions) - allowed_permissions
+        if invalid:
+            raise ValueError(f"unsupported API key permissions: {sorted(invalid)}")
         kid = str(uuid.uuid4())
         raw_key = f"dbp_{secrets.token_hex(32)}"
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
@@ -146,25 +200,26 @@ class IdentityEngine:
             "VALUES (:id,:tid,:kn,:kh,:pe,:ea,NOW())"
         ), {"id": kid, "tid": tenant_id, "kn": key_name,
             "kh": key_hash,
-            "pe": __import__('json').dumps(permissions) if permissions else None,
+            "pe": json.dumps(normalized_permissions) if normalized_permissions else None,
             "ea": expires_at})
-        return {"id": kid, "key": raw_key, "key_hash": key_hash}
+        return {"id": kid, "key": raw_key, "permissions": normalized_permissions}
 
     def list_api_keys(self, tenant_id, is_active=None):
-        q = "SELECT id, key_name, key_hash, permissions, is_active, last_used_at, expires_at, created_at FROM dbp_api_keys WHERE tenant_id=:tid"
+        q = "SELECT id, key_name, permissions, is_active, last_used_at, expires_at, created_at FROM dbp_api_keys WHERE tenant_id=:tid"
         params: Dict[str, Any] = {"tid": tenant_id}
         if is_active is not None:
             q += " AND is_active=:ia"
             params["ia"] = is_active
         rows = self.db.execute(text(q), params).fetchall()
-        return [{"id": r[0], "key_name": r[1], "key_hash": r[2][:16] + "...",
-                 "permissions": r[3], "is_active": r[4],
-                 "last_used_at": str(r[5]) if r[5] else None,
-                 "expires_at": str(r[6]) if r[6] else None,
-                 "created_at": str(r[7]) if r[7] else None} for r in rows]
+        return [{"id": r[0], "key_name": r[1], "permissions": r[2], "is_active": r[3],
+                 "last_used_at": str(r[4]) if r[4] else None,
+                 "expires_at": str(r[5]) if r[5] else None,
+                 "created_at": str(r[6]) if r[6] else None} for r in rows]
 
     def revoke_api_key(self, tenant_id, key_id):
-        self.db.execute(text(
+        result = self.db.execute(text(
             "UPDATE dbp_api_keys SET is_active=false WHERE id=:id AND tenant_id=:tid"
         ), {"id": key_id, "tid": tenant_id})
+        if result.rowcount == 0:
+            raise ValueError("API key not found")
         return {"id": key_id, "revoked": True}

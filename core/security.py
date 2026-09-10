@@ -3,9 +3,36 @@ P13 Security Engine — Field-Level Security, Row-Level Security,
 Sensitive Data Masking, Advanced Input Validation.
 """
 import re
-from typing import Dict, Any, List, Optional, Set
+from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+
+
+_SAFE_SQL_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _safe_identifier(value: Any) -> Optional[str]:
+    """Return a SQL identifier only when it matches the metadata identifier contract."""
+    candidate = str(value or "")
+    return candidate if _SAFE_SQL_IDENTIFIER.fullmatch(candidate) else None
+
+
+def _role_matches(user_roles: List[str], required_roles: List[str]) -> bool:
+    """Match roles exactly, or as a namespaced descendant (for example module:manage)."""
+    if not required_roles:
+        return True
+
+    for user_role in user_roles:
+        if isinstance(user_role, dict):
+            user_role = user_role.get("permission", "")
+        user_role = str(user_role)
+        if user_role in {"*", "*:*"}:
+            return True
+        for required_role in required_roles:
+            required_role = str(required_role)
+            if user_role == required_role or user_role.startswith(required_role + ":"):
+                return True
+    return False
 
 
 # ──────────────────────────────────────────────────────────────
@@ -13,14 +40,7 @@ from sqlalchemy import text
 # ──────────────────────────────────────────────────────────────
 
 class FieldSecurity:
-    """
-    Enforces per-field read/write ACLs based on dbp_fields metadata.
-
-    Columns added to dbp_fields by P13 migration:
-      - is_sensitive: bool — field value masked in audit & non-admin reads
-      - writable_roles: json — list of role prefixes allowed to write
-      - visible_roles: json — list of role prefixes allowed to read (empty = all)
-    """
+    """Enforces per-field read/write ACLs based on dbp_fields metadata."""
 
     @staticmethod
     def get_field_security_map(db: Session, entity_id: str) -> Dict[str, Dict]:
@@ -54,10 +74,7 @@ class FieldSecurity:
         field_security: Dict[str, Dict],
         user_roles: List[str],
     ) -> tuple:
-        """
-        Filter payload to only allow writable fields.
-        Returns (filtered_data, blocked_fields).
-        """
+        """Filter payload to only allow writable fields. Returns (filtered_data, blocked_fields)."""
         filtered = {}
         blocked = []
 
@@ -67,8 +84,7 @@ class FieldSecurity:
                 filtered[key] = value
                 continue
 
-            writable_roles = sec["writable_roles"]
-            if _role_matches(user_roles, writable_roles):
+            if _role_matches(user_roles, sec["writable_roles"]):
                 filtered[key] = value
             else:
                 blocked.append(key)
@@ -82,10 +98,7 @@ class FieldSecurity:
         user_roles: List[str],
         is_admin: bool = False,
     ) -> Dict[str, Any]:
-        """
-        Filter output data to hide non-visible fields.
-        Admins see everything (except masked sensitive fields).
-        """
+        """Filter output data to hide non-visible fields."""
         if is_admin:
             return dict(data)
 
@@ -110,10 +123,19 @@ class FieldSecurity:
 # ──────────────────────────────────────────────────────────────
 
 class RowSecurity:
-    """
-    Enforces row-level filtering based on user attributes.
-    Rules stored in dbp_row_rules table.
-    """
+    """Enforces row-level filtering based on user attributes."""
+
+    @staticmethod
+    def _load_rules(db: Session, entity_id: str):
+        return db.execute(
+            text(
+                "SELECT filter_column, filter_type, filter_value, allowed_roles "
+                "FROM dbp_row_rules "
+                "WHERE entity_id = :eid AND is_active = true "
+                "ORDER BY priority ASC"
+            ),
+            {"eid": entity_id},
+        ).fetchall()
 
     @staticmethod
     def get_user_row_filter(
@@ -122,45 +144,39 @@ class RowSecurity:
         user_roles: List[str],
         user_attrs: Dict[str, str],
     ) -> Optional[str]:
-        """
-        Returns a SQL WHERE clause fragment (without WHERE keyword)
-        or None if no filter applies.
-        """
-        rows = db.execute(
-            text(
-                "SELECT filter_column, filter_type, filter_value, allowed_roles "
-                "FROM dbp_row_rules "
-                "WHERE entity_id = :eid AND is_active = true "
-                "ORDER BY priority ASC"
-            ),
-            {"eid": entity_id},
-        ).fetchall()
-
+        """Return a fail-closed SQL WHERE fragment for metadata row rules."""
+        rows = RowSecurity._load_rules(db, entity_id)
         if not rows:
             return None
 
         conditions = []
+        applicable_rules = 0
         for row in rows:
-            col, ftype, fval, allowed_roles = row[0], row[1], row[2], row[3] or []
-
+            raw_col, ftype, fval, allowed_roles = row[0], row[1], row[2], row[3] or []
+            col = _safe_identifier(raw_col)
+            if col is None:
+                return "FALSE"
             if allowed_roles and not _role_matches(user_roles, allowed_roles):
                 continue
 
+            applicable_rules += 1
             attr_value = user_attrs.get(col)
             if attr_value is None:
-                continue
+                return "FALSE"
 
             if ftype == "equals":
-                conditions.append(f"{col} = :rls_{col}")
+                conditions.append(f'{col} = :rls_{col}')
             elif ftype == "in":
-                values = fval.split(",") if fval else []
-                if attr_value in values:
-                    conditions.append(f"{col} = :rls_{col}")
+                values = {item.strip() for item in (fval or "").split(",") if item.strip()}
+                if attr_value not in values:
+                    return "FALSE"
+                conditions.append(f'{col} = :rls_{col}')
+            else:
+                return "FALSE"
 
-        if not conditions:
+        if not applicable_rules:
             return None
-
-        return " AND ".join(conditions)
+        return " AND ".join(conditions) if conditions else "FALSE"
 
     @staticmethod
     def get_rls_params(
@@ -169,22 +185,14 @@ class RowSecurity:
         user_roles: List[str],
         user_attrs: Dict[str, str],
     ) -> Dict[str, str]:
-        """Returns bind parameters for the RLS WHERE clause."""
-        rows = db.execute(
-            text(
-                "SELECT filter_column, filter_type, filter_value, allowed_roles "
-                "FROM dbp_row_rules "
-                "WHERE entity_id = :eid AND is_active = true "
-                "ORDER BY priority ASC"
-            ),
-            {"eid": entity_id},
-        ).fetchall()
-
+        """Return bind parameters for the validated RLS WHERE fragment."""
+        rows = RowSecurity._load_rules(db, entity_id)
         params = {}
-        for row in rows:
-            col, ftype, fval, allowed_roles = row[0], row[1], row[2], row[3] or []
 
-            if allowed_roles and not _role_matches(user_roles, allowed_roles):
+        for row in rows:
+            raw_col, ftype, fval, allowed_roles = row[0], row[1], row[2], row[3] or []
+            col = _safe_identifier(raw_col)
+            if col is None or (allowed_roles and not _role_matches(user_roles, allowed_roles)):
                 continue
 
             attr_value = user_attrs.get(col)
@@ -194,7 +202,7 @@ class RowSecurity:
             if ftype == "equals":
                 params[f"rls_{col}"] = attr_value
             elif ftype == "in":
-                values = fval.split(",") if fval else []
+                values = {item.strip() for item in (fval or "").split(",") if item.strip()}
                 if attr_value in values:
                     params[f"rls_{col}"] = attr_value
 
@@ -233,20 +241,14 @@ def mask_sensitive_data(
 
 
 def redact_audit_values(values: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """
-    Redact sensitive keys from audit old_values/new_values.
-    Matches field names against known sensitive patterns.
-    """
+    """Redact sensitive keys from audit old_values/new_values."""
     if not values:
         return values
 
     def _walk(obj):
         if isinstance(obj, dict):
-            return {
-                k: REDACT_VALUE if _is_sensitive_key(k) else _walk(v)
-                for k, v in obj.items()
-            }
-        elif isinstance(obj, list):
+            return {k: REDACT_VALUE if _is_sensitive_key(k) else _walk(v) for k, v in obj.items()}
+        if isinstance(obj, list):
             return [_walk(item) for item in obj]
         return obj
 
@@ -263,30 +265,19 @@ def _is_sensitive_key(key: str) -> bool:
 # ──────────────────────────────────────────────────────────────
 
 class InputValidator:
-    """
-    Validates input data against dbp_fields metadata rules.
-    Supports: type, required, min, max, min_length, max_length, pattern (regex).
-    """
+    """Validates input data against dbp_fields metadata rules."""
 
     TYPE_VALIDATORS = {
         "string": lambda v: isinstance(v, str),
         "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
         "boolean": lambda v: isinstance(v, bool),
-        "date": lambda v: isinstance(v, str),  # validated as ISO format
+        "date": lambda v: isinstance(v, str),
         "datetime": lambda v: isinstance(v, str),
         "email": lambda v: isinstance(v, str) and "@" in v,
     }
 
     @staticmethod
-    def validate_field(
-        field_code: str,
-        value: Any,
-        field_meta: Dict[str, Any],
-    ) -> List[str]:
-        """
-        Validate a single field value against its metadata.
-        Returns list of error messages (empty = valid).
-        """
+    def validate_field(field_code: str, value: Any, field_meta: Dict[str, Any]) -> List[str]:
         errors = []
 
         if value is None:
@@ -317,12 +308,12 @@ class InputValidator:
                 errors.append(f"{field_code}: maximum length {max_len}")
             if pattern:
                 try:
-                    if not re.match(pattern, value):
-                        errors.append(f"{field_code}: must match pattern {pattern}")
+                    if not re.fullmatch(pattern, value):
+                        errors.append(f"{field_code}: must match pattern")
                 except re.error:
-                    pass
+                    errors.append(f"{field_code}: invalid validation pattern configuration")
 
-        if isinstance(value, (int, float)):
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
             min_val = ui_config.get("min")
             max_val = ui_config.get("max")
             if min_val is not None and value < min_val:
@@ -338,49 +329,13 @@ class InputValidator:
         field_metadata: List[Dict[str, Any]],
         partial: bool = False,
     ) -> List[str]:
-        """
-        Validate a full record against entity field metadata.
-        partial=True skips required checks (for updates).
-        """
         all_errors = []
-        meta_map = {f["code"]: f for f in field_metadata}
-
         for fm in field_metadata:
             code = fm["code"]
             value = data.get(code)
-            is_req = fm.get("is_required", False)
-
             if value is None:
-                if is_req and not partial:
+                if fm.get("is_required", False) and not partial:
                     all_errors.append(f"{code}: required")
                 continue
-
-            field_errors = InputValidator.validate_field(code, value, fm)
-            all_errors.extend(field_errors)
-
+            all_errors.extend(InputValidator.validate_field(code, value, fm))
         return all_errors
-
-
-# ──────────────────────────────────────────────────────────────
-# HELPER
-# ──────────────────────────────────────────────────────────────
-
-def _role_matches(user_roles: List[str], required_roles: List[str]) -> bool:
-    """
-    Check if any user role matches any required role.
-    Supports prefix matching: 'dynamic_manager' matches 'dynamic_manager'.
-    Wildcard '*:*' matches everything.
-    """
-    if not required_roles:
-        return True
-
-    for ur in user_roles:
-        if ur == "*:*":
-            return True
-        if isinstance(ur, dict):
-            ur = ur.get("permission", "")
-        for rr in required_roles:
-            if ur == rr or ur.startswith(rr):
-                return True
-
-    return False

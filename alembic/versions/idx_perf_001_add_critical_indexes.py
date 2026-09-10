@@ -39,66 +39,48 @@ def _drop_index_if_exists(index_name, conn=None):
 
 
 def upgrade() -> None:
-    # ──────────────────────────────────────────────────────────────
     # AUTH / USER INDEXES
-    # ──────────────────────────────────────────────────────────────
     _create_index_if_not_exists('ix_dbp_users_email', 'dbp_users', ['email'], unique=True)
     _create_index_if_not_exists('ix_dbp_users_tenant_id', 'dbp_users', ['tenant_id'])
     _create_index_if_not_exists('ix_dbp_users_tenant_email', 'dbp_users', ['tenant_id', 'email'])
 
-    # ──────────────────────────────────────────────────────────────
     # ACCOUNTING INDEXES
-    # ──────────────────────────────────────────────────────────────
     _create_index_if_not_exists('ix_dbp_accounts_tenant_company', 'dbp_accounts', ['tenant_id', 'company_id'])
     _create_index_if_not_exists('ix_dbp_accounts_company_code', 'dbp_accounts', ['company_id', 'code'])
     _create_index_if_not_exists('ix_dbp_journal_entries_company_status', 'dbp_journal_entries', ['company_id', 'status'])
     _create_index_if_not_exists('ix_dbp_journal_entries_tenant_id', 'dbp_journal_entries', ['tenant_id'])
     _create_index_if_not_exists('ix_dbp_journal_lines_entry_id', 'dbp_journal_lines', ['journal_entry_id'])
 
-    # ──────────────────────────────────────────────────────────────
     # WORKFLOW INDEXES
-    # ──────────────────────────────────────────────────────────────
     _create_index_if_not_exists('ix_dbp_workflow_instances_status', 'dbp_workflow_instances', ['status'])
     _create_index_if_not_exists('ix_dbp_workflow_instances_tenant_status', 'dbp_workflow_instances', ['tenant_id', 'status'])
     _create_index_if_not_exists('ix_dbp_workflow_instances_entity_record', 'dbp_workflow_instances', ['entity_code', 'record_id'])
     _create_index_if_not_exists('ix_dbp_workflow_actions_instance_id', 'dbp_workflow_actions', ['instance_id'])
 
-    # ──────────────────────────────────────────────────────────────
     # NOTIFICATION INDEXES
-    # ──────────────────────────────────────────────────────────────
     _create_index_if_not_exists('ix_dbp_notifications_user_read', 'dbp_notifications', ['user_id', 'is_read'])
     _create_index_if_not_exists('ix_dbp_notifications_tenant_user', 'dbp_notifications', ['tenant_id', 'user_id'])
 
-    # ──────────────────────────────────────────────────────────────
     # ENTITY / METADATA INDEXES
-    # ──────────────────────────────────────────────────────────────
     _create_index_if_not_exists('ix_dbp_entities_code', 'dbp_entities', ['code'], unique=True)
     _create_index_if_not_exists('ix_dbp_fields_entity_id', 'dbp_fields', ['entity_id'])
     _create_index_if_not_exists('ix_dbp_relationships_entity_id', 'dbp_relationships', ['entity_id'])
 
-    # ──────────────────────────────────────────────────────────────
     # DASHBOARD INDEXES
-    # ──────────────────────────────────────────────────────────────
     _create_index_if_not_exists('ix_dbp_dashboards_tenant_id', 'dbp_dashboards', ['tenant_id'])
     _create_index_if_not_exists('ix_dbp_dashboard_widgets_dashboard_id', 'dbp_dashboard_widgets', ['dashboard_id'])
 
-    # ──────────────────────────────────────────────────────────────
     # COMPANY / ORG INDEXES
-    # ──────────────────────────────────────────────────────────────
     _create_index_if_not_exists('ix_dbp_companies_tenant_id', 'dbp_companies', ['tenant_id'])
     _create_index_if_not_exists('ix_dbp_branches_company_id', 'dbp_branches', ['company_id'])
     _create_index_if_not_exists('ix_dbp_departments_company_id', 'dbp_departments', ['company_id'])
     _create_index_if_not_exists('ix_dbp_departments_tenant_id', 'dbp_departments', ['tenant_id'])
 
-    # ──────────────────────────────────────────────────────────────
     # VALIDATION RULES INDEXES
-    # ──────────────────────────────────────────────────────────────
     _create_index_if_not_exists('ix_dbp_validation_rules_entity_id', 'dbp_validation_rules', ['entity_id'])
     _create_index_if_not_exists('ix_dbp_validation_rules_tenant_entity', 'dbp_validation_rules', ['tenant_id', 'entity_id'])
 
-    # ──────────────────────────────────────────────────────────────
     # ADDITIONAL PERFORMANCE INDEXES
-    # ──────────────────────────────────────────────────────────────
     _create_index_if_not_exists('ix_dbp_accounts_tenant_id', 'dbp_accounts', ['tenant_id'])
     _create_index_if_not_exists('ix_dbp_journal_lines_tenant_id', 'dbp_journal_lines', ['tenant_id'])
     _create_index_if_not_exists('ix_dbp_workflow_definitions_tenant_id', 'dbp_workflow_definitions', ['tenant_id'])

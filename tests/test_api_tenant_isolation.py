@@ -127,8 +127,7 @@ def test_fastapi_cross_tenant_account_isolation(test_client):
     database_url = os.environ["DATABASE_URL"]
     engine = create_engine(database_url, future=True)
     try:
-        with engine.begin() as conn:
-            conn.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": tenant_b})
+        with engine.connect() as conn:
             stored = conn.execute(
                 text("SELECT tenant_id FROM dbp_accounts WHERE id = :id"),
                 {"id": spoof_id},

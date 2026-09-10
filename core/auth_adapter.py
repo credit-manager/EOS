@@ -2,19 +2,84 @@
 AUTH ADAPTER
 =============
 
-Switches between test and production authentication based on environment.
-Production authentication additionally re-checks the user's current database
-state so deactivation and role changes take effect without waiting for JWT expiry.
+Switches between test and production authentication based on the central runtime
+configuration. Production authentication additionally re-checks the user's
+current database state so deactivation, role changes and MFA state take effect
+without waiting for JWT expiry.
 """
 
-import os
 from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
+from core.runtime_config import resolve_auth_mode
+
 
 def _is_production() -> bool:
-    return os.getenv("EOS_AUTH_MODE", "test").lower() == "production"
+    return resolve_auth_mode() == "production"
+
+
+def _load_identity(payload: dict) -> tuple[str, str, str | None, list, bool]:
+    user_id = payload.get("sub")
+    tenant_id = payload.get("tenant_id")
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Token missing user ID")
+    if tenant_id is None:
+        raise HTTPException(status_code=401, detail="Token missing tenant ID")
+    return str(user_id), str(tenant_id).lower(), payload.get("email"), payload.get("roles", []), bool(payload.get("mfa_verified", False))
+
+
+async def _authenticate(credentials: HTTPAuthorizationCredentials, enforce_mfa: bool = True) -> dict:
+    production = _is_production()
+    if production:
+        from core.production_auth import verify_token
+        try:
+            # verify_token defaults to the access-token type. Keep the adapter
+            # call compatible with small test doubles while retaining an
+            # explicit defense-in-depth type check on the returned claims.
+            payload = verify_token(credentials.credentials)
+        except HTTPException:
+            raise
+        except ValueError:
+            raise HTTPException(status_code=500, detail="Production authentication is not configured")
+        if payload.get("type") != "access":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    else:
+        from core.auth import verify_test_token
+        payload = verify_test_token(credentials.credentials)
+
+    user_id, tenant_id, email, roles, mfa_verified = _load_identity(payload)
+
+    if production:
+        from database import SessionLocal, current_tenant_id
+        current_tenant_id.set(tenant_id)
+        db = SessionLocal()
+        try:
+            from sqlalchemy import text
+            row = db.execute(text(
+                "SELECT email, role, is_active FROM dbp_users WHERE id=:id AND tenant_id=:tenant_id"
+            ), {"id": user_id, "tenant_id": tenant_id}).fetchone()
+            if not row or not row[2]:
+                raise HTTPException(status_code=401, detail="Account is inactive or no longer exists")
+
+            if enforce_mfa:
+                mfa_row = db.execute(text(
+                    "SELECT 1 FROM dbp_2fa_settings WHERE user_id=:id AND is_enabled=TRUE"
+                ), {"id": user_id}).fetchone()
+                if mfa_row and not mfa_verified:
+                    raise HTTPException(status_code=401, detail="MFA verification required", headers={"WWW-Authenticate": "Bearer"})
+        finally:
+            db.close()
+        email = row[0]
+        roles = [row[1]]
+
+    from database import current_tenant_id
+    current_tenant_id.set(tenant_id)
+    return {"id": user_id, "tenant_id": tenant_id, "email": email, "roles": roles, "mfa_verified": mfa_verified}
 
 
 async def get_current_user(
@@ -22,53 +87,16 @@ async def get_current_user(
 ) -> dict:
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required", headers={"WWW-Authenticate": "Bearer"})
+    return await _authenticate(credentials, enforce_mfa=True)
 
-    production = _is_production()
-    if production:
-        from core.production_auth import verify_token, _get_secret_key
-        try:
-            _get_secret_key()
-        except ValueError as e:
-            raise HTTPException(status_code=500, detail=str(e))
-        payload = verify_token(credentials.credentials)
-    else:
-        from core.auth import verify_test_token as verify_token
-        payload = verify_token(credentials.credentials)
 
-    user_id = payload.get("sub")
-    tenant_id = payload.get("tenant_id")
-    if user_id is None:
-        raise HTTPException(status_code=401, detail="Token missing user ID")
-    if tenant_id is None:
-        raise HTTPException(status_code=401, detail="Token missing tenant ID")
-
-    tenant_id = str(tenant_id).lower()
-    email = payload.get("email")
-    roles = payload.get("roles", [])
-
-    if production:
-        # Bind the verified token tenant before the DB lookup because dbp_users is
-        # itself tenant-scoped under PostgreSQL RLS. This value is derived only from
-        # the already verified signed JWT, never from an untrusted request header.
-        from database import current_tenant_id
-        current_tenant_id.set(tenant_id)
-        from database import SessionLocal
-        db = SessionLocal()
-        try:
-            from sqlalchemy import text
-            row = db.execute(text(
-                "SELECT email, role, is_active FROM dbp_users WHERE id = :id AND tenant_id = :tenant_id"
-            ), {"id": user_id, "tenant_id": tenant_id}).fetchone()
-        finally:
-            db.close()
-        if not row or not row[2]:
-            raise HTTPException(status_code=401, detail="Account is inactive or no longer exists")
-        email = row[0]
-        roles = [row[1]]
-
-    from database import current_tenant_id
-    current_tenant_id.set(tenant_id)
-    return {"id": user_id, "tenant_id": tenant_id, "email": email, "roles": roles}
+async def get_mfa_user(
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False))
+) -> dict:
+    """Authenticate an access token for the MFA endpoints without authorizing application APIs."""
+    if credentials is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required", headers={"WWW-Authenticate": "Bearer"})
+    return await _authenticate(credentials, enforce_mfa=False)
 
 
 async def optional_get_current_user(

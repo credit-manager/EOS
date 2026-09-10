@@ -7,6 +7,8 @@ import re
 from models import DBPEntity, DBPField
 from core.metadata_engine import MetadataEngine
 
+_SAFE_IDENTIFIER = re.compile(r"^[a-z0-9_]+$")
+
 
 class DynamicVerificationEngine:
     """Conservative verification layer with tenant-scoped metadata lookup."""
@@ -29,36 +31,22 @@ class DynamicVerificationEngine:
         self._inspect_table()
 
     def _load_entity(self) -> None:
-        # Tenant-owned metadata must never be resolved by code alone.
-        # A tenant may reuse the same entity code as another tenant.
         if self.tenant_id is not None:
             entity = (
                 self.db.query(DBPEntity)
-                .filter(
-                    DBPEntity.code == self.entity_code,
-                    DBPEntity.tenant_id == self.tenant_id,
-                )
+                .filter(DBPEntity.code == self.entity_code, DBPEntity.tenant_id == self.tenant_id)
                 .first()
             )
-            # Allow a system/global entity as a fallback for the tenant.
             if entity is None:
                 entity = (
                     self.db.query(DBPEntity)
-                    .filter(
-                        DBPEntity.code == self.entity_code,
-                        DBPEntity.tenant_id.is_(None),
-                    )
+                    .filter(DBPEntity.code == self.entity_code, DBPEntity.tenant_id.is_(None))
                     .first()
                 )
         else:
-            # Without authenticated tenant context, only global metadata is
-            # eligible. This prevents anonymous code-only metadata selection.
             entity = (
                 self.db.query(DBPEntity)
-                .filter(
-                    DBPEntity.code == self.entity_code,
-                    DBPEntity.tenant_id.is_(None),
-                )
+                .filter(DBPEntity.code == self.entity_code, DBPEntity.tenant_id.is_(None))
                 .first()
             )
 
@@ -78,14 +66,11 @@ class DynamicVerificationEngine:
         self.table_name = entity.table_mapping
 
     def _inspect_table(self) -> None:
-        if not self.table_name:
+        if not self.table_name or not isinstance(self.table_name, str) or not _SAFE_IDENTIFIER.fullmatch(self.table_name):
             return
         try:
             table_check = self.db.execute(
-                text(
-                    "SELECT 1 FROM information_schema.tables "
-                    "WHERE table_name = :tname AND table_schema = 'public'"
-                ),
+                text("SELECT 1 FROM information_schema.tables WHERE table_name = :tname AND table_schema = 'public'"),
                 {"tname": self.table_name},
             ).fetchone()
             if not table_check:
@@ -94,10 +79,9 @@ class DynamicVerificationEngine:
             self.table_valid = True
             columns = self.db.execute(
                 text(
-                    "SELECT c.column_name, c.is_nullable, c.data_type, "
-                    "c.character_maximum_length FROM information_schema.columns c "
-                    "WHERE c.table_name = :tname AND c.table_schema = 'public' "
-                    "ORDER BY c.ordinal_position"
+                    "SELECT c.column_name, c.is_nullable, c.data_type, c.character_maximum_length "
+                    "FROM information_schema.columns c WHERE c.table_name = :tname "
+                    "AND c.table_schema = 'public' ORDER BY c.ordinal_position"
                 ),
                 {"tname": self.table_name},
             ).fetchall()
@@ -109,15 +93,20 @@ class DynamicVerificationEngine:
                 text(
                     "SELECT a.attname, t.typname FROM pg_constraint c "
                     "JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey) "
-                    "JOIN pg_class cl ON cl.oid = c.conrelid "
-                    "JOIN pg_type t ON t.oid = a.atttypid "
-                    "WHERE c.contype = 'p' AND cl.relname = :tname "
+                    "JOIN pg_class cl ON cl.oid = c.conrelid JOIN pg_type t ON t.oid = a.atttypid "
+                    "JOIN pg_namespace ns ON ns.oid = cl.relnamespace "
+                    "WHERE c.contype = 'p' AND ns.nspname='public' AND cl.relname = :tname "
                     "ORDER BY array_position(c.conkey, a.attnum) LIMIT 1"
                 ),
                 {"tname": self.table_name},
             ).fetchone()
             if pk_rows:
                 self.pk_column, self.pk_type = pk_rows[0], pk_rows[1]
+                if not _SAFE_IDENTIFIER.fullmatch(self.pk_column):
+                    self.table_valid = False
+                    self.real_columns = {}
+                    self.tenant_capability = "NONE"
+                    self.pk_column, self.pk_type = "id", "uuid"
         except Exception:
             self.table_valid = False
             self.real_columns = {}
@@ -125,14 +114,16 @@ class DynamicVerificationEngine:
             self.pk_column, self.pk_type = "id", "uuid"
 
     def generate_pk_value(self) -> Any:
+        if not self.table_valid or not self.table_name or not _SAFE_IDENTIFIER.fullmatch(self.table_name) or not _SAFE_IDENTIFIER.fullmatch(self.pk_column):
+            raise ValueError("Unsafe dynamic table metadata")
         if "uuid" in self.pk_type:
             return str(uuid.uuid4())
         if "int" in self.pk_type:
             try:
                 result = self.db.execute(text(f"SELECT MAX({self.pk_column}) FROM {self.table_name}")).scalar()
                 return (result or 0) + 1
-            except Exception:
-                return 1
+            except Exception as exc:
+                raise ValueError("Unable to generate dynamic primary key") from exc
         return str(uuid.uuid4())
 
     def get_pk_column(self) -> str:
@@ -156,10 +147,10 @@ class DynamicVerificationEngine:
     def validate_table_mapping(self) -> Optional[str]:
         if not self.table_name:
             return "Table mapping غير موجود"
+        if not _SAFE_IDENTIFIER.fullmatch(self.table_name):
+            return f"اسم الجدول '{self.table_name}' يحتوي على أحرف غير آمنة"
         if not self.table_valid:
             return f"الجدول '{self.table_name}' غير موجود في قاعدة البيانات"
-        if not re.match(r"^[a-z0-9_]+$", self.table_name):
-            return f"اسم الجدول '{self.table_name}' يحتوي على أحرف غير آمنة"
         return None
 
     def get_not_null_columns(self) -> List[str]:
@@ -167,8 +158,7 @@ class DynamicVerificationEngine:
 
     def validate_not_null_columns(self, data: Dict[str, Any], exclude_cols: Optional[List[str]] = None) -> List[str]:
         excluded = set(exclude_cols or []) | {"id"}
-        return [f"{col}: الحقل مطلوب (NOT NULL في قاعدة البيانات)" for col in self.not_null_columns
-                if col not in excluded and (col not in data or data[col] is None)]
+        return [f"{col}: الحقل مطلوب (NOT NULL في قاعدة البيانات)" for col in self.not_null_columns if col not in excluded and (col not in data or data[col] is None)]
 
     def get_table_columns(self) -> List[str]:
         return list(self.real_columns.values())

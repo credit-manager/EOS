@@ -20,7 +20,7 @@ os.environ.setdefault(
     "postgresql://eos_test:test_password@localhost:5432/eos_test",
 )
 os.environ.setdefault(
-    "EOS_TEST_SECRET_KEY",
+    "SECRET_KEY",
     "test_secret_key_for_testing_only_12345678901234567890",
 )
 os.environ.setdefault("ENVIRONMENT", "test")
@@ -40,16 +40,6 @@ def database_schema():
     """Initialize the test database with the canonical Alembic schema."""
     cfg = Config(os.path.join(os.path.dirname(__file__), "..", "alembic.ini"))
     command.upgrade(cfg, "head")
-    from sqlalchemy import text as stext
-    from sqlalchemy import create_engine as ce
-    engine = ce(os.getenv("DATABASE_URL"), pool_pre_ping=True)
-    try:
-        with engine.begin() as conn:
-            conn.execute(stext("DELETE FROM dbp_rate_limits"))
-    except Exception:
-        pass
-    finally:
-        engine.dispose()
     yield
 
 

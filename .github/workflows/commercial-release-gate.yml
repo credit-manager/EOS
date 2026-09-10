@@ -1,0 +1,80 @@
+name: EOS Commercial Release Gate
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: eos-commercial-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+env:
+  EXPECTED_ALEMBIC_HEAD: 20260910_refresh_mfa_state
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: eos
+          POSTGRES_PASSWORD: eos
+          POSTGRES_DB: eos_contract
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U eos -d eos_contract"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+      - name: Python compile and dependency integrity
+        run: pip check && python -m compileall -q .
+      - name: Migration contract
+        env:
+          DATABASE_URL: postgresql://eos:eos@127.0.0.1:5432/eos_contract
+          EOS_TEST_SECRET_KEY: test_secret_key_for_ci_only_12345678901234567890
+          ENVIRONMENT: testing
+        run: |
+          test "$(alembic heads | wc -l | tr -d ' ')" -eq 1
+          test "$(alembic heads | grep -c "^${EXPECTED_ALEMBIC_HEAD}")" -eq 1
+          alembic upgrade head
+          test "$(alembic current | grep -c "${EXPECTED_ALEMBIC_HEAD}")" -eq 1
+          alembic upgrade head
+      - name: Core commercial regressions
+        env:
+          ENVIRONMENT: test
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pytest -q \
+            tests/test_runtime_config.py \
+            tests/test_enterprise_hardening_primitives.py \
+            tests/test_production_config.py \
+            tests/test_security_regressions.py \
+            tests/test_payment_engine_regressions.py \
+            tests/test_financial_authorization_regressions.py \
+            tests/test_builder_authorization_regressions.py \
+            tests/test_builder_engine_regressions.py \
+            tests/test_marketplace_regressions.py \
+            tests/test_identity_engine_regressions.py \
+            --tb=short
+      - name: Canonical frontend certification
+        working-directory: erp-system/frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run lint
+          npm run test -- --run
+          npm run build
+          test -f dist/index.html
+          test -n "$(find dist/assets -type f | head -1)"
+      - name: Verify frontend runtime contract
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          ENVIRONMENT: test
+        run: pytest -q tests/test_frontend_runtime_contract.py --tb=short

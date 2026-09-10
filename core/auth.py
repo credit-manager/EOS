@@ -1,24 +1,17 @@
-"""
-AUTH MODULE
-============
-
-Authentication helpers and authorization dependencies.
-"""
+"""Authentication helpers and authorization dependencies."""
 
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from dotenv import load_dotenv
 import jwt
 from jwt import InvalidTokenError
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer
 
 load_dotenv()
 
-# Kept for backwards compatibility with callers importing this symbol. JWT
-# signing/verification below resolves the environment value at call time so
-# test application imports cannot retain a stale secret from an earlier env.
 TEST_SECRET_KEY = os.getenv("EOS_TEST_SECRET_KEY", "")
 TEST_ALGORITHM = "HS256"
 TEST_TOKEN_EXPIRE_MINUTES = 60
@@ -44,41 +37,43 @@ def create_test_token(tenant_id: str, user_id: str = "test-user", email: str = "
     secret_key = _get_test_secret_key()
     now = datetime.now(timezone.utc)
     expire = now + (expires_delta or timedelta(minutes=TEST_TOKEN_EXPIRE_MINUTES))
+    payload = {"sub": user_id, "exp": expire, "iat": now, "type": "access", "tenant_id": tenant_id.lower(), "email": email, "roles": roles or ["user"], "iss": _jwt_issuer(), "aud": _jwt_audience(), "jti": str(uuid.uuid4())}
+    return jwt.encode(payload, secret_key, algorithm=TEST_ALGORITHM)
+
+
+def create_test_mfa_challenge_token(tenant_id: str, user_id: str, expires_delta: Optional[timedelta] = None) -> str:
+    secret_key = _get_test_secret_key()
+    now = datetime.now(timezone.utc)
     payload = {
-        "sub": user_id,
-        "exp": expire,
-        "iat": now,
-        "type": "access",
-        "tenant_id": tenant_id.lower(),
-        "email": email,
-        "roles": roles or ["user"],
-        "iss": _jwt_issuer(),
-        "aud": _jwt_audience(),
+        "sub": user_id, "exp": now + (expires_delta or timedelta(minutes=5)), "iat": now,
+        "type": "mfa_pre_auth", "purpose": "mfa", "tenant_id": tenant_id.lower(),
+        "iss": _jwt_issuer(), "aud": _jwt_audience(), "jti": str(uuid.uuid4()),
     }
     return jwt.encode(payload, secret_key, algorithm=TEST_ALGORITHM)
 
 
-def verify_test_token(token: str) -> dict:
+def verify_test_token(token: str, expected_type: str = "access") -> dict:
     secret_key = _get_test_secret_key()
     try:
-        return jwt.decode(
-            token,
-            secret_key,
-            algorithms=[TEST_ALGORITHM],
-            issuer=_jwt_issuer(),
-            audience=_jwt_audience(),
-        )
+        payload = jwt.decode(token, secret_key, algorithms=[TEST_ALGORITHM], issuer=_jwt_issuer(), audience=_jwt_audience())
+        if payload.get("type") != expected_type:
+            raise InvalidTokenError("unexpected token type")
+        return payload
     except InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid or expired token", headers={"WWW-Authenticate": "Bearer"})
 
 
-from core.auth_adapter import get_current_user, optional_get_current_user
+def verify_test_mfa_challenge_token(token: str) -> dict:
+    payload = verify_test_token(token, expected_type="mfa_pre_auth")
+    if payload.get("purpose") != "mfa" or not payload.get("tenant_id"):
+        raise HTTPException(status_code=401, detail="Invalid MFA challenge")
+    return payload
 
-__all__ = ["create_test_token", "verify_test_token", "get_current_user", "optional_get_current_user", "require_permission", "require_admin_role", "require_platform_owner", "TEST_SECRET_KEY", "TEST_ALGORITHM"]
+
+from core.auth_adapter import get_current_user, optional_get_current_user
 
 
 def _roles(user: Optional[dict]) -> set[str]:
-    """Normalize role strings while tolerating legacy dict-shaped role entries."""
     if not user:
         return set()
     result = {str(r) for r in user.get("roles", []) if isinstance(r, str)}
@@ -104,10 +99,27 @@ def require_permission(module: str, action: str):
 
 
 async def require_admin_role(user: dict = Depends(get_current_user)) -> dict:
-    """Require tenant administrator privileges for security-sensitive user management."""
     if not ({"admin", "platform_owner"} & _roles(user)):
         raise HTTPException(status_code=403, detail="Administrator privileges required")
     return user
+
+
+async def require_builder_publish(user: dict = Depends(get_current_user)) -> dict:
+    permissions = set(user.get("permissions", []))
+    roles = _roles(user)
+    if ("builder:publish" in permissions or "dynamic:publish" in permissions or "admin" in roles
+            or "platform_owner" in roles or "dynamic_manager" in roles):
+        return user
+    raise HTTPException(status_code=403, detail="Builder production publishing privileges required")
+
+
+async def require_financial_settlement(user: dict = Depends(get_current_user)) -> dict:
+    permissions = set(user.get("permissions", []))
+    roles = _roles(user)
+    if ("payments:settle" in permissions or "payments:refund" in permissions or "admin" in roles
+            or "platform_owner" in roles or "finance_manager" in roles or "billing_manager" in roles):
+        return user
+    raise HTTPException(status_code=403, detail="Financial settlement privileges required")
 
 
 def _designated_platform_owners() -> set:
@@ -122,3 +134,10 @@ async def require_platform_owner(user: dict = Depends(get_current_user)) -> dict
     if email and email in _designated_platform_owners():
         return user
     raise HTTPException(status_code=403, detail="Platform owner privileges required")
+
+
+__all__ = [
+    "create_test_token", "create_test_mfa_challenge_token", "verify_test_token", "verify_test_mfa_challenge_token",
+    "get_current_user", "optional_get_current_user", "require_permission", "require_admin_role",
+    "require_builder_publish", "require_financial_settlement", "require_platform_owner", "TEST_SECRET_KEY", "TEST_ALGORITHM",
+]

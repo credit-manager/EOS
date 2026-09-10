@@ -166,7 +166,15 @@ db_url = os.environ.get("DATABASE_URL")
 if db_url:
     config.set_main_option("sqlalchemy.url", db_url)
 
-if config.config_file_name is not None:
+# alembic.ini intentionally contains only Alembic/database settings and no
+# logging sections. fileConfig() raises KeyError: 'formatters' for that valid
+# minimal configuration, so only load logging when all required sections exist.
+if (
+    config.config_file_name is not None
+    and config.get_section("loggers")
+    and config.get_section("formatters")
+    and config.get_section("handlers")
+):
     fileConfig(config.config_file_name)
 
 # Import all models to ensure they are registered with Base.metadata

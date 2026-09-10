@@ -7,17 +7,6 @@ States:
   CLOSED   → Normal operation. Failures are counted.
   OPEN     → Calls are rejected immediately. After reset_timeout, moves to HALF_OPEN.
   HALF_OPEN → One trial call is allowed. Success → CLOSED, failure → OPEN.
-
-Usage:
-    breaker = CircuitBreaker(failure_threshold=5, reset_timeout=30)
-
-    @breaker
-    async def call_external_api():
-        ...
-
-    # Or manually:
-    with breaker.guard():
-        call_external_api()
 """
 import time
 import logging
@@ -60,7 +49,6 @@ class CircuitBreaker:
         self.failure_threshold = failure_threshold
         self.reset_timeout = reset_timeout
         self.half_open_max = half_open_max
-
         self._state = CircuitState.CLOSED
         self._failure_count = 0
         self._success_count = 0
@@ -80,15 +68,19 @@ class CircuitBreaker:
         self._state = new_state
         if new_state == CircuitState.HALF_OPEN:
             self._half_open_calls = 0
+            self._success_count = 0
         elif new_state == CircuitState.CLOSED:
             self._failure_count = 0
             self._success_count = 0
-        logger.info(f"Circuit breaker '{self.name}': {old.value} -> {new_state.value}")
+            self._half_open_calls = 0
+        elif new_state == CircuitState.OPEN:
+            self._half_open_calls = 0
+        logger.info("Circuit breaker %r: %s -> %s", self.name, old.value, new_state.value)
         if self._on_state_change:
             try:
                 self._on_state_change(old, new_state)
             except Exception:
-                pass
+                logger.exception("Circuit breaker state callback failed")
 
     def record_success(self):
         if self._state == CircuitState.HALF_OPEN:
@@ -118,17 +110,15 @@ class CircuitBreaker:
             self._half_open_calls += 1
         try:
             yield
-            self.record_success()
         except CircuitBreakerOpenError:
             raise
         except Exception:
             self.record_failure()
             raise
+        else:
+            self.record_success()
 
     def __call__(self, func: Callable) -> Callable:
-        if hasattr(func, "__wrapped__"):
-            func = func.__wrapped__
-
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
             with self.guard():
@@ -140,9 +130,7 @@ class CircuitBreaker:
                 return func(*args, **kwargs)
 
         import asyncio
-        if asyncio.iscoroutinefunction(func):
-            return async_wrapper
-        return sync_wrapper
+        return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
 
     def get_status(self) -> dict:
         return {
