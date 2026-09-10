@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import csv
 import io
@@ -148,9 +148,6 @@ async def list_records(entity_code: str, filters: Optional[str] = None, sort: Op
                     junction, j_src, j_tgt = map(_validate_identifier, (junction, j_src, j_tgt))
                     m2m_where = [f"j.{j_src} = :sv"]
                     m2m_params = {"sv": source_value}
-                    # Enforce the same tenant boundary as every other relationship
-                    # branch above. Without this, ?include=<m2m relation> could
-                    # return rows belonging to another tenant via the junction table.
                     if tenant_scope and tenant_id:
                         m2m_where.append("t.tenant_id = :tid")
                         m2m_params["tid"] = tenant_id
@@ -226,8 +223,10 @@ async def delete_record(entity_code: str, record_id: str, request: Request, db: 
     tenant_id = current_user.get("tenant_id") if current_user else None
     ent_sql = "SELECT table_mapping, tenant_id FROM dbp_entities WHERE code = :code"
     ent_params = {"code": entity_code}
-    if tenant_id: ent_sql += " AND (tenant_id = :tenant_id OR tenant_id IS NULL)"; ent_params["tenant_id"] = tenant_id
-    else: ent_sql += " AND tenant_id IS NULL"
+    if tenant_id:
+        ent_sql += " AND (tenant_id = :tenant_id OR tenant_id IS NULL)"; ent_params["tenant_id"] = tenant_id
+    else:
+        ent_sql += " AND tenant_id IS NULL"
     ent = db.execute(text(ent_sql), ent_params).fetchone()
     if not ent: raise HTTPException(status_code=404, detail=f"الكيان '{entity_code}' غير موجود")
     table_name = _validate_identifier(ent[0])
@@ -237,7 +236,7 @@ async def delete_record(entity_code: str, record_id: str, request: Request, db: 
     user_id = current_user.get("id") if current_user else None
     if has_deleted:
         q = f"UPDATE {table_name} SET deleted_at = :deleted_at, deleted_by = :deleted_by WHERE id = :id AND deleted_at IS NULL" + (" AND tenant_id = :tenant_id" if has_tenant else "")
-        p = {"deleted_at": datetime.utcnow(), "deleted_by": user_id, "id": record_id}
+        p = {"deleted_at": datetime.now(timezone.utc), "deleted_by": user_id, "id": record_id}
         if has_tenant: p["tenant_id"] = effective_tenant
     else:
         q = f"DELETE FROM {table_name} WHERE id = :id" + (" AND tenant_id = :tenant_id" if has_tenant else "")
@@ -262,7 +261,7 @@ async def restore_record(entity_code: str, record_id: str, request: Request, db:
     auth_tenant_id = _require_tenant(current_user) if verification.has_tenant_id_column() else current_user.get("tenant_id")
     table_name = _validate_identifier(verification.entity_meta["table_mapping"])
     where = "WHERE id = :id" + (" AND tenant_id = :tenant_id" if verification.has_tenant_id_column() else "")
-    params = {"id": record_id};
+    params = {"id": record_id}
     if verification.has_tenant_id_column(): params["tenant_id"] = auth_tenant_id
     row = db.execute(text(f"SELECT deleted_at FROM {table_name} {where}"), params).fetchone()
     if not row: raise HTTPException(status_code=404, detail="السجل غير موجود")
