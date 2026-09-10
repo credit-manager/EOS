@@ -31,8 +31,6 @@ class TokenRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    # Legacy clients may still send this field. Browser clients should use the
-    # HttpOnly cookie, which is not readable from JavaScript.
     refresh_token: str | None = Field(default=None, min_length=40, max_length=512)
 
 
@@ -59,15 +57,7 @@ def _refresh_hash(token: str) -> str:
 
 
 def _set_refresh_cookie(response: Response, token: str) -> None:
-    response.set_cookie(
-        key=_REFRESH_COOKIE,
-        value=token,
-        max_age=_REFRESH_DAYS * 24 * 60 * 60,
-        httponly=True,
-        secure=resolve_auth_mode() == "production",
-        samesite="lax",
-        path="/api/v1/auth",
-    )
+    response.set_cookie(key=_REFRESH_COOKIE, value=token, max_age=_REFRESH_DAYS * 24 * 60 * 60, httponly=True, secure=resolve_auth_mode() == "production", samesite="lax", path="/api/v1/auth")
 
 
 def _clear_refresh_cookie(response: Response) -> None:
@@ -75,7 +65,6 @@ def _clear_refresh_cookie(response: Response) -> None:
 
 
 def _auth_tenant(db: Session, function_name: str, value: str):
-    """Resolve a tenant through a narrow SECURITY DEFINER lookup and establish RLS context."""
     row = db.execute(text(f"SELECT public.{function_name}(:value)"), {"value": value}).fetchone()
     if not row or row[0] is None:
         return None
@@ -84,28 +73,16 @@ def _auth_tenant(db: Session, function_name: str, value: str):
 
 def _issue_refresh_token(db: Session, user_id: str, tenant_id: str, family_id: str | None = None, *, mfa_verified: bool = False) -> str:
     raw = secrets.token_urlsafe(64)
-    db.execute(text(
-        "INSERT INTO dbp_refresh_tokens "
-        "(id, token_hash, user_id, tenant_id, family_id, mfa_verified, expires_at) "
-        "VALUES (:id, :hash, :user_id, :tenant_id, :family_id, :mfa_verified, :expires_at)"
-    ), {
-        "id": str(uuid.uuid4()), "hash": _refresh_hash(raw), "user_id": user_id, "tenant_id": tenant_id,
-        "family_id": family_id or str(uuid.uuid4()), "mfa_verified": mfa_verified,
-        "expires_at": datetime.now(timezone.utc) + timedelta(days=_REFRESH_DAYS),
-    })
+    db.execute(text("INSERT INTO dbp_refresh_tokens (id, token_hash, user_id, tenant_id, family_id, mfa_verified, expires_at) VALUES (:id, :hash, :user_id, :tenant_id, :family_id, :mfa_verified, :expires_at)"), {"id": str(uuid.uuid4()), "hash": _refresh_hash(raw), "user_id": user_id, "tenant_id": tenant_id, "family_id": family_id or str(uuid.uuid4()), "mfa_verified": mfa_verified, "expires_at": datetime.now(timezone.utc) + timedelta(days=_REFRESH_DAYS)})
     return raw
 
 
 def _issue_access_token(result: dict, *, mfa_verified: bool = False) -> str:
-    """Issue access tokens through the central runtime/auth contract."""
     try:
         mode = resolve_auth_mode()
         if mode == "production":
             from core.production_auth import create_access_token
-            return create_access_token(subject=str(result["user_id"]), extra_data={
-                "tenant_id": result["tenant_id"], "email": result["email"],
-                "roles": [result["role"]], "mfa_verified": bool(mfa_verified),
-            })
+            return create_access_token(subject=str(result["user_id"]), extra_data={"tenant_id": result["tenant_id"], "email": result["email"], "roles": [result["role"]], "mfa_verified": bool(mfa_verified)})
         from core.auth import create_test_token
         return create_test_token(tenant_id=result["tenant_id"], user_id=str(result["user_id"]), email=result["email"], roles=[result["role"]])
     except (HTTPException, ValueError) as exc:
@@ -250,7 +227,7 @@ async def refresh_token(body: RefreshRequest, response: Response, cookie_token: 
 
 
 @router.post("/logout", dependencies=[Depends(auth_limiter.check)])
-async def logout(body: RefreshRequest | None, response: Response, cookie_token: str | None = Cookie(default=None, alias=_REFRESH_COOKIE), db: Session = Depends(get_db)):
+async def logout(body: RefreshRequest | None = None, response: Response, cookie_token: str | None = Cookie(default=None, alias=_REFRESH_COOKIE), db: Session = Depends(get_db)):
     raw = ((body.refresh_token if body else None) or cookie_token or "").strip()
     if raw:
         tenant_token = _auth_tenant(db, "eos_auth_tenant_by_refresh_hash", _refresh_hash(raw))
