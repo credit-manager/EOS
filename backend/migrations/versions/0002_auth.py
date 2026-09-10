@@ -1,6 +1,7 @@
 """add authentication and tenant membership"""
 import sqlalchemy as sa
 from alembic import op
+from alembic.operations import batch_alter_table
 
 revision = "0002_auth"
 down_revision = "0001_initial"
@@ -44,21 +45,17 @@ def upgrade() -> None:
     op.create_index(op.f("ix_tenant_memberships_tenant_id"), "tenant_memberships", ["tenant_id"], unique=False)
     op.create_index(op.f("ix_tenant_memberships_user_id"), "tenant_memberships", ["user_id"], unique=False)
 
-    op.add_column(
-        "audit_events",
-        sa.Column(
-            "actor_id",
-            sa.Uuid(),
-            sa.ForeignKey("users.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-    )
-    op.create_index(op.f("ix_audit_events_actor_id"), "audit_events", ["actor_id"], unique=False)
+    with batch_alter_table("audit_events", recreate="auto") as batch_op:
+        batch_op.add_column(sa.Column("actor_id", sa.Uuid(), nullable=True))
+        batch_op.create_foreign_key("fk_audit_events_actor_id", "users", ["actor_id"], ["id"], ondelete="SET NULL")
+        batch_op.create_index(op.f("ix_audit_events_actor_id"), ["actor_id"], unique=False)
 
 
 def downgrade() -> None:
-    op.drop_index(op.f("ix_audit_events_actor_id"), table_name="audit_events")
-    op.drop_column("audit_events", "actor_id")
+    with batch_alter_table("audit_events", recreate="auto") as batch_op:
+        batch_op.drop_index(op.f("ix_audit_events_actor_id"))
+        batch_op.drop_constraint("fk_audit_events_actor_id", type_="foreignkey")
+        batch_op.drop_column("actor_id")
     op.drop_index(op.f("ix_tenant_memberships_user_id"), table_name="tenant_memberships")
     op.drop_index(op.f("ix_tenant_memberships_tenant_id"), table_name="tenant_memberships")
     op.drop_table("tenant_memberships")
