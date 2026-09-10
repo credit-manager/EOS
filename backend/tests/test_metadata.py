@@ -1,7 +1,10 @@
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
+from backend.app.auth.models import TenantMembership, User
+from backend.app.db import SessionLocal
 from backend.app.main import app
 
 client = TestClient(app)
@@ -118,17 +121,11 @@ def test_duplicate_metadata_field_codes_are_rejected() -> None:
 
 def test_metadata_administration_requires_admin_role() -> None:
     headers, _ = _register()
-    from backend.app.auth.models import TenantMembership
-    from backend.app.auth.models import User
-    from backend.app.db import SessionLocal
-
     me = client.get("/api/v1/auth/me", headers=headers).json()
     with SessionLocal() as db:
         user = db.get(User, UUID(me["user_id"]))
         assert user is not None
-        membership = db.scalar(
-            __import__("sqlalchemy").select(TenantMembership).where(TenantMembership.user_id == user.id)
-        )
+        membership = db.scalar(select(TenantMembership).where(TenantMembership.user_id == user.id))
         assert membership is not None
         membership.role = "member"
         db.commit()
