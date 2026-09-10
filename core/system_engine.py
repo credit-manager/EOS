@@ -229,8 +229,8 @@ class SystemEngine:
         modules = []
         for tbl in module_tables:
             exists = self.db.execute(text(
-                f"SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='{tbl}')"
-            )).scalar()
+                "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name=:tbl)"
+            ), {"tbl": tbl}).scalar()
             modules.append({"name": tbl, "status": "active" if exists else "inactive"})
         return {
             "status": "healthy",

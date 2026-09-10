@@ -16,7 +16,7 @@ Features:
 import sys, os, hashlib, hmac, time, secrets, struct, base64
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List, Tuple
 
 try:
@@ -37,10 +37,16 @@ from core.industry_security import uid, now
 # Get encryption key from environment (must be set for production)
 ENCRYPTION_KEY = os.getenv("EOS_2FA_ENCRYPTION_KEY")
 if not ENCRYPTION_KEY and CRYPTO_AVAILABLE:
+    _auth_mode = os.getenv("EOS_AUTH_MODE", "test").lower()
+    if _auth_mode == "production":
+        raise RuntimeError(
+            "EOS_2FA_ENCRYPTION_KEY is required in production mode. "
+            "Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+        )
     # Generate a new key if not set (for development only)
     ENCRYPTION_KEY = Fernet.generate_key().decode()
-    print(f"⚠️  WARNING: EOS_2FA_ENCRYPTION_KEY not set. Generated temporary key: {ENCRYPTION_KEY}")
-    print("   Set this in your .env file for production!")
+    print(f"WARNING: EOS_2FA_ENCRYPTION_KEY not set. Generated temporary key for development.")
+    print("   Set EOS_2FA_ENCRYPTION_KEY in your .env file for production!")
 
 def _get_cipher() -> Optional[Fernet]:
     """Get Fernet cipher instance for encrypting/decrypting 2FA secrets."""
@@ -84,7 +90,7 @@ def _hash_code(code: str) -> str:
 
 
 def _check_brute_force(db, user_id: str, ip: str = None) -> Tuple[bool, str]:
-    cutoff = (datetime.utcnow() - timedelta(minutes=15)).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
     
     result = db.execute(text(
         "SELECT COUNT(*) FROM dbp_2fa_attempts "

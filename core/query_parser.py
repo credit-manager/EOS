@@ -177,9 +177,9 @@ class QueryParser:
             return tuple(values)
         
         if operator == Operator.LIKE:
-            # LIKE value - basic sanitization
-            # Remove SQL wildcards that aren't %
+            # LIKE value - sanitize user input, escape SQL wildcards
             sanitized = value_str.replace("'", "").replace(";", "")
+            sanitized = sanitized.replace("%", "\\%").replace("_", "\\_")
             return f"%{sanitized}%"
         
         # For comparison operators, try to parse as number

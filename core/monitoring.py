@@ -2,7 +2,7 @@
 EOS Monitoring Service — Health, Metrics, Alerts
 """
 import time, os
-from datetime import datetime
+from datetime import datetime, timezone
 
 try:
     import psutil
@@ -18,7 +18,7 @@ class MonitoringService:
     def health_check(self):
         return {
             "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "uptime_seconds": int(time.time() - self.start_time),
             "version": "1.0.0"
         }

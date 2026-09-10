@@ -29,16 +29,21 @@ def _get_id(text: str) -> int:
 
 
 def _load_engine():
-    """Lazily obtain the shared SQLAlchemy engine."""
+    """Lazily obtain the shared SQLAlchemy engine — reuse the main database engine."""
     global _ENGINE, _TEXT
     if _ENGINE is None:
-        from sqlalchemy import create_engine, text as stext
-        url = os.getenv("DATABASE_URL")
-        if not url:
-            _ENGINE = None
-            _TEXT = stext
-            return _ENGINE, _TEXT
-        _ENGINE = create_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=10)
+        from sqlalchemy import text as stext
+        try:
+            from database import engine as main_engine
+            _ENGINE = main_engine
+        except ImportError:
+            from sqlalchemy import create_engine
+            url = os.getenv("DATABASE_URL")
+            if not url:
+                _ENGINE = None
+                _TEXT = stext
+                return _ENGINE, _TEXT
+            _ENGINE = create_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=10)
         _TEXT = stext
         with _ENGINE.begin() as conn:
             conn.execute(stext(

@@ -227,9 +227,15 @@ class RequestIdMiddleware:
         if not auth_header.startswith("Bearer "):
             return "-"
         try:
-            from core.production_auth import decode_token
             token = auth_header[7:]
-            payload = decode_token(token)
+            try:
+                from core.auth import verify_test_token
+                payload = verify_test_token(token)
+                return payload.get("sub", payload.get("user_id", "-"))
+            except Exception:
+                pass
+            from core.production_auth import verify_token
+            payload = verify_token(token)
             return payload.get("sub", "-")
         except Exception:
             return "-"

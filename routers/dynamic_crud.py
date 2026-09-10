@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import csv
 import io
@@ -126,43 +126,66 @@ async def list_records(entity_code: str, filters: Optional[str] = None, sort: Op
             if not tgt or not tgt[0]:
                 continue
             target_table = _validate_identifier(tgt[0])
-            for record in records:
-                source_value = record.get(source_col)
-                if source_value is None:
+            # Batch: collect all non-null source values, do one query per relationship
+            source_values = list({record[source_col] for record in records if record.get(source_col) is not None})
+            if not source_values:
+                for record in records:
                     record[inc] = []
-                    continue
-                where_parts = [f"{target_col} = :sv"]
-                rel_params = {"sv": source_value}
+                continue
+            if rel_type == "lookup":
+                lookup_field = _validate_identifier(lookup_field)
+                placeholders = ", ".join(f":sv{i}" for i in range(len(source_values)))
+                batch_params = {f"sv{i}": v for i, v in enumerate(source_values)}
+                batch_params["tid"] = tenant_id
+                batch_where = f"{target_col} IN ({placeholders})"
                 if tenant_scope and tenant_id:
-                    where_parts.append("tenant_id = :tid")
-                    rel_params["tid"] = tenant_id
-                rel_where = " AND ".join(where_parts)
-                if rel_type == "lookup":
-                    lookup_field = _validate_identifier(lookup_field)
-                    rows = db.execute(text(f"SELECT id, {lookup_field} FROM {target_table} WHERE {rel_where} ORDER BY {lookup_field} ASC LIMIT 100"), rel_params).fetchall()
-                    record[inc] = [{"id": str(r[0]), "label": str(r[1])} for r in rows]
-                elif rel_type == "many_to_many":
-                    if not junction or not j_src or not j_tgt:
+                    batch_where += " AND tenant_id = :tid"
+                rows = db.execute(text(f"SELECT id, {target_col}, {lookup_field} FROM {target_table} WHERE {batch_where} ORDER BY {lookup_field} ASC LIMIT :lim"), {**batch_params, "lim": len(source_values) * 100}).fetchall()
+                lookup_map = {}
+                for r in rows:
+                    key = r[1]
+                    lookup_map.setdefault(key, []).append({"id": str(r[0]), "label": str(r[2])})
+                for record in records:
+                    sv = record.get(source_col)
+                    record[inc] = lookup_map.get(sv, [])
+            elif rel_type == "many_to_many":
+                if not junction or not j_src or not j_tgt:
+                    for record in records:
                         record[inc] = []
-                        continue
-                    junction, j_src, j_tgt = map(_validate_identifier, (junction, j_src, j_tgt))
-                    m2m_where = [f"j.{j_src} = :sv"]
-                    m2m_params = {"sv": source_value}
-                    # Enforce the same tenant boundary as every other relationship
-                    # branch above. Without this, ?include=<m2m relation> could
-                    # return rows belonging to another tenant via the junction table.
-                    if tenant_scope and tenant_id:
-                        m2m_where.append("t.tenant_id = :tid")
-                        m2m_params["tid"] = tenant_id
-                    m2m_where_sql = " AND ".join(m2m_where)
-                    rows = db.execute(
-                        text(f"SELECT t.* FROM {target_table} t INNER JOIN {junction} j ON j.{j_tgt} = t.{target_col} WHERE {m2m_where_sql} LIMIT 100"),
-                        m2m_params,
-                    ).fetchall()
-                    record[inc] = [{k: v for k, v in row._mapping.items() if k != "tenant_id"} for row in rows]
-                else:
-                    rows = db.execute(text(f"SELECT * FROM {target_table} WHERE {rel_where} LIMIT 100"), rel_params).fetchall()
-                    record[inc] = [{k: v for k, v in row._mapping.items() if k != "tenant_id"} for row in rows]
+                    continue
+                junction, j_src, j_tgt = map(_validate_identifier, (junction, j_src, j_tgt))
+                placeholders = ", ".join(f":sv{i}" for i in range(len(source_values)))
+                batch_params = {f"sv{i}": v for i, v in enumerate(source_values)}
+                m2m_where = f"j.{j_src} IN ({placeholders})"
+                if tenant_scope and tenant_id:
+                    batch_params["tid"] = tenant_id
+                    m2m_where += " AND t.tenant_id = :tid"
+                rows = db.execute(
+                    text(f"SELECT t.* FROM {target_table} t INNER JOIN {junction} j ON j.{j_tgt} = t.{target_col} WHERE {m2m_where} LIMIT :lim"),
+                    {**batch_params, "lim": len(source_values) * 100},
+                ).fetchall()
+                m2m_map = {}
+                for row in rows:
+                    key = getattr(row, j_tgt) if hasattr(row, j_tgt) else row._mapping.get(j_tgt)
+                    m2m_map.setdefault(key, []).append({k: v for k, v in row._mapping.items() if k != "tenant_id"})
+                for record in records:
+                    sv = record.get(source_col)
+                    record[inc] = m2m_map.get(sv, [])
+            else:
+                placeholders = ", ".join(f":sv{i}" for i in range(len(source_values)))
+                batch_params = {f"sv{i}": v for i, v in enumerate(source_values)}
+                batch_where = f"{target_col} IN ({placeholders})"
+                if tenant_scope and tenant_id:
+                    batch_params["tid"] = tenant_id
+                    batch_where += " AND tenant_id = :tid"
+                rows = db.execute(text(f"SELECT * FROM {target_table} WHERE {batch_where} LIMIT :lim"), {**batch_params, "lim": len(source_values) * 100}).fetchall()
+                direct_map = {}
+                for row in rows:
+                    key = row._mapping.get(target_col)
+                    direct_map.setdefault(key, []).append({k: v for k, v in row._mapping.items() if k != "tenant_id"})
+                for record in records:
+                    sv = record.get(source_col)
+                    record[inc] = direct_map.get(sv, [])
     return {"status": "success", "data": records, "count": len(records), "tenant_applied": has_tenant, "effective_tenant": tenant_id, "pagination": {"total": total, "limit": query_filter.limit, "offset": query_filter.offset, "has_next": (query_filter.offset + query_filter.limit) < total}}
 
 
@@ -237,7 +260,7 @@ async def delete_record(entity_code: str, record_id: str, request: Request, db: 
     user_id = current_user.get("id") if current_user else None
     if has_deleted:
         q = f"UPDATE {table_name} SET deleted_at = :deleted_at, deleted_by = :deleted_by WHERE id = :id AND deleted_at IS NULL" + (" AND tenant_id = :tenant_id" if has_tenant else "")
-        p = {"deleted_at": datetime.utcnow(), "deleted_by": user_id, "id": record_id}
+        p = {"deleted_at": datetime.now(timezone.utc), "deleted_by": user_id, "id": record_id}
         if has_tenant: p["tenant_id"] = effective_tenant
     else:
         q = f"DELETE FROM {table_name} WHERE id = :id" + (" AND tenant_id = :tenant_id" if has_tenant else "")

@@ -77,7 +77,7 @@ class RetryContext:
                 time.sleep(delay)
                 return True
             else:
-                raise RetryExhaustedError(exc_val, self.attempts)
+                raise RetryExhaustedError(exc_val, self.max_attempts)
         return False
 
     async def __aenter__(self):

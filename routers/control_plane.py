@@ -177,7 +177,7 @@ async def provision_tenant(body: dict, user: dict = Depends(require_platform_own
     name = body.get("name")
     industry_code = body.get("industry_code")
     admin_email = body.get("admin_email")
-    admin_password = body.get("admin_password", "admin123")
+    admin_password = body.get("admin_password")
     admin_name = body.get("admin_name", "")
 
     if not name:
@@ -186,6 +186,8 @@ async def provision_tenant(body: dict, user: dict = Depends(require_platform_own
         raise HTTPException(400, detail="industry_code required (construction, trading, retail, restaurant, services, manufacturing)")
     if not admin_email:
         raise HTTPException(400, detail="admin_email required")
+    if not admin_password or len(admin_password) < 8:
+        raise HTTPException(400, detail="admin_password required (minimum 8 characters)")
 
     # Check email not taken
     existing = db.execute(

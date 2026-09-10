@@ -58,12 +58,15 @@ if is_production:
 @event.listens_for(engine, "begin")
 def _set_tenant_on_begin(conn):
     """Inject current request tenant into the transaction so RLS policies filter rows."""
+    import re
     tid = current_tenant_id.get()
     if tid is not None:
-        # tenant_id is a sanitized value (UUID / plain identifier) controlled by auth.
-        # Defend against any quote/escaping to avoid SQL injection via the GUC value.
-        safe = str(tid).replace("'", "''")
-        conn.exec_driver_sql(f"SET LOCAL {RLS_CONTEXT_PARAM} = '{safe}'")
+        tid_str = str(tid).strip()
+        # Validate tenant_id is a safe identifier (UUID or alphanumeric with underscores/hyphens)
+        if not re.match(r'^[a-zA-Z0-9_-]{1,128}$', tid_str):
+            raise ValueError(f"Invalid tenant_id format: {tid_str!r}")
+        # Use dollar-quoting for safety — no spaces around value
+        conn.exec_driver_sql(f"SET LOCAL {RLS_CONTEXT_PARAM} = $${tid_str}$$")
 
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
