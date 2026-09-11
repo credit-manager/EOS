@@ -26,14 +26,12 @@ def test_stage6_critical_demo_scenario() -> None:
     print("STAGE 6 - CRITICAL DEMO SCENARIO (New Clean Backend)")
     print("=" * 60)
 
-    # Step 1: Login (Register + Token)
     print("\n[Step 1] Login...")
     admin = _register(f"admin-{uuid4()}@construction.com", "Construction Co.")
     headers = _headers(admin)
     tenant_id = admin["tenant_id"]
     print(f"  [OK] Login successful, tenant_id={tenant_id[:8]}...")
 
-    # Step 2: Create metadata entity
     print("\n[Step 2] Creating 'subcontractor_evaluation' entity via Metadata API...")
     entity_payload = {
         "code": "subcontractor_evaluation",
@@ -52,27 +50,22 @@ def test_stage6_critical_demo_scenario() -> None:
     version = create_resp.json()["version"]
     print(f"  [OK] Entity created: id={entity_id}, version={version}")
 
-    # Step 3: Publish entity
     print("\n[Step 3] Verifying metadata is published...")
     publish_resp = client.post(
-        f"/api/v1/metadata/entities/subcontractor_evaluation/publish", headers=headers
+        "/api/v1/metadata/entities/subcontractor_evaluation/publish", headers=headers
     )
     assert publish_resp.status_code == 200
     assert publish_resp.json()["published"] is True
     print(f"  [OK] Metadata published: name=subcontractor_evaluation, version={version}")
 
-    # Step 4: CRUD auto-generated from metadata
     print("\n[Step 4] Verifying CRUD API is auto-generated from metadata...")
-
-    # List records (empty)
     list_resp = client.get(
         "/api/v1/entities/subcontractor_evaluation/records", headers=headers
     )
     assert list_resp.status_code == 200
     assert len(list_resp.json()) == 0
-    print(f"  [OK] GET /entities/.../records -- works (0 records)")
+    print("  [OK] GET /entities/.../records -- works (0 records)")
 
-    # Create record
     record_data = {
         "subcontractor_name": "ABC Construction",
         "evaluation_date": "2026-09-11",
@@ -90,7 +83,6 @@ def test_stage6_critical_demo_scenario() -> None:
     assert create_rec.json()["version"] == 1
     print(f"  [OK] POST /entities/.../records -- created record {record_id[:8]}...")
 
-    # Get record
     get_resp = client.get(
         f"/api/v1/entities/subcontractor_evaluation/records/{record_id}", headers=headers
     )
@@ -99,7 +91,6 @@ def test_stage6_critical_demo_scenario() -> None:
     assert get_resp.json()["data"]["score"] == "85.5"
     print(f"  [OK] GET /records/{record_id[:8]}... -- data verified")
 
-    # Update record
     update_resp = client.patch(
         f"/api/v1/entities/subcontractor_evaluation/records/{record_id}",
         json={"data": {**record_data, "score": "90.0"}, "version": 1},
@@ -110,17 +101,14 @@ def test_stage6_critical_demo_scenario() -> None:
     assert update_resp.json()["data"]["score"] == "90.0"
     print(f"  [OK] PATCH /records/{record_id[:8]}... -- updated, version=2")
 
-    # Verify list now has 1 record
     list_resp2 = client.get(
         "/api/v1/entities/subcontractor_evaluation/records", headers=headers
     )
     assert list_resp2.status_code == 200
     assert len(list_resp2.json()) == 1
-    print(f"  [OK] GET /entities/.../records -- now has 1 record")
+    print("  [OK] GET /entities/.../records -- now has 1 record")
 
     print("\n  CRUD API works automatically from metadata -- NO custom code needed!")
-
-    # Step 5: List all metadata entities
     print("\n[Step 5] Listing all metadata entities...")
     catalog = client.get("/api/v1/metadata/entities", headers=headers)
     assert catalog.status_code == 200
@@ -129,7 +117,6 @@ def test_stage6_critical_demo_scenario() -> None:
     print(f"  [OK] GET /metadata/entities -- {len(catalog.json())} entities found")
     print(f"    - {item['code']} (v{item['version']}, fields={item['field_count']})")
 
-    # Step 6: Verify audit trail
     print("\n[Step 6] Verifying audit trail...")
     audit_resp = client.get("/api/v1/audit/events", headers=headers)
     assert audit_resp.status_code == 200
@@ -139,7 +126,6 @@ def test_stage6_critical_demo_scenario() -> None:
     for event in events[:3]:
         print(f"    - {event['action']} on {event['resource_type']} (id={str(event['resource_id'])[:8]}...)")
 
-    # Step 7: Create second record
     print("\n[Step 7] Creating second record with low score (45.0)...")
     record2_data = {
         "subcontractor_name": "XYZ Builders",
@@ -157,8 +143,7 @@ def test_stage6_critical_demo_scenario() -> None:
     record2_id = create_rec2.json()["id"]
     print(f"  [OK] Created record {record2_id[:8]}... with score=45.0")
 
-    # Step 8: Metadata versioning
-    print("\n[Step 8] Publishing new metadata version with additional field...")
+    print("\n[Step 8] Metadata versioning")
     revised_entity = {
         "code": "subcontractor_evaluation",
         "name": "Subcontractor Evaluation v2",
@@ -178,9 +163,8 @@ def test_stage6_critical_demo_scenario() -> None:
         "/api/v1/metadata/entities/subcontractor_evaluation/publish", headers=headers
     )
     assert publish_v2.status_code == 200
-    print(f"  [OK] New metadata version published: v2")
+    print("  [OK] New metadata version published: v2")
 
-    # Step 9: Records still accessible after metadata update
     print("\n[Step 9] Verifying records are still accessible after metadata update...")
     get_r1 = client.get(
         f"/api/v1/entities/subcontractor_evaluation/records/{record_id}", headers=headers
@@ -193,10 +177,9 @@ def test_stage6_critical_demo_scenario() -> None:
     list_all = client.get("/api/v1/entities/subcontractor_evaluation/records", headers=headers)
     assert list_all.status_code == 200
     assert len(list_all.json()) == 2
-    print(f"  [OK] Both records still accessible after metadata v2")
-    print(f"  [OK] Old record data preserved")
+    print("  [OK] Both records still accessible after metadata v2")
+    print("  [OK] Old record data preserved")
 
-    # Step 10: Final audit trail
     print("\n[Step 10] Final audit trail verification...")
     final_audit = client.get("/api/v1/audit/events", headers=headers)
     assert final_audit.status_code == 200
