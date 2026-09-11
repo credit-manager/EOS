@@ -19,7 +19,7 @@ def _register(email: str) -> dict:
 
 def test_workflow_approval_lifecycle() -> None:
     owner = _register("workflow-owner@example.com")
-    member = _register("workflow-member@example.com")
+    _register("workflow-member@example.com")
     admin_headers = {"Authorization": f"Bearer {owner['access_token']}"}
 
     added = client.post(
