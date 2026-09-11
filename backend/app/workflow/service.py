@@ -15,6 +15,10 @@ def _definition_graph(definition: WorkflowDefinition) -> list[dict]:
     return definition.definition["transitions"]
 
 
+def _is_terminal(definition: WorkflowDefinition, state: str) -> bool:
+    return not any(item["from_state"] == state for item in _definition_graph(definition))
+
+
 def get_definition(db: Session, tenant_id: UUID, code: str) -> WorkflowDefinition:
     definition = db.scalar(
         select(WorkflowDefinition)
@@ -90,7 +94,7 @@ def start_instance(
         reference_type=reference_type,
         reference_id=reference_id,
         current_state=definition.initial_state,
-        status="active",
+        status="completed" if _is_terminal(definition, definition.initial_state) else "active",
         created_by=user_id,
     )
     db.add(instance)
@@ -179,7 +183,7 @@ def request_transition(
         return instance, task
 
     instance.current_state = transition["to_state"]
-    if instance.current_state in definition.definition["states"][-1:]:
+    if _is_terminal(definition, instance.current_state):
         instance.status = "completed"
     db.add(
         AuditEvent(
@@ -243,7 +247,7 @@ def decide_approval(
     task.decided_at = datetime.now(UTC)
     if approved:
         instance.current_state = task.to_state
-        if instance.current_state in definition.definition["states"][-1:]:
+        if _is_terminal(definition, instance.current_state):
             instance.status = "completed"
     db.add(
         AuditEvent(
