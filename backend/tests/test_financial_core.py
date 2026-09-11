@@ -3,7 +3,6 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 
-from backend.app.auth.models import Tenant
 from backend.app.db import SessionLocal
 from backend.app.financial.models import Account
 from backend.app.main import app
