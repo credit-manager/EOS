@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
+from .audit.router import router as audit_router
 from .auth.router import router as auth_router
 from .config import get_settings
 from .db import Base, engine
@@ -52,3 +53,4 @@ app.include_router(auth_router)
 app.include_router(metadata_router)
 app.include_router(records_router)
 app.include_router(lookup_router)
+app.include_router(audit_router)
