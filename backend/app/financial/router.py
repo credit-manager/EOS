@@ -1,7 +1,7 @@
 from decimal import Decimal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -28,12 +28,8 @@ def create_account(
     tenant_id: UUID = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> Account:
-    existing = db.scalar(
-        select(Account).where(Account.tenant_id == tenant_id, Account.code == payload.code)
-    )
+    existing = db.scalar(select(Account).where(Account.tenant_id == tenant_id, Account.code == payload.code))
     if existing is not None:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=409, detail="account code already exists")
     account = Account(tenant_id=tenant_id, **payload.model_dump())
     db.add(account)
@@ -61,11 +57,10 @@ def create_journal_entry(
     tenant_id: UUID = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> JournalEntryResponse:
-    user_id = request.state.user_id
     entry = create_draft(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        user_id=request.state.user_id,
         payload=payload,
         request_id=request.state.request_id,
     )
@@ -98,8 +93,6 @@ def get_journal_entry(
     db: Session = Depends(get_db),
 ) -> JournalEntryResponse:
     entry = db.scalar(select(JournalEntry).where(JournalEntry.id == entry_id, JournalEntry.tenant_id == tenant_id))
-    from fastapi import HTTPException
-
     if entry is None:
         raise HTTPException(status_code=404, detail="journal entry not found")
     return _serialize_entry(db, entry)
