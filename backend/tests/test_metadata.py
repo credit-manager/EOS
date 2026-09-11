@@ -68,6 +68,51 @@ def test_metadata_to_generic_crud_and_tenant_isolation() -> None:
     assert other_tenant.status_code == 404
 
 
+def test_metadata_catalog_lists_only_published_latest_versions() -> None:
+    headers, _ = _register()
+    first = {"code": "catalog_a", "name": "Catalog A", "fields": [{"code": "name", "type": "text"}]}
+    second = {"code": "catalog_b", "name": "Catalog B", "fields": [{"code": "amount", "type": "decimal"}]}
+    assert client.post("/api/v1/metadata/entities", json=first, headers=headers).status_code == 201
+    assert client.post("/api/v1/metadata/entities/catalog_a/publish", headers=headers).status_code == 200
+    assert client.post("/api/v1/metadata/entities", json=second, headers=headers).status_code == 201
+
+    hidden = client.get("/api/v1/metadata/entities", headers=headers)
+    assert hidden.status_code == 200
+    assert {item["code"] for item in hidden.json()} == {"catalog_a"}
+
+    revised = {
+        **first,
+        "name": "Catalog A Revised",
+        "fields": [
+            {"code": "name", "type": "text"},
+            {"code": "active", "type": "boolean"},
+        ],
+    }
+    created = client.post("/api/v1/metadata/entities", json=revised, headers=headers)
+    assert created.status_code == 201
+    assert created.json()["version"] == 2
+    assert client.post("/api/v1/metadata/entities/catalog_a/publish", headers=headers).status_code == 200
+
+    catalog = client.get("/api/v1/metadata/entities", headers=headers)
+    assert catalog.status_code == 200
+    items = {item["code"]: item for item in catalog.json()}
+    assert items["catalog_a"]["name"] == "Catalog A Revised"
+    assert items["catalog_a"]["version"] == 2
+    assert items["catalog_a"]["field_count"] == 2
+
+
+def test_metadata_catalog_is_tenant_scoped() -> None:
+    headers, _ = _register()
+    other_headers, _ = _register()
+    payload = {"code": "private_entity", "name": "Private Entity", "fields": [{"code": "name", "type": "text"}]}
+    assert client.post("/api/v1/metadata/entities", json=payload, headers=headers).status_code == 201
+    assert client.post("/api/v1/metadata/entities/private_entity/publish", headers=headers).status_code == 200
+
+    other_catalog = client.get("/api/v1/metadata/entities", headers=other_headers)
+    assert other_catalog.status_code == 200
+    assert all(item["code"] != "private_entity" for item in other_catalog.json())
+
+
 def test_generic_record_type_validation() -> None:
     headers, _ = _register()
     payload = {
