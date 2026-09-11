@@ -148,3 +148,76 @@ def test_workflow_action_updates_bound_record_atomically() -> None:
     updated = fetched.json()
     assert updated["data"]["status"] == "approved"
     assert updated["version"] == 2
+
+
+def test_available_transitions_are_role_and_tenant_scoped() -> None:
+    _, headers = _register("workflow-discovery@example.com")
+    _, other_headers = _register("workflow-discovery-other@example.com")
+
+    definition = client.post(
+        "/api/v1/workflows/definitions",
+        headers=headers,
+        json={
+            "code": "review_flow",
+            "name": "Review Flow",
+            "states": ["draft", "review", "approved"],
+            "initial_state": "draft",
+            "transitions": [
+                {
+                    "from_state": "draft",
+                    "to_state": "review",
+                    "action": "submit",
+                    "roles": ["admin"],
+                    "requires_approval": True,
+                },
+                {
+                    "from_state": "review",
+                    "to_state": "approved",
+                    "action": "approve",
+                    "roles": ["admin"],
+                    "requires_approval": False,
+                },
+            ],
+        },
+    )
+    assert definition.status_code == 201
+
+    instance = client.post(
+        "/api/v1/workflows/instances",
+        headers=headers,
+        json={
+            "workflow_code": "review_flow",
+            "reference_type": "manual",
+            "reference_id": str(UUID(int=1)),
+        },
+    )
+    assert instance.status_code == 201
+    instance_id = instance.json()["id"]
+
+    available = client.get(
+        f"/api/v1/workflows/instances/{instance_id}/available-transitions",
+        headers=headers,
+    )
+    assert available.status_code == 200
+    assert available.json() == [
+        {
+            "action": "submit",
+            "from_state": "draft",
+            "to_state": "review",
+            "requires_approval": True,
+        }
+    ]
+
+    isolated = client.get(
+        f"/api/v1/workflows/instances/{instance_id}/available-transitions",
+        headers=other_headers,
+    )
+    assert isolated.status_code == 404
+
+    transitioned = client.post(
+        f"/api/v1/workflows/instances/{instance_id}/transitions",
+        headers=headers,
+        json={"action": "submit"},
+    )
+    assert transitioned.status_code == 200
+    assert transitioned.json()["status"] == "pending_approval"
