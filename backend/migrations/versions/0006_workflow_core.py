@@ -1,5 +1,6 @@
 """add workflow and approval core"""
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0006_workflow_core"

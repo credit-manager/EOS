@@ -1,8 +1,8 @@
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
 from backend.app.audit.models import AuditEvent
 from backend.app.auth.models import AuthSession, Tenant, TenantMembership, User
 from backend.app.config import get_settings
