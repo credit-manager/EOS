@@ -468,3 +468,681 @@ def update_procurement_status(
     )
     db.commit()
     return proc
+
+
+# ---------------------------------------------------------------------------
+# Budget
+# ---------------------------------------------------------------------------
+
+@router.post("/budgets", status_code=201, response_model=schemas.BudgetResponse)
+def create_budget(
+    payload: schemas.BudgetCreate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    budget = service.create_budget(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        project_id=payload.project_id,
+        version=payload.version,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return budget
+
+
+@router.get("/budgets", response_model=list[schemas.BudgetResponse])
+def list_budgets(
+    project_id: UUID,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.list_budgets(db, tenant_id=tenant_id, project_id=project_id)
+
+
+@router.get("/budgets/{budget_id}", response_model=schemas.BudgetResponse)
+def get_budget(
+    budget_id: UUID,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.get_budget(db, tenant_id=tenant_id, budget_id=budget_id)
+
+
+@router.post("/budgets/{budget_id}/lines", status_code=201, response_model=schemas.BudgetLineResponse)
+def add_budget_line(
+    budget_id: UUID,
+    payload: schemas.BudgetLineCreate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    line = service.add_budget_line(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        budget_id=budget_id,
+        description=payload.description,
+        unit=payload.unit,
+        quantity=payload.quantity,
+        unit_rate=payload.unit_rate,
+        amount=payload.amount,
+        boq_item_id=payload.boq_item_id,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return line
+
+
+@router.get("/budgets/{budget_id}/lines", response_model=list[schemas.BudgetLineResponse])
+def list_budget_lines(
+    budget_id: UUID,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.list_budget_lines(db, tenant_id=tenant_id, budget_id=budget_id)
+
+
+@router.post("/budgets/{budget_id}/status", response_model=schemas.BudgetResponse)
+def update_budget_status(
+    budget_id: UUID,
+    status: str,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    budget = service.update_budget_status(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        budget_id=budget_id,
+        status=status,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return budget
+
+
+# ---------------------------------------------------------------------------
+# Change Order
+# ---------------------------------------------------------------------------
+
+@router.post("/change-orders", status_code=201, response_model=schemas.ChangeOrderResponse)
+def create_change_order(
+    payload: schemas.ChangeOrderCreate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    co = service.create_change_order(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        project_id=payload.project_id,
+        contract_id=payload.contract_id,
+        change_order_number=payload.change_order_number,
+        title=payload.title,
+        description=payload.description,
+        impact_type=payload.impact_type,
+        cost_impact=payload.cost_impact,
+        time_impact_days=payload.time_impact_days,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return co
+
+
+@router.get("/change-orders", response_model=list[schemas.ChangeOrderResponse])
+def list_change_orders(
+    project_id: UUID | None = None,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.list_change_orders(db, tenant_id=tenant_id, project_id=project_id)
+
+
+@router.get("/change-orders/{change_order_id}", response_model=schemas.ChangeOrderResponse)
+def get_change_order(
+    change_order_id: UUID,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.get_change_order(db, tenant_id=tenant_id, change_order_id=change_order_id)
+
+
+@router.post("/change-orders/{change_order_id}/status", response_model=schemas.ChangeOrderResponse)
+def update_change_order_status(
+    change_order_id: UUID,
+    status: str,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    co = service.update_change_order_status(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        change_order_id=change_order_id,
+        status=status,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return co
+
+
+# ---------------------------------------------------------------------------
+# Subcontract
+# ---------------------------------------------------------------------------
+
+@router.post("/subcontracts", status_code=201, response_model=schemas.SubcontractResponse)
+def create_subcontract(
+    payload: schemas.SubcontractCreate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    sub = service.create_subcontract(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        project_id=payload.project_id,
+        contract_id=payload.contract_id,
+        subcontract_number=payload.subcontract_number,
+        subcontractor_name=payload.subcontractor_name,
+        scope=payload.scope,
+        value=payload.value,
+        status=payload.status,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return sub
+
+
+@router.get("/subcontracts", response_model=list[schemas.SubcontractResponse])
+def list_subcontracts(
+    project_id: UUID | None = None,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.list_subcontracts(db, tenant_id=tenant_id, project_id=project_id)
+
+
+@router.get("/subcontracts/{subcontract_id}", response_model=schemas.SubcontractResponse)
+def get_subcontract(
+    subcontract_id: UUID,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.get_subcontract(db, tenant_id=tenant_id, subcontract_id=subcontract_id)
+
+
+@router.post("/subcontracts/{subcontract_id}/status", response_model=schemas.SubcontractResponse)
+def update_subcontract_status(
+    subcontract_id: UUID,
+    status: str,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    sub = service.update_subcontract_status(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        subcontract_id=subcontract_id,
+        status=status,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return sub
+
+
+# ---------------------------------------------------------------------------
+# Site Warehouse
+# ---------------------------------------------------------------------------
+
+@router.post("/warehouses", status_code=201, response_model=schemas.SiteWarehouseResponse)
+def create_site_warehouse(
+    payload: schemas.SiteWarehouseCreate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    wh = service.create_site_warehouse(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        project_id=payload.project_id,
+        code=payload.code,
+        name=payload.name,
+        location=payload.location,
+        manager_id=payload.manager_id,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return wh
+
+
+@router.get("/warehouses", response_model=list[schemas.SiteWarehouseResponse])
+def list_site_warehouses(
+    project_id: UUID | None = None,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.list_site_warehouses(db, tenant_id=tenant_id, project_id=project_id)
+
+
+@router.get("/warehouses/{warehouse_id}", response_model=schemas.SiteWarehouseResponse)
+def get_site_warehouse(
+    warehouse_id: UUID,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.get_site_warehouse(db, tenant_id=tenant_id, warehouse_id=warehouse_id)
+
+
+@router.patch("/warehouses/{warehouse_id}", response_model=schemas.SiteWarehouseResponse)
+def update_site_warehouse(
+    warehouse_id: UUID,
+    payload: schemas.SiteWarehouseUpdate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    data = payload.model_dump(exclude_unset=True)
+    wh = service.update_site_warehouse(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        warehouse_id=warehouse_id,
+        data=data,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return wh
+
+
+@router.delete("/warehouses/{warehouse_id}", status_code=204)
+def delete_site_warehouse(
+    warehouse_id: UUID,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    service.delete_site_warehouse(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        warehouse_id=warehouse_id,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Purchase Order
+# ---------------------------------------------------------------------------
+
+@router.post("/purchase-orders", status_code=201, response_model=schemas.PurchaseOrderResponse)
+def create_purchase_order(
+    payload: schemas.PurchaseOrderCreate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    po = service.create_purchase_order(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        procurement_id=payload.procurement_id,
+        supplier_id=payload.supplier_id,
+        po_number=payload.po_number,
+        currency=payload.currency,
+        terms=payload.terms,
+        delivery_date=payload.delivery_date,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return po
+
+
+@router.get("/purchase-orders", response_model=list[schemas.PurchaseOrderResponse])
+def list_purchase_orders(
+    procurement_id: UUID | None = None,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.list_purchase_orders(db, tenant_id=tenant_id, procurement_id=procurement_id)
+
+
+@router.get("/purchase-orders/{po_id}", response_model=schemas.PurchaseOrderResponse)
+def get_purchase_order(
+    po_id: UUID,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.get_purchase_order(db, tenant_id=tenant_id, po_id=po_id)
+
+
+@router.post("/purchase-orders/{po_id}/lines", status_code=201, response_model=schemas.PurchaseOrderLineResponse)
+def add_purchase_order_line(
+    po_id: UUID,
+    payload: schemas.PurchaseOrderLineCreate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    line = service.add_purchase_order_line(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        po_id=po_id,
+        procurement_line_id=payload.procurement_line_id,
+        description=payload.description,
+        unit=payload.unit,
+        quantity=payload.quantity,
+        unit_price=payload.unit_price,
+        line_total=payload.line_total,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return line
+
+
+@router.get("/purchase-orders/{po_id}/lines", response_model=list[schemas.PurchaseOrderLineResponse])
+def list_purchase_order_lines(
+    po_id: UUID,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.list_purchase_order_lines(db, tenant_id=tenant_id, po_id=po_id)
+
+
+@router.post("/purchase-orders/{po_id}/status", response_model=schemas.PurchaseOrderResponse)
+def update_purchase_order_status(
+    po_id: UUID,
+    status: str,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    po = service.update_purchase_order_status(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        po_id=po_id,
+        status=status,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return po
+
+
+# ---------------------------------------------------------------------------
+# Goods Receipt (GRN)
+# ---------------------------------------------------------------------------
+
+@router.post("/goods-receipts", status_code=201, response_model=schemas.GoodsReceiptResponse)
+def create_goods_receipt(
+    payload: schemas.GoodsReceiptCreate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    grn = service.create_goods_receipt(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        purchase_order_id=payload.purchase_order_id,
+        grn_number=payload.grn_number,
+        received_date=payload.received_date,
+        warehouse_id=payload.warehouse_id,
+        received_by=payload.received_by,
+        notes=payload.notes,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return grn
+
+
+@router.get("/goods-receipts", response_model=list[schemas.GoodsReceiptResponse])
+def list_goods_receipts(
+    po_id: UUID | None = None,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.list_goods_receipts(db, tenant_id=tenant_id, po_id=po_id)
+
+
+@router.get("/goods-receipts/{grn_id}", response_model=schemas.GoodsReceiptResponse)
+def get_goods_receipt(
+    grn_id: UUID,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.get_goods_receipt(db, tenant_id=tenant_id, grn_id=grn_id)
+
+
+@router.post("/goods-receipts/{grn_id}/lines", status_code=201, response_model=schemas.GoodsReceiptLineResponse)
+def add_goods_receipt_line(
+    grn_id: UUID,
+    payload: schemas.GoodsReceiptLineCreate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    line = service.add_goods_receipt_line(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        grn_id=grn_id,
+        po_line_id=payload.po_line_id,
+        quantity_received=payload.quantity_received,
+        quantity_accepted=payload.quantity_accepted,
+        quantity_rejected=payload.quantity_rejected,
+        notes=payload.notes,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return line
+
+
+@router.get("/goods-receipts/{grn_id}/lines", response_model=list[schemas.GoodsReceiptLineResponse])
+def list_goods_receipt_lines(
+    grn_id: UUID,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.list_goods_receipt_lines(db, tenant_id=tenant_id, grn_id=grn_id)
+
+
+@router.post("/goods-receipts/{grn_id}/status", response_model=schemas.GoodsReceiptResponse)
+def update_goods_receipt_status(
+    grn_id: UUID,
+    status: str,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    grn = service.update_goods_receipt_status(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        grn_id=grn_id,
+        status=status,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return grn
+
+
+# ---------------------------------------------------------------------------
+# Supplier Invoice
+# ---------------------------------------------------------------------------
+
+@router.post("/supplier-invoices", status_code=201, response_model=schemas.SupplierInvoiceResponse)
+def create_supplier_invoice(
+    payload: schemas.SupplierInvoiceCreate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    inv = service.create_supplier_invoice(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        purchase_order_id=payload.purchase_order_id,
+        grn_id=payload.grn_id,
+        invoice_number=payload.invoice_number,
+        supplier_invoice_number=payload.supplier_invoice_number,
+        invoice_date=payload.invoice_date,
+        due_date=payload.due_date,
+        currency=payload.currency,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return inv
+
+
+@router.get("/supplier-invoices", response_model=list[schemas.SupplierInvoiceResponse])
+def list_supplier_invoices(
+    po_id: UUID | None = None,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.list_supplier_invoices(db, tenant_id=tenant_id, po_id=po_id)
+
+
+@router.get("/supplier-invoices/{invoice_id}", response_model=schemas.SupplierInvoiceResponse)
+def get_supplier_invoice(
+    invoice_id: UUID,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.get_supplier_invoice(db, tenant_id=tenant_id, invoice_id=invoice_id)
+
+
+@router.post("/supplier-invoices/{invoice_id}/lines", status_code=201, response_model=schemas.SupplierInvoiceLineResponse)
+def add_supplier_invoice_line(
+    invoice_id: UUID,
+    payload: schemas.SupplierInvoiceLineCreate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    line = service.add_supplier_invoice_line(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        invoice_id=invoice_id,
+        description=payload.description,
+        unit=payload.unit,
+        quantity=payload.quantity,
+        unit_price=payload.unit_price,
+        line_total=payload.line_total,
+        tax_rate=payload.tax_rate,
+        tax_amount=payload.tax_amount,
+        grn_line_id=payload.grn_line_id,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return line
+
+
+@router.get("/supplier-invoices/{invoice_id}/lines", response_model=list[schemas.SupplierInvoiceLineResponse])
+def list_supplier_invoice_lines(
+    invoice_id: UUID,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.list_supplier_invoice_lines(db, tenant_id=tenant_id, invoice_id=invoice_id)
+
+
+@router.post("/supplier-invoices/{invoice_id}/status", response_model=schemas.SupplierInvoiceResponse)
+def update_supplier_invoice_status(
+    invoice_id: UUID,
+    status: str,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    inv = service.update_supplier_invoice_status(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        invoice_id=invoice_id,
+        status=status,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return inv
+
+
+# ---------------------------------------------------------------------------
+# Payment
+# ---------------------------------------------------------------------------
+
+@router.post("/payments", status_code=201, response_model=schemas.PaymentResponse)
+def create_payment(
+    payload: schemas.PaymentCreate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    pay = service.create_payment(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        supplier_invoice_id=payload.supplier_invoice_id,
+        payment_number=payload.payment_number,
+        payment_method=payload.payment_method,
+        amount=payload.amount,
+        currency=payload.currency,
+        payment_date=payload.payment_date,
+        reference=payload.reference,
+        notes=payload.notes,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return pay
+
+
+@router.get("/payments", response_model=list[schemas.PaymentResponse])
+def list_payments(
+    invoice_id: UUID | None = None,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.list_payments(db, tenant_id=tenant_id, invoice_id=invoice_id)
+
+
+@router.get("/payments/{payment_id}", response_model=schemas.PaymentResponse)
+def get_payment(
+    payment_id: UUID,
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.get_payment(db, tenant_id=tenant_id, payment_id=payment_id)
+
+
+@router.post("/payments/{payment_id}/status", response_model=schemas.PaymentResponse)
+def update_payment_status(
+    payment_id: UUID,
+    status: str,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    pay = service.update_payment_status(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        payment_id=payment_id,
+        status=status,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return pay

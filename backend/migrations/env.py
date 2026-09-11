@@ -1,3 +1,4 @@
+import os
 from logging.config import fileConfig
 
 from alembic import context
@@ -53,15 +54,31 @@ _model_registry = (
 )
 
 
+def _get_db_url() -> str:
+    # Priority: command-line arg (-x db_url=...) > env var (DATABASE_URL) > alembic.ini > settings default
+    cmd_line_url = config.get_main_option("db_url")
+    if cmd_line_url:
+        return cmd_line_url
+    env_url = os.getenv("DATABASE_URL")
+    if env_url:
+        return env_url
+    ini_url = config.get_main_option("sqlalchemy.url")
+    if ini_url:
+        return ini_url
+    return settings.database_url
+
+
 def run_migrations_offline() -> None:
-    context.configure(url=settings.database_url, target_metadata=target_metadata, literal_binds=True)
+    url = _get_db_url()
+    context.configure(url=url, target_metadata=target_metadata, literal_binds=True)
     with context.begin_transaction():
         context.run_migrations()
 
 
 def run_migrations_online() -> None:
     section = config.get_section(config.config_ini_section) or {}
-    section["sqlalchemy.url"] = settings.database_url
+    url = _get_db_url()
+    section["sqlalchemy.url"] = url
     connectable = engine_from_config(section, prefix="sqlalchemy.", poolclass=pool.NullPool)
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
