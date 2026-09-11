@@ -187,11 +187,11 @@ def create_record(
 @router.get("", response_model=list[RecordResponse])
 def list_records(
     entity_code: str,
+    request: Request,
     filter_field: str | None = Query(default=None, min_length=1, max_length=100),
     filter_value: str | None = Query(default=None, min_length=1, max_length=200),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
-    request: Request,
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ) -> list[RecordResponse]:
