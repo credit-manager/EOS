@@ -698,6 +698,74 @@ class SupplierInvoiceLine(Base):
 
 
 # ---------------------------------------------------------------------------
+# Project Financial Accounts
+# ---------------------------------------------------------------------------
+class ProjectFinancialAccounts(Base):
+    """Account IDs for a construction project's financial accounts.
+
+    These are configured per project/tenant during project setup.
+    Each tenant/project combination has exactly one configuration.
+    """
+
+    __tablename__ = "construction_project_financial_accounts"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "project_id", name="uq_project_financial_accounts_tenant_project"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("construction_projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    cash_account_id: Mapped[UUID] = mapped_column(
+        Uuid, nullable=False, default=uuid4
+    )
+    accounts_receivable_account_id: Mapped[UUID] = mapped_column(
+        Uuid, nullable=False, default=uuid4
+    )
+    accounts_payable_account_id: Mapped[UUID] = mapped_column(
+        Uuid, nullable=False, default=uuid4
+    )
+    inventory_account_id: Mapped[UUID] = mapped_column(
+        Uuid, nullable=False, default=uuid4
+    )
+    grni_account_id: Mapped[UUID] = mapped_column(
+        Uuid, nullable=False, default=uuid4
+    )
+    materials_account_id: Mapped[UUID] = mapped_column(
+        Uuid, nullable=False, default=uuid4
+    )
+    construction_revenue_account_id: Mapped[UUID] = mapped_column(
+        Uuid, nullable=False, default=uuid4
+    )
+    labor_account_id: Mapped[UUID] = mapped_column(
+        Uuid, nullable=False, default=uuid4
+    )
+    equipment_account_id: Mapped[UUID] = mapped_column(
+        Uuid, nullable=False, default=uuid4
+    )
+    subcontractor_account_id: Mapped[UUID] = mapped_column(
+        Uuid, nullable=False, default=uuid4
+    )
+    overhead_account_id: Mapped[UUID] = mapped_column(
+        Uuid, nullable=False, default=uuid4
+    )
+    wip_account_id: Mapped[UUID] = mapped_column(
+        Uuid, nullable=False, default=uuid4
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+# ---------------------------------------------------------------------------
 # Payment
 # ---------------------------------------------------------------------------
 class Payment(Base):

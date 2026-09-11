@@ -291,9 +291,32 @@ def get_project_accounts(db: Session, tenant_id: UUID, project_id: UUID) -> Proj
     Retrieve project-specific financial account configuration.
     Returns None if not configured - caller should handle appropriately.
     """
-    # In a real implementation, this would query a project_financial_accounts table
-    # For now, return None to indicate not configured
-    return None
+    from ..app.construction.models import ProjectFinancialAccounts
+    
+    accounts = db.query(ProjectFinancialAccounts).filter(
+        ProjectFinancialAccounts.tenant_id == tenant_id,
+        ProjectFinancialAccounts.project_id == project_id
+    ).first()
+    
+    if accounts is None:
+        return None
+    
+    return ProjectFinancialAccounts(
+        tenant_id=accounts.tenant_id,
+        project_id=accounts.project_id,
+        cash_account_id=accounts.cash_account_id,
+        accounts_receivable_account_id=accounts.accounts_receivable_account_id,
+        accounts_payable_account_id=accounts.accounts_payable_account_id,
+        inventory_account_id=accounts.inventory_account_id,
+        grni_account_id=accounts.grni_account_id,
+        materials_account_id=accounts.materials_account_id,
+        construction_revenue_account_id=accounts.construction_revenue_account_id,
+        labor_account_id=accounts.labor_account_id,
+        equipment_account_id=accounts.equipment_account_id,
+        subcontractor_account_id=accounts.subcontractor_account_id,
+        overhead_account_id=accounts.overhead_account_id,
+        wip_account_id=accounts.wip_account_id,
+    )
 
 
 def ensure_project_accounts_configured(db: Session, tenant_id: UUID, project_id: UUID) -> ProjectFinancialAccounts:
