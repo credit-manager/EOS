@@ -4,9 +4,10 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from backend.app.audit.models import AuditEvent
-from backend.app.auth.models import Tenant, TenantMembership, User
+from backend.app.auth.models import AuthSession, Tenant, TenantMembership, User
 from backend.app.config import get_settings
 from backend.app.db import Base
+from backend.app.financial.models import Account, JournalEntry, JournalLine
 from backend.app.metadata.models import MetadataEntity
 from backend.app.records.models import Record
 
@@ -16,7 +17,18 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-_model_registry = (AuditEvent, MetadataEntity, Record, Tenant, TenantMembership, User)
+_model_registry = (
+    Account,
+    AuditEvent,
+    AuthSession,
+    JournalEntry,
+    JournalLine,
+    MetadataEntity,
+    Record,
+    Tenant,
+    TenantMembership,
+    User,
+)
 
 
 def run_migrations_offline() -> None:
