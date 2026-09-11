@@ -17,6 +17,7 @@ from .health import router as health_router
 from .lookup.router import router as lookup_router
 from .metadata.router import router as metadata_router
 from .records.router import router as records_router
+from .workflow.router import router as workflow_router
 
 settings = get_settings()
 _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,100}$")
@@ -32,7 +33,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 class RequestContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         supplied_request_id = request.headers.get("X-Request-ID")
-        request_id = supplied_request_id if supplied_request_id and _REQUEST_ID_PATTERN.fullmatch(supplied_request_id) else str(uuid4())
+        request_id = (
+            supplied_request_id
+            if supplied_request_id and _REQUEST_ID_PATTERN.fullmatch(supplied_request_id)
+            else str(uuid4())
+        )
         request.state.request_id = request_id
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
@@ -62,3 +67,4 @@ app.include_router(records_router)
 app.include_router(lookup_router)
 app.include_router(audit_router)
 app.include_router(financial_router)
+app.include_router(workflow_router)
