@@ -36,7 +36,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         return response
 
 
-app = FastAPI(title=settings.app_name, version="0.5.0", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
 
 app.add_middleware(RequestContextMiddleware)
 app.add_middleware(
