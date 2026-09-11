@@ -99,6 +99,14 @@ def test_generic_record_type_validation() -> None:
     }
     assert client.post("/api/v1/entities/typed_example/records", json=valid, headers=headers).status_code == 201
 
+    filtered = client.get(
+        "/api/v1/entities/typed_example/records",
+        params={"filter_field": "quantity", "filter_value": "3", "limit": 1},
+        headers=headers,
+    )
+    assert filtered.status_code == 200
+    assert len(filtered.json()) == 1
+
     invalid = {**valid, "data": {**valid["data"], "quantity": True}}
     response = client.post("/api/v1/entities/typed_example/records", json=invalid, headers=headers)
     assert response.status_code == 422
