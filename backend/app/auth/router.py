@@ -23,16 +23,20 @@ from .security import (
     create_access_token,
     hash_password,
     require_principal,
+    revoke_session,
     verify_password,
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
-def _token_response(user_id: UUID, tenant_id: UUID, role: str) -> TokenResponse:
+def _token_response(user_id: UUID, tenant_id: UUID, role: str, db: Session) -> TokenResponse:
     settings = get_settings()
+    access_token, session = create_access_token(user_id=user_id, tenant_id=tenant_id, role=role)
+    db.add(session)
+    db.flush()
     return TokenResponse(
-        access_token=create_access_token(user_id=user_id, tenant_id=tenant_id, role=role),
+        access_token=access_token,
         user_id=user_id,
         tenant_id=tenant_id,
         role=role,
@@ -52,11 +56,12 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenRe
     db.flush()
     db.add(TenantMembership(tenant_id=tenant.id, user_id=user.id, role="admin"))
     try:
+        response = _token_response(user.id, tenant.id, "admin", db)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail="account could not be created") from exc
-    return _token_response(user.id, tenant.id, "admin")
+    return response
 
 
 @router.post("/token", response_model=TokenResponse)
@@ -76,7 +81,18 @@ def token(payload: TokenRequest, db: Session = Depends(get_db)) -> TokenResponse
         membership = memberships[0]
     else:
         raise HTTPException(status_code=409, detail="tenant_id is required for multi-tenant users")
-    return _token_response(user.id, membership.tenant_id, membership.role)
+    response = _token_response(user.id, membership.tenant_id, membership.role, db)
+    db.commit()
+    return response
+
+
+@router.post("/logout", status_code=204)
+def logout(
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+) -> None:
+    revoke_session(db, principal.session_id)
+    db.commit()
 
 
 @router.get("/me", response_model=MeResponse)
