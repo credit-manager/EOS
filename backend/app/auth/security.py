@@ -5,7 +5,8 @@ import json
 import secrets
 import time
 from dataclasses import dataclass
-from uuid import UUID
+from datetime import datetime, timezone
+from uuid import UUID, uuid4
 
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -14,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import get_db
-from .models import TenantMembership, User
+from .models import AuthSession, TenantMembership, User
 
 _ALGORITHM = "HS256"
 _ISSUER = "2to-eos"
@@ -27,6 +28,7 @@ class Principal:
     user_id: UUID
     tenant_id: UUID
     role: str
+    session_id: UUID
 
 
 def _b64(value: bytes) -> str:
@@ -54,14 +56,20 @@ def verify_password(password: str, encoded: str) -> bool:
         return False
 
 
-def create_access_token(*, user_id: UUID, tenant_id: UUID, role: str) -> str:
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def create_access_token(*, user_id: UUID, tenant_id: UUID, role: str) -> tuple[str, AuthSession]:
     settings = get_settings()
     now = int(time.time())
+    session_id = uuid4()
     payload = {
         "iss": _ISSUER,
         "sub": str(user_id),
         "tid": str(tenant_id),
         "role": role,
+        "sid": str(session_id),
         "iat": now,
         "exp": now + settings.access_token_ttl_seconds,
         "typ": "access",
@@ -71,7 +79,15 @@ def create_access_token(*, user_id: UUID, tenant_id: UUID, role: str) -> str:
     encoded_payload = _b64(json.dumps(payload, separators=(",", ":")).encode())
     signing_input = f"{encoded_header}.{encoded_payload}".encode()
     signature = hmac.new(settings.jwt_secret.encode(), signing_input, hashlib.sha256).digest()
-    return f"{encoded_header}.{encoded_payload}.{_b64(signature)}"
+    token = f"{encoded_header}.{encoded_payload}.{_b64(signature)}"
+    session = AuthSession(
+        id=session_id,
+        user_id=user_id,
+        tenant_id=tenant_id,
+        token_hash=_hash_token(token),
+        expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+    )
+    return token, session
 
 
 def decode_access_token(token: str) -> Principal:
@@ -97,6 +113,7 @@ def decode_access_token(token: str) -> Principal:
             user_id=UUID(payload["sub"]),
             tenant_id=UUID(payload["tid"]),
             role=str(payload["role"]),
+            session_id=UUID(payload["sid"]),
         )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError, UnicodeError) as exc:
         raise HTTPException(status_code=401, detail="invalid or expired access token") from exc
@@ -108,7 +125,16 @@ def require_principal(
 ) -> Principal:
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=401, detail="Bearer access token required")
-    principal = decode_access_token(credentials.credentials)
+    token = credentials.credentials
+    principal = decode_access_token(token)
+    session = db.scalar(select(AuthSession).where(AuthSession.id == principal.session_id))
+    now = datetime.now(timezone.utc)
+    if session is None or session.user_id != principal.user_id or session.tenant_id != principal.tenant_id:
+        raise HTTPException(status_code=401, detail="access session is not valid")
+    if session.revoked_at is not None or session.expires_at <= now:
+        raise HTTPException(status_code=401, detail="access session is revoked or expired")
+    if not hmac.compare_digest(session.token_hash, _hash_token(token)):
+        raise HTTPException(status_code=401, detail="access session is not valid")
     user = db.scalar(select(User).where(User.id == principal.user_id, User.is_active.is_(True)))
     membership = db.scalar(
         select(TenantMembership).where(
@@ -119,3 +145,10 @@ def require_principal(
     if user is None or membership is None or membership.role != principal.role:
         raise HTTPException(status_code=403, detail="tenant membership is not valid")
     return principal
+
+
+def revoke_session(db: Session, session_id: UUID) -> None:
+    session = db.scalar(select(AuthSession).where(AuthSession.id == session_id))
+    if session is not None and session.revoked_at is None:
+        session.revoked_at = datetime.now(timezone.utc)
+        db.flush()
