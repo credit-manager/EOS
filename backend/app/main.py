@@ -1,3 +1,4 @@
+import os
 import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -21,11 +22,14 @@ from .workflow.router import router as workflow_router
 
 settings = get_settings()
 _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,100}$")
+_IS_VERCEL = bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV"))
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    if settings.app_env != "production":
+    # Never run schema creation during a Vercel serverless cold start.  Serverless
+    # instances are ephemeral and production schema changes belong to migrations.
+    if settings.app_env != "production" and not _IS_VERCEL:
         Base.metadata.create_all(bind=engine)
     yield
 
