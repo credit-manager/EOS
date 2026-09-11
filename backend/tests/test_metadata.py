@@ -113,6 +113,44 @@ def test_generic_record_type_validation() -> None:
     assert "quantity" in str(response.json()["detail"])
 
 
+def test_metadata_relations_are_tenant_scoped() -> None:
+    headers, tenant_id = _register()
+    other_headers, _ = _register()
+
+    target = {"code": "worker", "name": "Worker", "fields": [{"code": "name", "type": "text", "required": True}]}
+    assert client.post("/api/v1/metadata/entities", json=target, headers=headers).status_code == 201
+    assert client.post("/api/v1/metadata/entities/worker/publish", headers=headers).status_code == 200
+
+    target_record = client.post(
+        "/api/v1/entities/worker/records", json={"data": {"name": "Alice"}}, headers=headers
+    )
+    assert target_record.status_code == 201
+    target_id = target_record.json()["id"]
+
+    assignment = {
+        "code": "assignment",
+        "name": "Assignment",
+        "fields": [{"code": "worker_id", "type": "relation", "target_entity": "worker", "required": True}],
+    }
+    assert client.post("/api/v1/metadata/entities", json=assignment, headers=headers).status_code == 201
+    assert client.post("/api/v1/metadata/entities/assignment/publish", headers=headers).status_code == 200
+
+    valid = client.post(
+        "/api/v1/entities/assignment/records",
+        json={"data": {"worker_id": target_id}},
+        headers=headers,
+    )
+    assert valid.status_code == 201
+    assert valid.json()["tenant_id"] == str(tenant_id)
+
+    wrong_tenant = client.post(
+        "/api/v1/entities/assignment/records",
+        json={"data": {"worker_id": target_id}},
+        headers=other_headers,
+    )
+    assert wrong_tenant.status_code == 404
+
+
 def test_duplicate_metadata_field_codes_are_rejected() -> None:
     headers, _ = _register()
     payload = {
