@@ -177,7 +177,7 @@ def create_record(
         resource_type=entity_code,
         resource_id=row.id,
         metadata={},
-        request_id=request.headers.get("X-Request-ID"),
+        request_id=request.state.request_id,
     )
     db.commit()
     db.refresh(row)
@@ -262,7 +262,7 @@ def update_record(
         resource_type=entity_code,
         resource_id=row.id,
         metadata={"version": row.version},
-        request_id=request.headers.get("X-Request-ID"),
+        request_id=request.state.request_id,
     )
     db.commit()
     db.refresh(row)
@@ -296,7 +296,7 @@ def delete_record(
         resource_type=entity_code,
         resource_id=row.id,
         metadata={},
-        request_id=request.headers.get("X-Request-ID"),
+        request_id=request.state.request_id,
     )
     db.delete(row)
     db.commit()
