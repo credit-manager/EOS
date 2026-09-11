@@ -47,3 +47,13 @@ class MetadataResponse(BaseModel):
     published: bool
 
     model_config = {"from_attributes": True}
+
+
+class MetadataSummary(BaseModel):
+    id: UUID
+    code: str
+    name: str
+    version: int
+    field_count: int
+
+    model_config = {"from_attributes": True}
