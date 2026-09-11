@@ -1,8 +1,18 @@
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 ROLES = {"admin", "member"}
+WorkflowActionType = Literal["set_record_field"]
+
+
+class WorkflowActionDefinition(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: WorkflowActionType
+    field: str = Field(min_length=1, max_length=100, pattern=r"^[a-z][a-z0-9_]*$")
+    value: Any = None
 
 
 class TransitionDefinition(BaseModel):
@@ -13,6 +23,7 @@ class TransitionDefinition(BaseModel):
     action: str = Field(min_length=1, max_length=100)
     roles: list[str] = Field(min_length=1, max_length=5)
     requires_approval: bool = True
+    actions: list[WorkflowActionDefinition] = Field(default_factory=list, max_length=20)
 
     @model_validator(mode="after")
     def validate_roles(self) -> "TransitionDefinition":
