@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
-FieldType = Literal["text", "integer", "decimal", "boolean", "date", "uuid"]
+FieldType = Literal["text", "integer", "decimal", "boolean", "date", "uuid", "relation"]
 
 
 class MetadataField(BaseModel):
@@ -12,6 +12,15 @@ class MetadataField(BaseModel):
     required: bool = False
     nullable: bool = False
     label: str | None = Field(default=None, max_length=200)
+    target_entity: str | None = Field(default=None, max_length=100, pattern=r"^[a-z][a-z0-9_]*$")
+
+    @model_validator(mode="after")
+    def validate_relation_target(self) -> "MetadataField":
+        if self.type == "relation" and not self.target_entity:
+            raise ValueError("relation fields require target_entity")
+        if self.type != "relation" and self.target_entity is not None:
+            raise ValueError("target_entity is only valid for relation fields")
+        return self
 
 
 class MetadataDefinition(BaseModel):
