@@ -31,6 +31,7 @@ def list_audit_events(
     return [
         {
             "id": str(row.id),
+            "tenant_id": str(row.tenant_id),
             "action": row.action,
             "resource_type": row.resource_type,
             "resource_id": str(row.resource_id) if row.resource_id else None,
