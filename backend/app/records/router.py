@@ -3,7 +3,7 @@ from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..audit.service import record as audit_record
@@ -31,7 +31,7 @@ def _get_published(db: Session, tenant_id: UUID, entity_code: str) -> MetadataEn
     return row
 
 
-def _validate_value(code: str, value: object, field: dict) -> None:
+def _validate_value(db: Session, tenant_id: UUID, code: str, value: object, field: dict) -> None:
     if value is None:
         if not field.get("nullable", False):
             raise HTTPException(status_code=422, detail={"invalid_fields": [f"{code}: null is not allowed"]})
@@ -59,17 +59,30 @@ def _validate_value(code: str, value: object, field: dict) -> None:
                 valid = False
         else:
             valid = False
-    elif field_type == "uuid":
+    elif field_type in {"uuid", "relation"}:
         try:
-            UUID(str(value))
+            referenced_id = UUID(str(value))
         except (ValueError, AttributeError, TypeError):
             valid = False
+        else:
+            if field_type == "relation":
+                target_entity = field["target_entity"]
+                target_metadata = _get_published(db, tenant_id, target_entity)
+                target = db.scalar(
+                    select(Record).where(
+                        Record.id == referenced_id,
+                        Record.tenant_id == tenant_id,
+                        Record.entity_code == target_metadata.code,
+                    )
+                )
+                valid = target is not None
 
     if not valid:
-        raise HTTPException(status_code=422, detail={"invalid_fields": [f"{code}: expected {field_type}"]})
+        expected = f"relation to {field.get('target_entity')}" if field_type == "relation" else field_type
+        raise HTTPException(status_code=422, detail={"invalid_fields": [f"{code}: expected {expected}"]})
 
 
-def _validate(payload: dict, metadata: MetadataEntity) -> None:
+def _validate(payload: dict, metadata: MetadataEntity, db: Session, tenant_id: UUID) -> None:
     fields = {field["code"]: field for field in metadata.definition["fields"]}
     unknown = set(payload) - set(fields)
     missing = {code for code, field in fields.items() if field.get("required") and code not in payload}
@@ -81,7 +94,7 @@ def _validate(payload: dict, metadata: MetadataEntity) -> None:
             detail["missing_fields"] = sorted(missing)
         raise HTTPException(status_code=422, detail=detail)
     for code, value in payload.items():
-        _validate_value(code, value, fields[code])
+        _validate_value(db, tenant_id, code, value, fields[code])
 
 
 def _filter_expression(metadata: MetadataEntity, field_code: str, raw_value: str):
@@ -105,9 +118,9 @@ def _filter_expression(metadata: MetadataEntity, field_code: str, raw_value: str
             if normalized not in {"true", "false"}:
                 raise ValueError
             return Record.data[field_code].as_boolean() == (normalized == "true")
-        if field_type == "uuid":
-            value = UUID(raw_value)
-            return Record.data[field_code].as_string() == str(value)
+        if field_type in {"uuid", "relation"}:
+            value = str(UUID(raw_value))
+            return Record.data[field_code].as_string() == value
         if field_type == "date":
             value = date.fromisoformat(raw_value)
             return Record.data[field_code].as_string() == value.isoformat()
@@ -135,7 +148,7 @@ def create_record(
     db: Session = Depends(get_db),
 ) -> RecordResponse:
     metadata = _get_published(db, tenant_id, entity_code)
-    _validate(payload.data, metadata)
+    _validate(payload.data, metadata, db, tenant_id)
     row = Record(tenant_id=tenant_id, entity_code=entity_code, data=payload.data)
     db.add(row)
     audit_record(
@@ -204,7 +217,7 @@ def update_record(
     db: Session = Depends(get_db),
 ) -> RecordResponse:
     metadata = _get_published(db, tenant_id, entity_code)
-    _validate(payload.data, metadata)
+    _validate(payload.data, metadata, db, tenant_id)
     row = db.scalar(
         select(Record).where(
             Record.id == record_id,
