@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -7,6 +8,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..audit.models import AuditEvent
+from ..metadata.models import MetadataEntity
+from ..records.models import Record
 from .models import ApprovalTask, WorkflowDefinition, WorkflowInstance
 from .schemas import WorkflowDefinitionCreate
 
@@ -56,7 +59,7 @@ def create_definition(
         initial_state=payload.initial_state,
         definition={
             "states": payload.states,
-            "transitions": [item.model_dump() for item in payload.transitions],
+            "transitions": [item.model_dump(mode="json") for item in payload.transitions],
         },
         is_active=payload.is_active,
         created_by=user_id,
@@ -111,6 +114,70 @@ def start_instance(
         )
     )
     return instance
+
+
+def _apply_transition_actions(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    instance: WorkflowInstance,
+    actions: list[dict],
+    request_id: str | None,
+) -> None:
+    for action in actions:
+        action_type = action.get("type")
+        if action_type != "set_record_field":
+            raise HTTPException(status_code=422, detail=f"unsupported workflow action: {action_type}")
+
+        if not instance.reference_type:
+            raise HTTPException(status_code=409, detail="workflow action requires a record reference")
+
+        record = db.scalar(
+            select(Record)
+            .where(
+                Record.id == instance.reference_id,
+                Record.tenant_id == tenant_id,
+                Record.entity_code == instance.reference_type,
+                Record.workflow_instance_id == instance.id,
+            )
+            .with_for_update()
+        )
+        if record is None:
+            raise HTTPException(status_code=409, detail="workflow action record is not bound to this instance")
+
+        metadata = db.scalar(
+            select(MetadataEntity)
+            .where(
+                MetadataEntity.tenant_id == tenant_id,
+                MetadataEntity.code == record.entity_code,
+                MetadataEntity.published_at.is_not(None),
+            )
+            .order_by(MetadataEntity.version.desc())
+        )
+        if metadata is None:
+            raise HTTPException(status_code=409, detail="workflow action metadata is not published")
+
+        field_code = action.get("field")
+        field_codes = {field["code"] for field in metadata.definition.get("fields", [])}
+        if field_code not in field_codes:
+            raise HTTPException(status_code=422, detail=f"workflow action field is not defined: {field_code}")
+
+        data = deepcopy(record.data)
+        data[field_code] = action.get("value")
+        record.data = data
+        record.version += 1
+        db.add(
+            AuditEvent(
+                tenant_id=tenant_id,
+                actor_id=user_id,
+                action="workflow.action.record_field_set",
+                resource_type=record.entity_code,
+                resource_id=record.id,
+                request_id=request_id,
+                details={"field": field_code, "workflow_instance_id": str(instance.id)},
+            )
+        )
 
 
 def request_transition(
@@ -183,6 +250,14 @@ def request_transition(
         return instance, task
 
     instance.current_state = transition["to_state"]
+    _apply_transition_actions(
+        db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        instance=instance,
+        actions=transition.get("actions", []),
+        request_id=request_id,
+    )
     if _is_terminal(definition, instance.current_state):
         instance.status = "completed"
     db.add(
@@ -247,6 +322,14 @@ def decide_approval(
     task.decided_at = datetime.now(UTC)
     if approved:
         instance.current_state = task.to_state
+        _apply_transition_actions(
+            db,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            instance=instance,
+            actions=transition.get("actions", []),
+            request_id=request_id,
+        )
         if _is_terminal(definition, instance.current_state):
             instance.status = "completed"
     db.add(
