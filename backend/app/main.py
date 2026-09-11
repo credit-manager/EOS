@@ -1,3 +1,6 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -9,7 +12,16 @@ from .metadata.router import router as metadata_router
 from .records.router import router as records_router
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="0.5.0")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    if settings.app_env != "production":
+        Base.metadata.create_all(bind=engine)
+    yield
+
+
+app = FastAPI(title=settings.app_name, version="0.5.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,9 +34,3 @@ app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(metadata_router)
 app.include_router(records_router)
-
-
-@app.on_event("startup")
-def startup() -> None:
-    if settings.app_env != "production":
-        Base.metadata.create_all(bind=engine)
