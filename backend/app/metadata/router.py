@@ -126,9 +126,11 @@ def list_entities(
     latest_by_code: dict[str, MetadataEntity] = {}
     for row in rows:
         latest_by_code.setdefault(row.code, row)
+    role = getattr(request.state, "role", "member")
     result: list[MetadataSummary] = []
     for row in latest_by_code.values():
-        _require_read(request, row)
+        if role != "admin" and "read" not in _permissions(row)["member"]:
+            continue
         result.append(
             MetadataSummary(
                 id=row.id,
