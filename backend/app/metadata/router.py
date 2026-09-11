@@ -9,9 +9,26 @@ from ..audit.service import record as audit_record
 from ..db import get_db
 from ..tenant import require_admin, require_tenant
 from .models import MetadataEntity
-from .schemas import MetadataDefinition, MetadataResponse, MetadataSummary
+from .schemas import MetadataDefinition, MetadataPermissions, MetadataResponse, MetadataSummary
 
 router = APIRouter(prefix="/api/v1/metadata", tags=["metadata"])
+_DEFAULT_PERMISSIONS = MetadataPermissions().model_dump()
+
+
+def _permissions(row: MetadataEntity) -> dict[str, list[str]]:
+    raw = row.definition.get("permissions")
+    if not isinstance(raw, dict):
+        return _DEFAULT_PERMISSIONS
+    return {
+        "admin": list(raw.get("admin", _DEFAULT_PERMISSIONS["admin"])),
+        "member": list(raw.get("member", _DEFAULT_PERMISSIONS["member"])),
+    }
+
+
+def _require_read(request: Request, row: MetadataEntity) -> None:
+    role = getattr(request.state, "role", "member")
+    if role != "admin" and "read" not in _permissions(row)["member"]:
+        raise HTTPException(status_code=403, detail="read permission denied")
 
 
 def _response(row: MetadataEntity) -> MetadataResponse:
@@ -44,7 +61,7 @@ def create_entity(
         code=payload.code,
         name=payload.name,
         version=version,
-        definition=payload.model_dump(),
+        definition=payload.model_dump(mode="json"),
     )
     db.add(row)
     audit_record(
@@ -53,7 +70,7 @@ def create_entity(
         actor_id=request.state.user_id,
         action="metadata.created",
         resource_type=payload.code,
-        metadata={"version": version},
+        metadata={"version": version, "permissions": payload.permissions.model_dump(mode="json")},
         request_id=request.headers.get("X-Request-ID"),
     )
     db.commit()
@@ -94,6 +111,7 @@ def publish_entity(
 
 @router.get("/entities", response_model=list[MetadataSummary])
 def list_entities(
+    request: Request,
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ) -> list[MetadataSummary]:
@@ -108,21 +126,26 @@ def list_entities(
     latest_by_code: dict[str, MetadataEntity] = {}
     for row in rows:
         latest_by_code.setdefault(row.code, row)
-    return [
-        MetadataSummary(
-            id=row.id,
-            code=row.code,
-            name=row.name,
-            version=row.version,
-            field_count=len(row.definition.get("fields", [])),
+    result: list[MetadataSummary] = []
+    for row in latest_by_code.values():
+        _require_read(request, row)
+        result.append(
+            MetadataSummary(
+                id=row.id,
+                code=row.code,
+                name=row.name,
+                version=row.version,
+                field_count=len(row.definition.get("fields", [])),
+                permissions=_permissions(row),
+            )
         )
-        for row in latest_by_code.values()
-    ]
+    return result
 
 
 @router.get("/entities/{code}", response_model=MetadataResponse)
 def get_entity(
     code: str,
+    request: Request,
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ) -> MetadataResponse:
@@ -137,4 +160,5 @@ def get_entity(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="published metadata entity not found")
+    _require_read(request, row)
     return _response(row)
