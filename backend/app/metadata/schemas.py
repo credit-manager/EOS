@@ -30,11 +30,12 @@ class MetadataPermissions(BaseModel):
 
     @model_validator(mode="after")
     def validate_actions(self) -> "MetadataPermissions":
-        for role, actions in (("admin", self.admin), ("member", self.member)):
-            if len(actions) != len(set(actions)):
-                raise ValueError(f"duplicate permission actions for {role}")
-            if "read" not in actions:
-                raise ValueError(f"read permission is required for {role}")
+        if len(self.admin) != len(set(self.admin)):
+            raise ValueError("duplicate permission actions for admin")
+        if "read" not in self.admin:
+            raise ValueError("read permission is required for admin")
+        if len(self.member) != len(set(self.member)):
+            raise ValueError("duplicate permission actions for member")
         return self
 
 
