@@ -4,7 +4,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-
 ACCOUNT_TYPES = {"asset", "liability", "equity", "revenue", "expense"}
 
 
