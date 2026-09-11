@@ -22,6 +22,7 @@ class TokenRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    user_id: UUID
     tenant_id: UUID
     role: str
     expires_in: int
