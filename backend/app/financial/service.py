@@ -32,9 +32,6 @@ def _validate_lines(db: Session, payload: JournalEntryCreate, tenant_id: UUID) -
         raise HTTPException(status_code=422, detail="journal entry must be balanced and greater than zero")
 
     account_ids = [line.account_id for line in payload.lines]
-    if len(set(account_ids)) != len(account_ids):
-        raise HTTPException(status_code=422, detail="an account may appear only once per journal entry")
-
     accounts = db.scalars(
         select(Account).where(Account.tenant_id == tenant_id, Account.id.in_(account_ids))
     ).all()
@@ -49,6 +46,24 @@ def _validate_lines(db: Session, payload: JournalEntryCreate, tenant_id: UUID) -
     if wrong_currency:
         raise HTTPException(status_code=422, detail="all accounts must use the journal currency")
     return [account_map[account_id] for account_id in account_ids], debit_total
+
+
+def _validate_persisted_lines(
+    db: Session, entry: JournalEntry, lines: list[JournalLine], tenant_id: UUID
+) -> None:
+    account_ids = [line.account_id for line in lines]
+    accounts = db.scalars(
+        select(Account).where(Account.tenant_id == tenant_id, Account.id.in_(account_ids)).with_for_update()
+    ).all()
+    account_map = {account.id: account for account in accounts}
+    if len(account_map) != len(set(account_ids)):
+        raise HTTPException(status_code=409, detail="journal line references an invalid tenant account")
+    inactive = [str(account.id) for account in accounts if not account.is_active]
+    if inactive:
+        raise HTTPException(status_code=409, detail=f"inactive account(s): {', '.join(inactive)}")
+    wrong_currency = [str(account.id) for account in accounts if account.currency != entry.currency]
+    if wrong_currency:
+        raise HTTPException(status_code=422, detail="all journal accounts must use the journal currency")
 
 
 def create_draft(
@@ -100,7 +115,9 @@ def create_draft(
     return entry
 
 
-def post_entry(db: Session, *, tenant_id: UUID, user_id: UUID, entry_id: UUID, request_id: str | None) -> JournalEntry:
+def post_entry(
+    db: Session, *, tenant_id: UUID, user_id: UUID, entry_id: UUID, request_id: str | None
+) -> JournalEntry:
     entry = db.scalar(
         select(JournalEntry)
         .where(JournalEntry.id == entry_id, JournalEntry.tenant_id == tenant_id)
@@ -118,6 +135,7 @@ def post_entry(db: Session, *, tenant_id: UUID, user_id: UUID, entry_id: UUID, r
     credit_total = _money(sum((line.credit for line in lines), _ZERO))
     if len(lines) < 2 or debit_total != credit_total or debit_total <= 0:
         raise HTTPException(status_code=422, detail="journal entry is not balanced")
+    _validate_persisted_lines(db, entry, lines, tenant_id)
 
     entry.status = "posted"
     entry.posted_at = datetime.now(UTC)
