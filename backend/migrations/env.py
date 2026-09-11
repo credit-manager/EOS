@@ -10,6 +10,7 @@ from backend.app.db import Base
 from backend.app.financial.models import Account, JournalEntry, JournalLine
 from backend.app.metadata.models import MetadataEntity
 from backend.app.records.models import Record
+from backend.app.workflow.models import ApprovalTask, WorkflowDefinition, WorkflowInstance
 
 config = context.config
 settings = get_settings()
@@ -19,6 +20,7 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 _model_registry = (
     Account,
+    ApprovalTask,
     AuditEvent,
     AuthSession,
     JournalEntry,
@@ -28,6 +30,8 @@ _model_registry = (
     Tenant,
     TenantMembership,
     User,
+    WorkflowDefinition,
+    WorkflowInstance,
 )
 
 
