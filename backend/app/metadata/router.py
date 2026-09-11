@@ -121,7 +121,7 @@ def list_entities(
             MetadataEntity.tenant_id == tenant_id,
             MetadataEntity.published_at.is_not(None),
         )
-        .order_by(MetadataEntity.name, MetadataEntity.code, MetadataEntity.version.desc())
+        .order_by(MetadataEntity.code, MetadataEntity.version.desc())
     ).all()
     latest_by_code: dict[str, MetadataEntity] = {}
     for row in rows:
