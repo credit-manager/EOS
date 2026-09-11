@@ -33,6 +33,7 @@ def _token_response(user_id: UUID, tenant_id: UUID, role: str) -> TokenResponse:
     settings = get_settings()
     return TokenResponse(
         access_token=create_access_token(user_id=user_id, tenant_id=tenant_id, role=role),
+        user_id=user_id,
         tenant_id=tenant_id,
         role=role,
         expires_in=settings.access_token_ttl_seconds,
