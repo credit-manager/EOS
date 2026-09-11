@@ -34,7 +34,7 @@ jobs:
         env:
           DATABASE_URL: sqlite+pysqlite:///./eos_ci.db
       - name: Test SQLite
-        run: pytest
+        run: alembic upgrade head && pytest
         env:
           DATABASE_URL: sqlite+pysqlite:///./eos_ci_test.db
       - name: Validate PostgreSQL migrations
