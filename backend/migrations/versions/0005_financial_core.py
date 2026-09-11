@@ -1,6 +1,5 @@
 """add explicit double-entry financial core"""
 import sqlalchemy as sa
-
 from alembic import op
 
 revision = "0005_financial_core"

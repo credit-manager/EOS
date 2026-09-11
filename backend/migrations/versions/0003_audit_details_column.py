@@ -1,6 +1,5 @@
 """rename audit metadata column to details to match ORM semantics"""
 import sqlalchemy as sa
-
 from alembic import op
 
 revision = "0003_audit_details_column"
