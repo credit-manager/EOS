@@ -119,6 +119,10 @@ def decode_access_token(token: str) -> Principal:
         raise HTTPException(status_code=401, detail="invalid or expired access token") from exc
 
 
+def _utc(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
 def require_principal(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     db: Session = Depends(get_db),
@@ -131,7 +135,7 @@ def require_principal(
     now = datetime.now(timezone.utc)
     if session is None or session.user_id != principal.user_id or session.tenant_id != principal.tenant_id:
         raise HTTPException(status_code=401, detail="access session is not valid")
-    if session.revoked_at is not None or session.expires_at <= now:
+    if session.revoked_at is not None or _utc(session.expires_at) <= now:
         raise HTTPException(status_code=401, detail="access session is revoked or expired")
     if not hmac.compare_digest(session.token_hash, _hash_token(token)):
         raise HTTPException(status_code=401, detail="access session is not valid")
