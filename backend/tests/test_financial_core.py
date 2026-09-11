@@ -3,6 +3,9 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 
+from backend.app.auth.models import Tenant
+from backend.app.db import SessionLocal
+from backend.app.financial.models import Account
 from backend.app.main import app
 
 client = TestClient(app)
@@ -131,3 +134,39 @@ def test_member_cannot_mutate_financial_core() -> None:
     denied = client.get("/api/v1/financial/accounts", headers=member_headers)
     assert denied.status_code == 403
     assert member["tenant_id"] != owner["tenant_id"]
+
+
+def test_posting_rechecks_account_state_after_draft_creation() -> None:
+    owner = _register("financial-recheck@example.com")
+    token = owner["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    cash = _account(token, "1000", "asset")
+    revenue = _account(token, "4000", "revenue")
+
+    entry = client.post(
+        "/api/v1/financial/journal-entries",
+        headers=headers,
+        json={
+            "accounting_date": str(date.today()),
+            "currency": "USD",
+            "description": "Draft before deactivation",
+            "lines": [
+                {"account_id": cash["id"], "debit": "50", "credit": "0"},
+                {"account_id": revenue["id"], "debit": "0", "credit": "50"},
+            ],
+        },
+    )
+    assert entry.status_code == 201
+
+    with SessionLocal() as db:
+        account = db.get(Account, UUID(cash["id"]))
+        assert account is not None
+        account.is_active = False
+        db.commit()
+
+    posted = client.post(
+        f"/api/v1/financial/journal-entries/{entry.json()['id']}/post",
+        headers=headers,
+    )
+    assert posted.status_code == 409
+    assert "inactive account" in posted.json()["detail"]
