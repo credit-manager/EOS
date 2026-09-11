@@ -9,7 +9,7 @@ from ..audit.service import record as audit_record
 from ..db import get_db
 from ..tenant import require_admin, require_tenant
 from .models import MetadataEntity
-from .schemas import MetadataDefinition, MetadataResponse
+from .schemas import MetadataDefinition, MetadataResponse, MetadataSummary
 
 router = APIRouter(prefix="/api/v1/metadata", tags=["metadata"])
 
@@ -90,6 +90,34 @@ def publish_entity(
         db.commit()
         db.refresh(row)
     return _response(row)
+
+
+@router.get("/entities", response_model=list[MetadataSummary])
+def list_entities(
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+) -> list[MetadataSummary]:
+    rows = db.scalars(
+        select(MetadataEntity)
+        .where(
+            MetadataEntity.tenant_id == tenant_id,
+            MetadataEntity.published_at.is_not(None),
+        )
+        .order_by(MetadataEntity.name, MetadataEntity.code, MetadataEntity.version.desc())
+    ).all()
+    latest_by_code: dict[str, MetadataEntity] = {}
+    for row in rows:
+        latest_by_code.setdefault(row.code, row)
+    return [
+        MetadataSummary(
+            id=row.id,
+            code=row.code,
+            name=row.name,
+            version=row.version,
+            field_count=len(row.definition.get("fields", [])),
+        )
+        for row in latest_by_code.values()
+    ]
 
 
 @router.get("/entities/{code}", response_model=MetadataResponse)
