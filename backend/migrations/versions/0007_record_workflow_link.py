@@ -1,5 +1,5 @@
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "0007_record_workflow_link"
 down_revision = "0006_workflow_core"
@@ -27,6 +27,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint("fk_records_workflow_instance_id", "records", type_="foreignkey")
+    op.drop_constraint("fk_records_workflow_instance_id", "records", type="foreignkey")
     op.drop_index("ix_records_workflow_instance_id", table_name="records")
     op.drop_column("records", "workflow_instance_id")
