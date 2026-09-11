@@ -1,3 +1,4 @@
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from uuid import uuid4
@@ -17,6 +18,7 @@ from .metadata.router import router as metadata_router
 from .records.router import router as records_router
 
 settings = get_settings()
+_REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,100}$")
 
 
 @asynccontextmanager
@@ -28,13 +30,17 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
-        request_id = request.headers.get("X-Request-ID") or str(uuid4())
+        supplied_request_id = request.headers.get("X-Request-ID")
+        request_id = supplied_request_id if supplied_request_id and _REQUEST_ID_PATTERN.fullmatch(supplied_request_id) else str(uuid4())
         request.state.request_id = request_id
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), geolocation=(), microphone=()"
+        if settings.app_env == "production":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
 
 
