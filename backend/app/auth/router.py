@@ -147,7 +147,7 @@ def add_member(
         resource_type="tenant_membership",
         resource_id=membership.id,
         metadata={"user_id": str(user.id), "role": payload.role},
-        request_id=request.headers.get("X-Request-ID"),
+        request_id=request.state.request_id,
     )
     db.commit()
     return MemberResponse(user_id=user.id, email=user.email, tenant_id=membership.tenant_id, role=membership.role)
@@ -189,7 +189,7 @@ def update_member_role(
         resource_type="tenant_membership",
         resource_id=membership.id,
         metadata={"user_id": str(user_id), "role": payload.role},
-        request_id=request.headers.get("X-Request-ID"),
+        request_id=request.state.request_id,
     )
     db.commit()
     user = db.get(User, user_id)
