@@ -71,7 +71,7 @@ def create_entity(
         action="metadata.created",
         resource_type=payload.code,
         metadata={"version": version, "permissions": payload.permissions.model_dump(mode="json")},
-        request_id=request.headers.get("X-Request-ID"),
+        request_id=request.state.request_id,
     )
     db.commit()
     db.refresh(row)
@@ -102,7 +102,7 @@ def publish_entity(
             resource_type=code,
             resource_id=row.id,
             metadata={"version": row.version},
-            request_id=request.headers.get("X-Request-ID"),
+            request_id=request.state.request_id,
         )
         db.commit()
         db.refresh(row)
