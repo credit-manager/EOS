@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 
 FieldType = Literal["text", "integer", "decimal", "boolean", "date", "uuid", "relation"]
+PermissionAction = Literal["create", "read", "update", "delete"]
 
 
 class MetadataField(BaseModel):
@@ -23,10 +24,25 @@ class MetadataField(BaseModel):
         return self
 
 
+class MetadataPermissions(BaseModel):
+    admin: list[PermissionAction] = Field(default_factory=lambda: ["create", "read", "update", "delete"])
+    member: list[PermissionAction] = Field(default_factory=lambda: ["create", "read", "update", "delete"])
+
+    @model_validator(mode="after")
+    def validate_actions(self) -> "MetadataPermissions":
+        for role, actions in (("admin", self.admin), ("member", self.member)):
+            if len(actions) != len(set(actions)):
+                raise ValueError(f"duplicate permission actions for {role}")
+            if "read" not in actions:
+                raise ValueError(f"read permission is required for {role}")
+        return self
+
+
 class MetadataDefinition(BaseModel):
     code: str = Field(min_length=1, max_length=100, pattern=r"^[a-z][a-z0-9_]*$")
     name: str = Field(min_length=1, max_length=200)
     fields: list[MetadataField] = Field(min_length=1, max_length=100)
+    permissions: MetadataPermissions = Field(default_factory=MetadataPermissions)
 
     @model_validator(mode="after")
     def validate_unique_fields(self) -> "MetadataDefinition":
@@ -55,5 +71,6 @@ class MetadataSummary(BaseModel):
     name: str
     version: int
     field_count: int
+    permissions: MetadataPermissions
 
     model_config = {"from_attributes": True}
