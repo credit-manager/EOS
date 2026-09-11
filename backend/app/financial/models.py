@@ -2,7 +2,20 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, Uuid, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -10,7 +23,13 @@ from ..db import Base
 
 class Account(Base):
     __tablename__ = "financial_accounts"
-    __table_args__ = (UniqueConstraint("tenant_id", "code", name="uq_financial_account_tenant_code"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_financial_account_tenant_code"),
+        CheckConstraint(
+            "account_type IN ('asset', 'liability', 'equity', 'revenue', 'expense')",
+            name="ck_financial_account_type",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     tenant_id: Mapped[UUID] = mapped_column(
@@ -20,12 +39,16 @@ class Account(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     account_type: Mapped[str] = mapped_column(String(20), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
-    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class JournalEntry(Base):
     __tablename__ = "financial_journal_entries"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "entry_number", name="uq_financial_journal_tenant_number"),
+        CheckConstraint("status IN ('draft', 'posted')", name="ck_financial_journal_status"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     tenant_id: Mapped[UUID] = mapped_column(
@@ -44,6 +67,11 @@ class JournalEntry(Base):
 
 class JournalLine(Base):
     __tablename__ = "financial_journal_lines"
+    __table_args__ = (
+        CheckConstraint("debit >= 0 AND credit >= 0", name="ck_financial_line_nonnegative"),
+        CheckConstraint("NOT (debit > 0 AND credit > 0)", name="ck_financial_line_single_side"),
+        CheckConstraint("debit + credit > 0", name="ck_financial_line_nonzero"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     journal_entry_id: Mapped[UUID] = mapped_column(
