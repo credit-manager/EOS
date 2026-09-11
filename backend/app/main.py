@@ -12,6 +12,7 @@ from .audit.router import router as audit_router
 from .auth.router import router as auth_router
 from .config import get_settings
 from .db import Base, engine
+from .financial.router import router as financial_router
 from .health import router as health_router
 from .lookup.router import router as lookup_router
 from .metadata.router import router as metadata_router
@@ -60,3 +61,4 @@ app.include_router(metadata_router)
 app.include_router(records_router)
 app.include_router(lookup_router)
 app.include_router(audit_router)
+app.include_router(financial_router)
