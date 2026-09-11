@@ -10,6 +10,7 @@ from ..audit.service import record as audit_record
 from ..db import get_db
 from ..metadata.models import MetadataEntity
 from ..tenant import require_tenant
+from ..workflow.service import start_instance
 from .models import Record
 from .schemas import RecordCreate, RecordResponse, RecordUpdate
 
@@ -153,6 +154,7 @@ def _response(row: Record) -> RecordResponse:
         entity_code=row.entity_code,
         data=row.data,
         version=row.version,
+        workflow_instance_id=row.workflow_instance_id,
     )
 
 
@@ -169,6 +171,21 @@ def create_record(
     _validate(payload.data, metadata, db, tenant_id)
     row = Record(tenant_id=tenant_id, entity_code=entity_code, data=payload.data)
     db.add(row)
+    db.flush()
+
+    workflow = metadata.definition.get("workflow")
+    if isinstance(workflow, dict) and workflow.get("auto_start_on_create", True):
+        instance = start_instance(
+            db,
+            tenant_id=tenant_id,
+            user_id=request.state.user_id,
+            workflow_code=str(workflow["code"]),
+            reference_type=str(workflow["reference_type"]),
+            reference_id=row.id,
+            request_id=request.state.request_id,
+        )
+        row.workflow_instance_id = instance.id
+
     audit_record(
         db,
         tenant_id=tenant_id,
@@ -176,7 +193,7 @@ def create_record(
         action="record.created",
         resource_type=entity_code,
         resource_id=row.id,
-        metadata={},
+        metadata={"workflow_instance_id": str(row.workflow_instance_id) if row.workflow_instance_id else None},
         request_id=request.state.request_id,
     )
     db.commit()
@@ -295,7 +312,7 @@ def delete_record(
         action="record.deleted",
         resource_type=entity_code,
         resource_id=row.id,
-        metadata={},
+        metadata={"workflow_instance_id": str(row.workflow_instance_id) if row.workflow_instance_id else None},
         request_id=request.state.request_id,
     )
     db.delete(row)
