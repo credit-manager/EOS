@@ -5,7 +5,7 @@ import json
 import secrets
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from fastapi import Depends, HTTPException
@@ -85,7 +85,7 @@ def create_access_token(*, user_id: UUID, tenant_id: UUID, role: str) -> tuple[s
         user_id=user_id,
         tenant_id=tenant_id,
         token_hash=_hash_token(token),
-        expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+        expires_at=datetime.fromtimestamp(payload["exp"], tz=UTC),
     )
     return token, session
 
@@ -120,7 +120,7 @@ def decode_access_token(token: str) -> Principal:
 
 
 def _utc(value: datetime) -> datetime:
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def require_principal(
@@ -132,7 +132,7 @@ def require_principal(
     token = credentials.credentials
     principal = decode_access_token(token)
     session = db.scalar(select(AuthSession).where(AuthSession.id == principal.session_id))
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if session is None or session.user_id != principal.user_id or session.tenant_id != principal.tenant_id:
         raise HTTPException(status_code=401, detail="access session is not valid")
     if session.revoked_at is not None or _utc(session.expires_at) <= now:
@@ -154,5 +154,5 @@ def require_principal(
 def revoke_session(db: Session, session_id: UUID) -> None:
     session = db.scalar(select(AuthSession).where(AuthSession.id == session_id))
     if session is not None and session.revoked_at is None:
-        session.revoked_at = datetime.now(timezone.utc)
+        session.revoked_at = datetime.now(UTC)
         db.flush()
