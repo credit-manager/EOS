@@ -18,20 +18,22 @@ def _register(email: str, tenant_name: str) -> dict:
 
 
 def test_member_permissions_are_driven_by_metadata() -> None:
-    admin = _register(f"admin-{uuid4()}@example.com", f"Tenant {uuid4()}")
-    member = _register(f"member-{uuid4()}@example.com", f"Tenant {uuid4()}")
+    admin_email = f"admin-{uuid4()}@example.com"
+    member_email = f"member-{uuid4()}@example.com"
+    admin = _register(admin_email, f"Tenant {uuid4()}")
+    _register(member_email, f"Tenant {uuid4()}")
     admin_headers = {"Authorization": f"Bearer {admin['access_token']}"}
 
     added = client.post(
         "/api/v1/auth/members",
-        json={"email": member["email"], "role": "member"},
+        json={"email": member_email, "role": "member"},
         headers=admin_headers,
     )
     assert added.status_code == 201
 
     member_login = client.post(
         "/api/v1/auth/token",
-        json={"email": member["email"], "password": _PASSWORD, "tenant_id": admin["tenant_id"]},
+        json={"email": member_email, "password": _PASSWORD, "tenant_id": admin["tenant_id"]},
     )
     assert member_login.status_code == 200
     member_headers = {"Authorization": f"Bearer {member_login.json()['access_token']}"}
@@ -78,18 +80,21 @@ def test_member_permissions_are_driven_by_metadata() -> None:
 
 
 def test_member_cannot_discover_entity_without_read_permission() -> None:
-    admin = _register(f"admin-{uuid4()}@example.com", f"Tenant {uuid4()}")
-    member = _register(f"member-{uuid4()}@example.com", f"Tenant {uuid4()}")
+    admin_email = f"admin-{uuid4()}@example.com"
+    member_email = f"member-{uuid4()}@example.com"
+    admin = _register(admin_email, f"Tenant {uuid4()}")
+    _register(member_email, f"Tenant {uuid4()}")
     admin_headers = {"Authorization": f"Bearer {admin['access_token']}"}
     assert client.post(
         "/api/v1/auth/members",
-        json={"email": member["email"], "role": "member"},
+        json={"email": member_email, "role": "member"},
         headers=admin_headers,
     ).status_code == 201
     member_login = client.post(
         "/api/v1/auth/token",
-        json={"email": member["email"], "password": _PASSWORD, "tenant_id": admin["tenant_id"]},
+        json={"email": member_email, "password": _PASSWORD, "tenant_id": admin["tenant_id"]},
     )
+    assert member_login.status_code == 200
     member_headers = {"Authorization": f"Bearer {member_login.json()['access_token']}"}
 
     entity = {
