@@ -2,8 +2,8 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..audit.service import record as audit_record
@@ -84,8 +84,46 @@ def _validate(payload: dict, metadata: MetadataEntity) -> None:
         _validate_value(code, value, fields[code])
 
 
+def _filter_expression(metadata: MetadataEntity, field_code: str, raw_value: str):
+    fields = {field["code"]: field for field in metadata.definition["fields"]}
+    field = fields.get(field_code)
+    if field is None:
+        raise HTTPException(status_code=400, detail="filter_field is not defined in metadata")
+
+    field_type = field["type"]
+    try:
+        if field_type == "integer":
+            value = int(raw_value)
+            return Record.data[field_code].as_integer() == value
+        if field_type == "decimal":
+            value = Decimal(raw_value)
+            if not value.is_finite():
+                raise ValueError
+            return Record.data[field_code].as_string() == str(value)
+        if field_type == "boolean":
+            normalized = raw_value.lower()
+            if normalized not in {"true", "false"}:
+                raise ValueError
+            return Record.data[field_code].as_boolean() == (normalized == "true")
+        if field_type == "uuid":
+            value = UUID(raw_value)
+            return Record.data[field_code].as_string() == str(value)
+        if field_type == "date":
+            value = date.fromisoformat(raw_value)
+            return Record.data[field_code].as_string() == value.isoformat()
+        return Record.data[field_code].as_string() == raw_value
+    except (ValueError, InvalidOperation) as exc:
+        raise HTTPException(status_code=422, detail=f"invalid filter value for {field_code}") from exc
+
+
 def _response(row: Record) -> RecordResponse:
-    return RecordResponse(id=row.id, tenant_id=row.tenant_id, entity_code=row.entity_code, data=row.data, version=row.version)
+    return RecordResponse(
+        id=row.id,
+        tenant_id=row.tenant_id,
+        entity_code=row.entity_code,
+        data=row.data,
+        version=row.version,
+    )
 
 
 @router.post("", response_model=RecordResponse, status_code=201)
@@ -118,15 +156,21 @@ def create_record(
 @router.get("", response_model=list[RecordResponse])
 def list_records(
     entity_code: str,
+    filter_field: str | None = Query(default=None, min_length=1, max_length=100),
+    filter_value: str | None = Query(default=None, min_length=1, max_length=200),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ) -> list[RecordResponse]:
-    _get_published(db, tenant_id, entity_code)
-    rows = db.scalars(
-        select(Record)
-        .where(Record.tenant_id == tenant_id, Record.entity_code == entity_code)
-        .order_by(Record.created_at.desc())
-    ).all()
+    metadata = _get_published(db, tenant_id, entity_code)
+    if (filter_field is None) != (filter_value is None):
+        raise HTTPException(status_code=400, detail="filter_field and filter_value must be provided together")
+
+    query = select(Record).where(Record.tenant_id == tenant_id, Record.entity_code == entity_code)
+    if filter_field is not None and filter_value is not None:
+        query = query.where(_filter_expression(metadata, filter_field, filter_value))
+    rows = db.scalars(query.order_by(Record.created_at.desc()).offset(offset).limit(limit)).all()
     return [_response(row) for row in rows]
 
 
