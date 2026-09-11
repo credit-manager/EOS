@@ -1,7 +1,8 @@
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import or_, select
+from sqlalchemy import String, or_, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -13,7 +14,7 @@ from .schemas import LookupItem
 router = APIRouter(prefix="/api/v1/entities/{entity_code}/lookup", tags=["lookup"])
 
 
-def _published_entity(db: Session, tenant_id, entity_code: str) -> MetadataEntity:
+def _published_entity(db: Session, tenant_id: UUID, entity_code: str) -> MetadataEntity:
     row = db.scalar(
         select(MetadataEntity)
         .where(
@@ -52,7 +53,7 @@ def lookup_records(
     request: Request,
     q: str | None = Query(default=None, max_length=100),
     limit: int = Query(default=25, ge=1, le=100),
-    tenant_id=Depends(require_tenant),
+    tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ) -> list[LookupItem]:
     metadata = _published_entity(db, tenant_id, entity_code)
@@ -67,7 +68,7 @@ def lookup_records(
                 for field in metadata.definition.get("fields", [])
                 if field.get("type") == "text"
             ]
-            expressions: list[Any] = [Record.id.cast(str).ilike(f"%{needle}%")]
+            expressions: list[Any] = [Record.id.cast(String).ilike(f"%{needle}%")]
             expressions.extend(Record.data[field_code].as_string().ilike(f"%{needle}%") for field_code in text_fields)
             query = query.where(or_(*expressions))
 
