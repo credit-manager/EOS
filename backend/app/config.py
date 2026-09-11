@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "2TO EOS"
+    app_version: str = "0.2.2"
     app_env: str = "development"
     database_url: str = "sqlite+pysqlite:///:memory:"
     cors_origins: str = "http://localhost:5173"
