@@ -121,6 +121,38 @@ def list_workflow_instances(
     return [_instance_response(db, row) for row in rows]
 
 
+@router.get("/instances/{instance_id}/available-transitions")
+def list_available_transitions(
+    instance_id: UUID,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    instance = db.scalar(
+        select(WorkflowInstance).where(
+            WorkflowInstance.id == instance_id,
+            WorkflowInstance.tenant_id == principal.tenant_id,
+        )
+    )
+    if instance is None:
+        raise HTTPException(status_code=404, detail="workflow instance not found")
+    definition = db.get(WorkflowDefinition, instance.workflow_definition_id)
+    if definition is None or not definition.is_active:
+        raise HTTPException(status_code=409, detail="workflow definition is not active")
+    if instance.status != "active":
+        return []
+    return [
+        {
+            "action": transition["action"],
+            "from_state": transition["from_state"],
+            "to_state": transition["to_state"],
+            "requires_approval": transition["requires_approval"],
+        }
+        for transition in definition.definition.get("transitions", [])
+        if transition["from_state"] == instance.current_state
+        and principal.role in transition["roles"]
+    ]
+
+
 @router.post("/instances/{instance_id}/transitions")
 def transition_workflow_instance(
     instance_id: UUID,
