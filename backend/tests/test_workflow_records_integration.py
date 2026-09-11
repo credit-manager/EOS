@@ -8,17 +8,18 @@ client = TestClient(app)
 _PASSWORD = "Correct-Horse-Battery-42"
 
 
-def test_metadata_record_starts_bound_workflow() -> None:
-    registered = client.post(
+def _register(email: str) -> tuple[dict, dict[str, str]]:
+    response = client.post(
         "/api/v1/auth/register",
-        json={
-            "email": "workflow-record@example.com",
-            "password": _PASSWORD,
-            "tenant_name": "Workflow Record Tenant",
-        },
+        json={"email": email, "password": _PASSWORD, "tenant_name": f"Tenant {email}"},
     )
-    assert registered.status_code == 201
-    headers = {"Authorization": f"Bearer {registered.json()['access_token']}"}
+    assert response.status_code == 201
+    body = response.json()
+    return body, {"Authorization": f"Bearer {body['access_token']}"}
+
+
+def test_metadata_record_starts_bound_workflow() -> None:
+    registered, headers = _register("workflow-record@example.com")
 
     definition = client.post(
         "/api/v1/workflows/definitions",
@@ -47,9 +48,7 @@ def test_metadata_record_starts_bound_workflow() -> None:
         json={
             "code": "review_item",
             "name": "Review Item",
-            "fields": [
-                {"code": "name", "type": "text", "required": True, "label": "Name"}
-            ],
+            "fields": [{"code": "name", "type": "text", "required": True, "label": "Name"}],
             "workflow": {
                 "code": "record_review",
                 "reference_type": "review_item",
@@ -79,3 +78,73 @@ def test_metadata_record_starts_bound_workflow() -> None:
     assert row["reference_id"] == body["id"]
     assert row["current_state"] == "draft"
     assert row["status"] == "active"
+    assert registered["tenant_id"] == row["tenant_id"]
+
+
+def test_workflow_action_updates_bound_record_atomically() -> None:
+    _, headers = _register("workflow-action@example.com")
+
+    definition = client.post(
+        "/api/v1/workflows/definitions",
+        headers=headers,
+        json={
+            "code": "record_approval",
+            "name": "Record Approval",
+            "states": ["draft", "approved"],
+            "initial_state": "draft",
+            "transitions": [
+                {
+                    "from_state": "draft",
+                    "to_state": "approved",
+                    "action": "approve",
+                    "roles": ["admin"],
+                    "requires_approval": False,
+                    "actions": [{"type": "set_record_field", "field": "status", "value": "approved"}],
+                }
+            ],
+        },
+    )
+    assert definition.status_code == 201
+
+    metadata = client.post(
+        "/api/v1/metadata/entities",
+        headers=headers,
+        json={
+            "code": "approval_item",
+            "name": "Approval Item",
+            "fields": [
+                {"code": "name", "type": "text", "required": True},
+                {"code": "status", "type": "text", "required": True},
+            ],
+            "workflow": {
+                "code": "record_approval",
+                "reference_type": "approval_item",
+                "auto_start_on_create": True,
+            },
+        },
+    )
+    assert metadata.status_code == 201
+    assert client.post("/api/v1/metadata/entities/approval_item/publish", headers=headers).status_code == 200
+
+    created = client.post(
+        "/api/v1/entities/approval_item/records",
+        headers=headers,
+        json={"data": {"name": "Purchase request", "status": "draft"}},
+    )
+    assert created.status_code == 201
+    record = created.json()
+    instance_id = record["workflow_instance_id"]
+
+    transitioned = client.post(
+        f"/api/v1/workflows/instances/{instance_id}/transitions",
+        headers=headers,
+        json={"action": "approve"},
+    )
+    assert transitioned.status_code == 200
+    assert transitioned.json()["current_state"] == "approved"
+
+    fetched = client.get(f"/api/v1/entities/approval_item/records/{record['id']}", headers=headers)
+    assert fetched.status_code == 200
+    updated = fetched.json()
+    assert updated["data"]["status"] == "approved"
+    assert updated["version"] == 2
