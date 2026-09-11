@@ -39,11 +39,18 @@ class MetadataPermissions(BaseModel):
         return self
 
 
+class MetadataWorkflowBinding(BaseModel):
+    code: str = Field(min_length=1, max_length=100, pattern=r"^[a-z][a-z0-9_]*$")
+    reference_type: str = Field(min_length=1, max_length=100, pattern=r"^[a-z][a-z0-9_]*$")
+    auto_start_on_create: bool = True
+
+
 class MetadataDefinition(BaseModel):
     code: str = Field(min_length=1, max_length=100, pattern=r"^[a-z][a-z0-9_]*$")
     name: str = Field(min_length=1, max_length=200)
     fields: list[MetadataField] = Field(min_length=1, max_length=100)
     permissions: MetadataPermissions = Field(default_factory=MetadataPermissions)
+    workflow: MetadataWorkflowBinding | None = None
 
     @model_validator(mode="after")
     def validate_unique_fields(self) -> "MetadataDefinition":
