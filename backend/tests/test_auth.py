@@ -33,6 +33,27 @@ def test_register_login_and_current_identity() -> None:
     assert login.json()["tenant_id"] == str(tenant_id)
 
 
+def test_logout_revokes_only_the_current_session() -> None:
+    email = "session@example.com"
+    password = "Correct-Horse-Battery-42"
+    registered = _register(email, password)
+    second = client.post("/api/v1/auth/token", json={"email": email, "password": password})
+    assert second.status_code == 200
+
+    first_headers = {"Authorization": f"Bearer {registered['access_token']}"}
+    second_headers = {"Authorization": f"Bearer {second.json()['access_token']}"}
+    assert client.get("/api/v1/auth/me", headers=first_headers).status_code == 200
+    assert client.get("/api/v1/auth/me", headers=second_headers).status_code == 200
+
+    logout = client.post("/api/v1/auth/logout", headers=first_headers)
+    assert logout.status_code == 204
+    assert client.get("/api/v1/auth/me", headers=first_headers).status_code == 401
+    assert client.get("/api/v1/auth/me", headers=second_headers).status_code == 200
+
+    repeated = client.post("/api/v1/auth/logout", headers=first_headers)
+    assert repeated.status_code == 401
+
+
 def test_invalid_or_missing_access_token_is_rejected() -> None:
     missing = client.get("/api/v1/auth/me")
     assert missing.status_code == 401
