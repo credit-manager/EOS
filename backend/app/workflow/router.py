@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -56,8 +56,6 @@ def create_workflow_definition(
     db: Session = Depends(get_db),
 ) -> WorkflowDefinitionResponse:
     if principal.role != "admin":
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=403, detail="admin role required")
     row = create_definition(
         db,
