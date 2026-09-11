@@ -19,5 +19,6 @@ class RecordResponse(BaseModel):
     entity_code: str
     data: dict[str, Any]
     version: int
+    workflow_instance_id: UUID | None = None
 
     model_config = {"from_attributes": True}
