@@ -14,6 +14,7 @@ from .models import Record
 from .schemas import RecordCreate, RecordResponse, RecordUpdate
 
 router = APIRouter(prefix="/api/v1/entities/{entity_code}/records", tags=["records"])
+_DEFAULT_ACTIONS = {"create", "read", "update", "delete"}
 
 
 def _get_published(db: Session, tenant_id: UUID, entity_code: str) -> MetadataEntity:
@@ -29,6 +30,22 @@ def _get_published(db: Session, tenant_id: UUID, entity_code: str) -> MetadataEn
     if row is None:
         raise HTTPException(status_code=404, detail="published metadata entity not found")
     return row
+
+
+def _allowed(metadata: MetadataEntity, role: str, action: str) -> bool:
+    if role == "admin":
+        return action in _DEFAULT_ACTIONS
+    permissions = metadata.definition.get("permissions")
+    if not isinstance(permissions, dict):
+        return action in _DEFAULT_ACTIONS
+    member_actions = permissions.get("member", _DEFAULT_ACTIONS)
+    return action in set(member_actions)
+
+
+def _require_permission(request: Request, metadata: MetadataEntity, action: str) -> None:
+    role = getattr(request.state, "role", "member")
+    if not _allowed(metadata, role, action):
+        raise HTTPException(status_code=403, detail=f"{action} permission denied")
 
 
 def _validate_value(db: Session, tenant_id: UUID, code: str, value: object, field: dict) -> None:
@@ -148,6 +165,7 @@ def create_record(
     db: Session = Depends(get_db),
 ) -> RecordResponse:
     metadata = _get_published(db, tenant_id, entity_code)
+    _require_permission(request, metadata, "create")
     _validate(payload.data, metadata, db, tenant_id)
     row = Record(tenant_id=tenant_id, entity_code=entity_code, data=payload.data)
     db.add(row)
@@ -173,10 +191,12 @@ def list_records(
     filter_value: str | None = Query(default=None, min_length=1, max_length=200),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    request: Request = None,
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ) -> list[RecordResponse]:
     metadata = _get_published(db, tenant_id, entity_code)
+    _require_permission(request, metadata, "read")
     if (filter_field is None) != (filter_value is None):
         raise HTTPException(status_code=400, detail="filter_field and filter_value must be provided together")
 
@@ -191,10 +211,12 @@ def list_records(
 def get_record(
     entity_code: str,
     record_id: UUID,
+    request: Request,
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ) -> RecordResponse:
-    _get_published(db, tenant_id, entity_code)
+    metadata = _get_published(db, tenant_id, entity_code)
+    _require_permission(request, metadata, "read")
     row = db.scalar(
         select(Record).where(
             Record.id == record_id,
@@ -217,6 +239,7 @@ def update_record(
     db: Session = Depends(get_db),
 ) -> RecordResponse:
     metadata = _get_published(db, tenant_id, entity_code)
+    _require_permission(request, metadata, "update")
     _validate(payload.data, metadata, db, tenant_id)
     row = db.scalar(
         select(Record).where(
@@ -254,7 +277,8 @@ def delete_record(
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ) -> None:
-    _get_published(db, tenant_id, entity_code)
+    metadata = _get_published(db, tenant_id, entity_code)
+    _require_permission(request, metadata, "delete")
     row = db.scalar(
         select(Record).where(
             Record.id == record_id,
