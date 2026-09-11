@@ -6,6 +6,16 @@ from sqlalchemy import engine_from_config, pool
 from backend.app.audit.models import AuditEvent
 from backend.app.auth.models import AuthSession, Tenant, TenantMembership, User
 from backend.app.config import get_settings
+from backend.app.construction.models import (
+    BOQ,
+    BOQItem,
+    Contract,
+    Procurement,
+    ProcurementLine,
+    ProgressClaim,
+    ProgressClaimLine,
+    Project,
+)
 from backend.app.db import Base
 from backend.app.financial.models import Account, JournalEntry, JournalLine
 from backend.app.metadata.models import MetadataEntity
@@ -23,9 +33,17 @@ _model_registry = (
     ApprovalTask,
     AuditEvent,
     AuthSession,
+    BOQ,
+    BOQItem,
+    Contract,
     JournalEntry,
     JournalLine,
     MetadataEntity,
+    Procurement,
+    ProcurementLine,
+    ProgressClaim,
+    ProgressClaimLine,
+    Project,
     Record,
     Tenant,
     TenantMembership,

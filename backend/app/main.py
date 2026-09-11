@@ -12,6 +12,7 @@ from starlette.responses import Response
 from .audit.router import router as audit_router
 from .auth.router import router as auth_router
 from .config import get_settings
+from .construction.router import router as construction_router
 from .db import Base, engine
 from .financial.router import router as financial_router
 from .health import router as health_router
@@ -72,3 +73,4 @@ app.include_router(lookup_router)
 app.include_router(audit_router)
 app.include_router(financial_router)
 app.include_router(workflow_router)
+app.include_router(construction_router)
