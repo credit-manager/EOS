@@ -6,6 +6,14 @@ from backend.app import db as db_module
 from backend.app.db import Base
 
 
+@pytest.fixture(autouse=True)
+def _clear_rate_limit_state():
+    from backend.app.main import _RATE_LIMIT_STATE
+    _RATE_LIMIT_STATE.clear()
+    yield
+    _RATE_LIMIT_STATE.clear()
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _create_all_tables():
     if "sqlite" in db_module.engine.url.drivername:
