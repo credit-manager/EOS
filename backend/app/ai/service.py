@@ -133,12 +133,18 @@ def smart_search(
         doc_vec = _tfidf_vector(doc_tokens, idf)
         score = _cosine_similarity(query_vec, doc_vec)
 
-        # Fuzzy bonus: partial token match
+        # Fuzzy bonus: partial token match (capped at 0.3 total)
+        fuzzy_bonus = 0.0
         for q_token in query_tokens:
             for d_token in doc_tokens:
+                if fuzzy_bonus >= 0.3:
+                    break
                 if q_token in d_token or d_token in q_token:
                     if q_token != d_token:
-                        score += 0.1
+                        fuzzy_bonus += 0.1
+            if fuzzy_bonus >= 0.3:
+                break
+        score += fuzzy_bonus
 
         if score > 0:
             scored.append({

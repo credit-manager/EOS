@@ -77,8 +77,9 @@ def update_asset_category(
     request_id: str | None = None,
 ) -> AssetCategory:
     category = get_asset_category(db, tenant_id=tenant_id, category_id=category_id)
+    allowed = {"name", "description"}
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key in allowed:
             setattr(category, key, value)
     audit_record(
         db,
@@ -213,8 +214,12 @@ def update_asset(
                 status_code=409,
                 detail=f"cannot transition from '{asset.status}' to '{data['status']}'",
             )
+    allowed = {
+        "name", "category_id", "description", "purchase_date", "purchase_cost",
+        "current_value", "status", "location", "assigned_to", "warranty_expiry",
+    }
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key in allowed:
             setattr(asset, key, value)
     asset.updated_at = datetime.now(UTC)
     audit_record(
@@ -340,8 +345,9 @@ def update_maintenance_schedule(
     request_id: str | None = None,
 ) -> MaintenanceSchedule:
     schedule = get_maintenance_schedule(db, tenant_id=tenant_id, schedule_id=schedule_id)
+    allowed = {"frequency", "next_due_date", "last_performed"}
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key in allowed:
             setattr(schedule, key, value)
     audit_record(
         db,

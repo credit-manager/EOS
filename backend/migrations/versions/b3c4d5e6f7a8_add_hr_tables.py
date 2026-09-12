@@ -1,7 +1,7 @@
 """Add HR module tables.
 
 Revision ID: b3c4d5e6f7a8
-Revises: 0008_construction_full
+Revises: a1b2c3d4e5f6
 Create Date: 2026-09-12
 """
 from collections.abc import Sequence
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = 'b3c4d5e6f7a8'
-down_revision: str | Sequence[str] | None = '0008_construction_full'
+down_revision: str | Sequence[str] | None = 'a1b2c3d4e5f6'
 branch_labels: Sequence[str] | None = None
 depends_on: Sequence[str] | None = None
 

@@ -84,8 +84,12 @@ def update_contact(
     request_id: str | None = None,
 ) -> Contact:
     contact = get_contact(db, tenant_id=tenant_id, contact_id=contact_id)
+    allowed = {
+        "first_name", "last_name", "email", "phone", "company",
+        "job_title", "lead_source", "status",
+    }
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key in allowed:
             setattr(contact, key, value)
     contact.updated_at = datetime.now(UTC)
     audit_record(
@@ -199,8 +203,12 @@ def update_opportunity(
     request_id: str | None = None,
 ) -> Opportunity:
     opp = get_opportunity(db, tenant_id=tenant_id, opportunity_id=opportunity_id)
+    allowed = {
+        "title", "contact_id", "value", "currency", "stage",
+        "probability", "expected_close_date", "assigned_to",
+    }
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key in allowed:
             setattr(opp, key, value)
     opp.updated_at = datetime.now(UTC)
     audit_record(
@@ -350,8 +358,12 @@ def update_activity(
     request_id: str | None = None,
 ) -> Activity:
     activity = get_activity(db, tenant_id=tenant_id, activity_id=activity_id)
+    allowed = {
+        "contact_id", "opportunity_id", "activity_type", "subject",
+        "description", "due_date", "status",
+    }
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key in allowed:
             setattr(activity, key, value)
     if data.get("status") == "completed" and activity.completed_at is None:
         activity.completed_at = datetime.now(UTC)

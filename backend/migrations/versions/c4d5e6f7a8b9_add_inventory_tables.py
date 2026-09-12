@@ -1,7 +1,7 @@
 """Add inventory management tables.
 
 Revision ID: c4d5e6f7a8b9
-Revises: 0008_construction_full
+Revises: b3c4d5e6f7a8
 Create Date: 2026-09-12
 """
 from collections.abc import Sequence
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "c4d5e6f7a8b9"
-down_revision: str | Sequence[str] | None = "0008_construction_full"
+down_revision: str | Sequence[str] | None = "b3c4d5e6f7a8"
 branch_labels: Sequence[str] | None = None
 depends_on: Sequence[str] | None = None
 

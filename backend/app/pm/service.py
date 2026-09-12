@@ -103,8 +103,12 @@ def update_project(
                 status_code=409,
                 detail=f"cannot transition project from '{project.status}' to '{new_status}'",
             )
+    allowed = {
+        "name", "description", "status", "priority", "start_date",
+        "end_date", "budget", "progress", "manager_id",
+    }
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key in allowed:
             setattr(project, key, value)
     project.updated_at = datetime.now(UTC)
     audit_record(
@@ -232,8 +236,12 @@ def update_task(
                 status_code=409,
                 detail=f"cannot transition task from '{task.status}' to '{new_status}'",
             )
+    allowed = {
+        "title", "description", "status", "priority", "assigned_to",
+        "due_date", "estimated_hours", "actual_hours",
+    }
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key in allowed:
             setattr(task, key, value)
     task.updated_at = datetime.now(UTC)
     audit_record(
@@ -340,8 +348,9 @@ def update_milestone(
     new_status = data.get("status")
     if new_status == "achieved" and milestone.status != "achieved":
         milestone.completed_at = datetime.now(UTC)
+    allowed = {"name", "due_date", "status"}
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key in allowed:
             setattr(milestone, key, value)
     audit_metadata = {k: str(v) if isinstance(v, (datetime, UUID)) else v for k, v in data.items()}
     audit_record(

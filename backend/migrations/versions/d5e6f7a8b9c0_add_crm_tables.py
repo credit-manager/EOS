@@ -1,7 +1,7 @@
 """Add CRM tables.
 
 Revision ID: d5e6f7a8b9c0
-Revises: 0008_construction_full
+Revises: c4d5e6f7a8b9
 Create Date: 2026-09-12
 """
 from collections.abc import Sequence
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = 'd5e6f7a8b9c0'
-down_revision: str | Sequence[str] | None = '0008_construction_full'
+down_revision: str | Sequence[str] | None = 'c4d5e6f7a8b9'
 branch_labels: Sequence[str] | None = None
 depends_on: Sequence[str] | None = None
 

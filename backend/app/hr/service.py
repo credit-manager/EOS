@@ -85,8 +85,9 @@ def update_department(
     request_id: str | None = None,
 ) -> Department:
     dept = get_department(db, tenant_id=tenant_id, department_id=department_id)
+    allowed = {"name", "description", "status", "manager_id"}
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key in allowed:
             setattr(dept, key, value)
     dept.updated_at = datetime.now(UTC)
     audit_record(
@@ -211,8 +212,12 @@ def update_employee(
     request_id: str | None = None,
 ) -> Employee:
     emp = get_employee(db, tenant_id=tenant_id, employee_id=employee_id)
+    allowed = {
+        "department_id", "employee_number", "first_name", "last_name",
+        "email", "phone", "hire_date", "job_title", "salary", "status",
+    }
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key in allowed:
             setattr(emp, key, value)
     emp.updated_at = datetime.now(UTC)
     audit_record(
@@ -326,8 +331,9 @@ def update_attendance(
     request_id: str | None = None,
 ) -> Attendance:
     att = get_attendance(db, tenant_id=tenant_id, attendance_id=attendance_id)
+    allowed = {"check_in", "check_out", "status", "notes"}
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key in allowed:
             setattr(att, key, value)
     audit_record(
         db,
@@ -527,8 +533,9 @@ def update_payroll_run(
     request_id: str | None = None,
 ) -> PayrollRun:
     pr = get_payroll_run(db, tenant_id=tenant_id, payroll_run_id=payroll_run_id)
+    allowed = {"status"}
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key in allowed:
             setattr(pr, key, value)
     audit_record(
         db,

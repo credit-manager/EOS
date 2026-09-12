@@ -136,12 +136,54 @@ def _validate_value(db: Session, tenant_id: UUID, code: str, value: object, fiel
         if valid:
             item_type = field.get("item_type")
             if item_type:
+                item_field = {
+                    "type": item_type,
+                    "code": code,
+                    "min_value": field.get("min_value"),
+                    "max_value": field.get("max_value"),
+                    "min_length": field.get("min_length"),
+                    "max_length": field.get("max_length"),
+                    "pattern": field.get("pattern"),
+                }
                 for i, item in enumerate(value):
-                    _validate_value(db, tenant_id, f"{code}[{i}]", item, {"type": item_type, "code": code})
+                    _validate_value(db, tenant_id, f"{code}[{i}]", item, item_field)
 
     if not valid:
-        expected = f"relation to {field.get('target_entity')}" if field_type == "relation" else field_type
-        raise HTTPException(status_code=422, detail={"invalid_fields": [f"{code}: expected {expected}"]})
+        errors: list[str] = []
+        if field_type == "text":
+            if not isinstance(value, str):
+                errors.append(f"{code}: expected text, got {type(value).__name__}")
+            else:
+                min_len = field.get("min_length")
+                max_len = field.get("max_length")
+                pattern = field.get("pattern")
+                if min_len is not None and len(value) < min_len:
+                    errors.append(f"{code}: minimum length is {min_len}")
+                if max_len is not None and len(value) > max_len:
+                    errors.append(f"{code}: maximum length is {max_len}")
+                if pattern and not re.search(pattern, value):
+                    errors.append(f"{code}: does not match pattern '{pattern}'")
+        elif field_type == "integer":
+            min_val = field.get("min_value")
+            max_val = field.get("max_value")
+            if not isinstance(value, int) or isinstance(value, bool):
+                errors.append(f"{code}: expected integer, got {type(value).__name__}")
+            else:
+                if min_val is not None and value < min_val:
+                    errors.append(f"{code}: minimum value is {min_val}")
+                if max_val is not None and value > max_val:
+                    errors.append(f"{code}: maximum value is {max_val}")
+        elif field_type == "decimal":
+            errors.append(f"{code}: expected decimal, got {type(value).__name__}")
+        elif field_type == "relation":
+            errors.append(f"{code}: relation to {field.get('target_entity')} not found")
+        elif field_type == "enum":
+            options = field.get("options") or []
+            allowed = [opt.get("value") for opt in options]
+            errors.append(f"{code}: must be one of {allowed}")
+        else:
+            errors.append(f"{code}: expected {field_type}")
+        raise HTTPException(status_code=422, detail={"invalid_fields": errors})
 
 
 def _validate(payload: dict, metadata: MetadataEntity, db: Session, tenant_id: UUID) -> None:
@@ -318,7 +360,14 @@ def update_record(
         raise HTTPException(status_code=404, detail="record not found")
     if row.version != payload.version:
         raise HTTPException(status_code=409, detail="record version conflict")
-    row.data = payload.data
+    merged = dict(row.data)
+    merged.update(payload.data)
+    for field_def in metadata.definition.get("fields", []):
+        code = field_def["code"]
+        if code not in merged and field_def.get("default") is not None:
+            merged[code] = field_def["default"]
+    _validate(merged, metadata, db, tenant_id)
+    row.data = merged
     row.version += 1
     audit_record(
         db,

@@ -94,8 +94,9 @@ def update_warehouse(
     request_id: str | None = None,
 ) -> Warehouse:
     warehouse = get_warehouse(db, tenant_id=tenant_id, warehouse_id=warehouse_id)
+    allowed = {"name", "location", "manager_id"}
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key in allowed:
             setattr(warehouse, key, value)
     warehouse.updated_at = datetime.now(UTC)
     audit_record(
@@ -204,8 +205,9 @@ def update_category(
     request_id: str | None = None,
 ) -> ProductCategory:
     category = get_category(db, tenant_id=tenant_id, category_id=category_id)
+    allowed = {"name", "parent_id"}
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key in allowed:
             setattr(category, key, value)
     audit_record(
         db,
@@ -327,8 +329,9 @@ def update_product(
     request_id: str | None = None,
 ) -> Product:
     product = get_product(db, tenant_id=tenant_id, product_id=product_id)
+    allowed = {"name", "description", "unit", "unit_cost", "reorder_level", "is_active", "category_id"}
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key in allowed:
             setattr(product, key, value)
     product.updated_at = datetime.now(UTC)
     audit_record(
@@ -579,8 +582,9 @@ def update_requisition(
                 status_code=409,
                 detail=f"cannot transition from '{req.status}' to '{new_status}'",
             )
+    allowed = {"status", "priority"}
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key in allowed:
             setattr(req, key, value)
     req.updated_at = datetime.now(UTC)
     audit_record(
