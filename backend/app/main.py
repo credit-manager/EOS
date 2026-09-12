@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
 
+from .ai.router import router as ai_router
 from .audit.router import router as audit_router
 from .auth.router import router as auth_router
 from .config import get_settings
@@ -163,6 +164,7 @@ app.add_middleware(
 )
 app.include_router(health_router)
 app.include_router(auth_router)
+app.include_router(ai_router)
 app.include_router(metadata_router)
 app.include_router(records_router)
 app.include_router(lookup_router)
