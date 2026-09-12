@@ -12,15 +12,20 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
 
 from .ai.router import router as ai_router
+from .assets.router import router as assets_router
 from .audit.router import router as audit_router
 from .auth.router import router as auth_router
 from .config import get_settings
 from .construction.router import router as construction_router
+from .crm.router import router as crm_router
 from .db import Base, engine
 from .financial.router import router as financial_router
 from .health import router as health_router
+from .hr.router import router as hr_router
+from .inventory.router import router as inventory_router
 from .lookup.router import router as lookup_router
 from .metadata.router import router as metadata_router
+from .pm.router import router as pm_router
 from .records.router import router as records_router
 from .workflow.router import router as workflow_router
 
@@ -172,3 +177,8 @@ app.include_router(audit_router)
 app.include_router(financial_router)
 app.include_router(workflow_router)
 app.include_router(construction_router)
+app.include_router(hr_router)
+app.include_router(inventory_router)
+app.include_router(crm_router)
+app.include_router(assets_router)
+app.include_router(pm_router)
