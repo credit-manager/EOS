@@ -7,6 +7,7 @@ from ..auth.security import Principal, require_principal
 from ..db import commit_db, get_db
 from ..tenant import require_tenant
 from . import schemas, service
+from .dashboard import project_dashboard
 
 router = APIRouter(prefix="/api/v1/construction", tags=["construction"])
 
@@ -1146,3 +1147,15 @@ def update_payment_status(
     )
     commit_db(db)
     return pay
+
+
+# ---------------------------------------------------------------------------
+# Dashboard
+# ---------------------------------------------------------------------------
+
+@router.get("/dashboard", response_model=schemas.DashboardResponse)
+def get_dashboard(
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+) -> dict:
+    return project_dashboard(db, tenant_id)

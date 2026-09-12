@@ -114,3 +114,43 @@ class TrialBalanceResponse(BaseModel):
     lines: list[TrialBalanceLine]
     total_debit: Decimal
     total_credit: Decimal
+
+
+class ReportAccountLine(BaseModel):
+    account_id: UUID
+    code: str
+    name: str
+    amount: Decimal
+
+
+class ReportGroup(BaseModel):
+    lines: list[ReportAccountLine]
+    total: Decimal
+
+
+class BalanceSheetResponse(BaseModel):
+    currency: str
+    as_of: str | None
+    assets: ReportGroup
+    liabilities: ReportGroup
+    equity: ReportGroup
+    total_liabilities_and_equity: Decimal
+
+
+class IncomeStatementResponse(BaseModel):
+    currency: str
+    period_start: str | None
+    period_end: str | None
+    revenue: ReportGroup
+    expenses: ReportGroup
+    net_income: Decimal
+
+
+class CashFlowResponse(BaseModel):
+    currency: str
+    period_start: str | None
+    period_end: str | None
+    operating: ReportGroup
+    investing: ReportGroup
+    financing: ReportGroup
+    net_change_in_cash: Decimal

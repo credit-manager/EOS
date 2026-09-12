@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
@@ -8,9 +9,13 @@ from sqlalchemy.orm import Session
 from ..db import commit_db, get_db
 from ..tenant import require_admin
 from .models import Account, JournalEntry, JournalLine
+from .reports import balance_sheet, cash_flow, income_statement
 from .schemas import (
     AccountCreate,
     AccountResponse,
+    BalanceSheetResponse,
+    CashFlowResponse,
+    IncomeStatementResponse,
     JournalEntryCreate,
     JournalEntryResponse,
     JournalLineResponse,
@@ -178,4 +183,42 @@ def _serialize_entry(db: Session, entry: JournalEntry) -> JournalEntryResponse:
             )
             for line in lines
         ],
+    )
+
+
+@router.get("/reports/balance-sheet", response_model=BalanceSheetResponse)
+def get_balance_sheet(
+    tenant_id: UUID = Depends(require_admin),
+    currency: str = Query(default="USD", min_length=3, max_length=3),
+    as_of: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    return balance_sheet(db, tenant_id, currency=currency.upper(), as_of=as_of)
+
+
+@router.get("/reports/income-statement", response_model=IncomeStatementResponse)
+def get_income_statement(
+    tenant_id: UUID = Depends(require_admin),
+    currency: str = Query(default="USD", min_length=3, max_length=3),
+    period_start: date | None = Query(default=None),
+    period_end: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    return income_statement(
+        db, tenant_id, currency=currency.upper(),
+        period_start=period_start, period_end=period_end,
+    )
+
+
+@router.get("/reports/cash-flow", response_model=CashFlowResponse)
+def get_cash_flow(
+    tenant_id: UUID = Depends(require_admin),
+    currency: str = Query(default="USD", min_length=3, max_length=3),
+    period_start: date | None = Query(default=None),
+    period_end: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    return cash_flow(
+        db, tenant_id, currency=currency.upper(),
+        period_start=period_start, period_end=period_end,
     )

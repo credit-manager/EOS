@@ -869,3 +869,24 @@ class PaymentResponse(BaseModel):
     approved_by: UUID | None
     approved_at: date | None
     processed_at: date | None
+
+
+# ---------------------------------------------------------------------------
+# Dashboard
+# ---------------------------------------------------------------------------
+
+class PendingApprovals(BaseModel):
+    change_orders: int
+    progress_claims: int
+    purchase_orders: int
+
+
+class DashboardResponse(BaseModel):
+    total_projects: int
+    active_projects: int
+    completed_projects: int
+    by_status: dict[str, int]
+    total_budget: Decimal
+    total_spent: Decimal
+    budget_utilization_pct: Decimal
+    pending_approvals: PendingApprovals
