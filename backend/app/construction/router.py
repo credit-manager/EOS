@@ -4,11 +4,11 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from ..auth.security import Principal, require_principal
-from ..db import get_db
+from ..db import commit_db, get_db
 from ..tenant import require_tenant
 from . import schemas, service
 
-router = APIRouter(prefix="/api/construction", tags=["construction"])
+router = APIRouter(prefix="/api/v1/construction", tags=["construction"])
 
 
 # ---------------------------------------------------------------------------
@@ -37,7 +37,7 @@ def create_project(
         location=payload.location,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return project
 
 
@@ -75,7 +75,7 @@ def update_project(
         data=data,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return project
 
 
@@ -93,7 +93,7 @@ def delete_project(
         project_id=project_id,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +122,7 @@ def create_contract(
         completion_date=payload.completion_date,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return contract
 
 
@@ -161,7 +161,7 @@ def update_contract(
         data=data,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return contract
 
 
@@ -179,7 +179,7 @@ def delete_contract(
         contract_id=contract_id,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +201,7 @@ def create_boq(
         version=payload.version,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return boq
 
 
@@ -244,7 +244,7 @@ def add_boq_item(
         amount=payload.amount,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return item
 
 
@@ -273,7 +273,7 @@ def update_boq_status(
         status=status,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return boq
 
 
@@ -299,7 +299,7 @@ def create_progress_claim(
         period_end=payload.period_end,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return claim
 
 
@@ -340,7 +340,7 @@ def add_claim_line(
         amount=payload.amount,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return line
 
 
@@ -369,7 +369,7 @@ def update_claim_status(
         status=status,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return claim
 
 
@@ -395,7 +395,7 @@ def create_procurement(
         priority=payload.priority,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return proc
 
 
@@ -437,7 +437,7 @@ def add_procurement_line(
         estimated_total=payload.estimated_total,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return line
 
 
@@ -466,7 +466,7 @@ def update_procurement_status(
         status=status,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return proc
 
 
@@ -489,7 +489,7 @@ def create_budget(
         version=payload.version,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return budget
 
 
@@ -532,7 +532,7 @@ def add_budget_line(
         boq_item_id=payload.boq_item_id,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return line
 
 
@@ -561,7 +561,7 @@ def update_budget_status(
         status=status,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return budget
 
 
@@ -590,7 +590,7 @@ def create_change_order(
         time_impact_days=payload.time_impact_days,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return co
 
 
@@ -628,7 +628,7 @@ def update_change_order_status(
         status=status,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return co
 
 
@@ -658,7 +658,7 @@ def create_subcontract(
         end_date=payload.end_date,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return sub
 
 
@@ -696,7 +696,7 @@ def update_subcontract_status(
         status=status,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return sub
 
 
@@ -722,7 +722,7 @@ def create_site_warehouse(
         manager_id=payload.manager_id,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return wh
 
 
@@ -761,7 +761,7 @@ def update_site_warehouse(
         data=data,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return wh
 
 
@@ -779,7 +779,7 @@ def delete_site_warehouse(
         warehouse_id=warehouse_id,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
 
 
 # ---------------------------------------------------------------------------
@@ -805,7 +805,7 @@ def create_purchase_order(
         delivery_date=payload.delivery_date,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return po
 
 
@@ -848,7 +848,7 @@ def add_purchase_order_line(
         line_total=payload.line_total,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return line
 
 
@@ -877,7 +877,7 @@ def update_purchase_order_status(
         status=status,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return po
 
 
@@ -904,7 +904,7 @@ def create_goods_receipt(
         notes=payload.notes,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return grn
 
 
@@ -946,7 +946,7 @@ def add_goods_receipt_line(
         notes=payload.notes,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return line
 
 
@@ -975,7 +975,7 @@ def update_goods_receipt_status(
         status=status,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return grn
 
 
@@ -1003,7 +1003,7 @@ def create_supplier_invoice(
         currency=payload.currency,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return inv
 
 
@@ -1048,7 +1048,7 @@ def add_supplier_invoice_line(
         grn_line_id=payload.grn_line_id,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return line
 
 
@@ -1077,7 +1077,7 @@ def update_supplier_invoice_status(
         status=status,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return inv
 
 
@@ -1106,7 +1106,7 @@ def create_payment(
         notes=payload.notes,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return pay
 
 
@@ -1144,5 +1144,5 @@ def update_payment_status(
         status=status,
         request_id=getattr(request.state, "request_id", None),
     )
-    db.commit()
+    commit_db(db)
     return pay

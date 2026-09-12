@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from ..audit.service import record as audit_record
 from ..config import get_settings
-from ..db import get_db
+from ..db import commit_db, get_db
+from ..tenant import require_admin
 from .models import Tenant, TenantMembership, User
 from .schemas import (
     MemberCreateRequest,
@@ -28,22 +29,6 @@ from .security import (
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
-
-
-def _forbidden(
-    db: Session, request: Request, principal: Principal, path: str
-) -> None:
-    audit_record(
-        db,
-        tenant_id=principal.tenant_id,
-        actor_id=principal.user_id,
-        action="auth.forbidden",
-        resource_type="route",
-        resource_id=None,
-        metadata={"path": path, "role": principal.role},
-        request_id=request.state.request_id,
-    )
-    db.commit()
 
 
 def _token_response(user_id: UUID, tenant_id: UUID, role: str, db: Session) -> TokenResponse:
@@ -82,7 +67,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenRe
             resource_id=user.id,
             metadata={"email": email},
         )
-        db.commit()
+        commit_db(db)
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail="account could not be created") from exc
@@ -114,7 +99,7 @@ def token(payload: TokenRequest, request: Request, db: Session = Depends(get_db)
                     metadata={"email": email},
                     request_id=request.state.request_id,
                 )
-                db.commit()
+                commit_db(db)
         raise HTTPException(status_code=401, detail="invalid email or password")
     memberships = db.scalars(
         select(TenantMembership).where(TenantMembership.user_id == user.id).order_by(TenantMembership.created_at)
@@ -138,7 +123,7 @@ def token(payload: TokenRequest, request: Request, db: Session = Depends(get_db)
         metadata={"email": email},
         request_id=request.state.request_id,
     )
-    db.commit()
+    commit_db(db)
     return response
 
 
@@ -158,7 +143,7 @@ def logout(
         resource_id=principal.session_id,
         request_id=request.state.request_id,
     )
-    db.commit()
+    commit_db(db)
 
 
 @router.get("/me", response_model=MeResponse)
@@ -179,12 +164,10 @@ def me(principal: Principal = Depends(require_principal), db: Session = Depends(
 
 def list_members(
     request: Request,
+    tenant_id: UUID = Depends(require_admin),
     principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db),
 ) -> list[MemberResponse]:
-    if principal.role != "admin":
-        _forbidden(db, request, principal, "/api/v1/auth/members")
-        raise HTTPException(status_code=403, detail="admin role required")
     rows = db.execute(
         select(TenantMembership, User)
         .join(User, User.id == TenantMembership.user_id)
@@ -206,12 +189,10 @@ def list_members(
 def add_member(
     payload: MemberCreateRequest,
     request: Request,
+    tenant_id: UUID = Depends(require_admin),
     principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db),
 ) -> MemberResponse:
-    if principal.role != "admin":
-        _forbidden(db, request, principal, "/api/v1/auth/members")
-        raise HTTPException(status_code=403, detail="admin role required")
     email = payload.email.strip().lower()
     user = db.scalar(select(User).where(User.email == email))
     if user is None:
@@ -236,7 +217,7 @@ def add_member(
         metadata={"user_id": str(user.id), "role": payload.role},
         request_id=request.state.request_id,
     )
-    db.commit()
+    commit_db(db)
     return MemberResponse(user_id=user.id, email=user.email, tenant_id=membership.tenant_id, role=membership.role)
 
 
@@ -245,12 +226,10 @@ def update_member_role(
     user_id: UUID,
     payload: MemberRoleUpdate,
     request: Request,
+    tenant_id: UUID = Depends(require_admin),
     principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db),
 ) -> MemberResponse:
-    if principal.role != "admin":
-        _forbidden(db, request, principal, f"/api/v1/auth/members/{user_id}")
-        raise HTTPException(status_code=403, detail="admin role required")
     membership = db.scalar(
         select(TenantMembership).where(
             TenantMembership.tenant_id == principal.tenant_id,
@@ -279,7 +258,7 @@ def update_member_role(
         metadata={"user_id": str(user_id), "role": payload.role},
         request_id=request.state.request_id,
     )
-    db.commit()
+    commit_db(db)
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="user not found")

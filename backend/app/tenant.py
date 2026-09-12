@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from .audit.service import record as audit_record
 from .auth.security import Principal, require_principal
-from .db import get_db
+from .db import commit_db, get_db
 
 
 def _set_context(request: Request, principal: Principal) -> UUID:
@@ -35,6 +35,6 @@ def require_admin(
             metadata={"path": request.url.path, "role": principal.role},
             request_id=getattr(request.state, "request_id", None),
         )
-        db.commit()
+        commit_db(db)
         raise HTTPException(status_code=403, detail="admin role required")
     return _set_context(request, principal)

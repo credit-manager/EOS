@@ -1,6 +1,8 @@
 from collections.abc import Generator
 
+from fastapi import HTTPException
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import get_settings
@@ -25,3 +27,12 @@ def get_db() -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
+
+
+def commit_db(db: Session) -> None:
+    """Commit the current transaction, converting integrity errors to 409."""
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="data conflict") from exc

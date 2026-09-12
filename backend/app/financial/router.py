@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..db import get_db
+from ..db import commit_db, get_db
 from ..tenant import require_admin
 from .models import Account, JournalEntry, JournalLine
 from .schemas import (
@@ -17,7 +17,7 @@ from .schemas import (
     TrialBalanceLine,
     TrialBalanceResponse,
 )
-from .service import commit_financial, create_draft, post_entry
+from .service import create_draft, post_entry
 
 router = APIRouter(prefix="/api/v1/financial", tags=["financial"])
 
@@ -33,7 +33,7 @@ def create_account(
         raise HTTPException(status_code=409, detail="account code already exists")
     account = Account(tenant_id=tenant_id, **payload.model_dump())
     db.add(account)
-    db.commit()
+    commit_db(db)
     db.refresh(account)
     return account
 
@@ -64,7 +64,7 @@ def create_journal_entry(
         payload=payload,
         request_id=request.state.request_id,
     )
-    commit_financial(db)
+    commit_db(db)
     return _serialize_entry(db, entry)
 
 
@@ -82,7 +82,7 @@ def post_journal_entry(
         entry_id=entry_id,
         request_id=request.state.request_id,
     )
-    commit_financial(db)
+    commit_db(db)
     return _serialize_entry(db, entry)
 
 

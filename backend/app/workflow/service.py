@@ -4,10 +4,9 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from ..audit.models import AuditEvent
+from ..audit.service import record as audit_record
 from ..metadata.models import MetadataEntity
 from ..records.models import Record
 from .models import ApprovalTask, WorkflowDefinition, WorkflowInstance
@@ -66,16 +65,15 @@ def create_definition(
     )
     db.add(definition)
     db.flush()
-    db.add(
-        AuditEvent(
-            tenant_id=tenant_id,
-            actor_id=user_id,
-            action="workflow.definition.created",
-            resource_type="workflow_definition",
-            resource_id=definition.id,
-            request_id=request_id,
-            details={"code": definition.code, "version": definition.version},
-        )
+    audit_record(
+        db,
+        tenant_id=tenant_id,
+        actor_id=user_id,
+        action="workflow.definition.created",
+        resource_type="workflow_definition",
+        resource_id=definition.id,
+        metadata={"code": definition.code, "version": definition.version},
+        request_id=request_id,
     )
     return definition
 
@@ -102,16 +100,15 @@ def start_instance(
     )
     db.add(instance)
     db.flush()
-    db.add(
-        AuditEvent(
-            tenant_id=tenant_id,
-            actor_id=user_id,
-            action="workflow.instance.started",
-            resource_type="workflow_instance",
-            resource_id=instance.id,
-            request_id=request_id,
-            details={"workflow_code": workflow_code, "state": instance.current_state},
-        )
+    audit_record(
+        db,
+        tenant_id=tenant_id,
+        actor_id=user_id,
+        action="workflow.instance.started",
+        resource_type="workflow_instance",
+        resource_id=instance.id,
+        metadata={"workflow_code": workflow_code, "state": instance.current_state},
+        request_id=request_id,
     )
     return instance
 
@@ -167,16 +164,15 @@ def _apply_transition_actions(
         data[field_code] = action.get("value")
         record.data = data
         record.version += 1
-        db.add(
-            AuditEvent(
-                tenant_id=tenant_id,
-                actor_id=user_id,
-                action="workflow.action.record_field_set",
-                resource_type=record.entity_code,
-                resource_id=record.id,
-                request_id=request_id,
-                details={"field": field_code, "workflow_instance_id": str(instance.id)},
-            )
+        audit_record(
+            db,
+            tenant_id=tenant_id,
+            actor_id=user_id,
+            action="workflow.action.record_field_set",
+            resource_type=record.entity_code,
+            resource_id=record.id,
+            metadata={"field": field_code, "workflow_instance_id": str(instance.id)},
+            request_id=request_id,
         )
 
 
@@ -236,16 +232,15 @@ def request_transition(
         )
         db.add(task)
         db.flush()
-        db.add(
-            AuditEvent(
-                tenant_id=tenant_id,
-                actor_id=user_id,
-                action="workflow.approval.requested",
-                resource_type="approval_task",
-                resource_id=task.id,
-                request_id=request_id,
-                details={"action": action, "from_state": task.from_state, "to_state": task.to_state},
-            )
+        audit_record(
+            db,
+            tenant_id=tenant_id,
+            actor_id=user_id,
+            action="workflow.approval.requested",
+            resource_type="approval_task",
+            resource_id=task.id,
+            metadata={"action": action, "from_state": task.from_state, "to_state": task.to_state},
+            request_id=request_id,
         )
         return instance, task
 
@@ -260,16 +255,15 @@ def request_transition(
     )
     if _is_terminal(definition, instance.current_state):
         instance.status = "completed"
-    db.add(
-        AuditEvent(
-            tenant_id=tenant_id,
-            actor_id=user_id,
-            action="workflow.transition.applied",
-            resource_type="workflow_instance",
-            resource_id=instance.id,
-            request_id=request_id,
-            details={"action": action, "state": instance.current_state},
-        )
+    audit_record(
+        db,
+        tenant_id=tenant_id,
+        actor_id=user_id,
+        action="workflow.transition.applied",
+        resource_type="workflow_instance",
+        resource_id=instance.id,
+        metadata={"action": action, "state": instance.current_state},
+        request_id=request_id,
     )
     db.flush()
     return instance, None
@@ -332,24 +326,15 @@ def decide_approval(
         )
         if _is_terminal(definition, instance.current_state):
             instance.status = "completed"
-    db.add(
-        AuditEvent(
-            tenant_id=tenant_id,
-            actor_id=user_id,
-            action="workflow.approval.approved" if approved else "workflow.approval.rejected",
-            resource_type="approval_task",
-            resource_id=task.id,
-            request_id=request_id,
-            details={"action": task.action, "state": instance.current_state},
-        )
+    audit_record(
+        db,
+        tenant_id=tenant_id,
+        actor_id=user_id,
+        action="workflow.approval.approved" if approved else "workflow.approval.rejected",
+        resource_type="approval_task",
+        resource_id=task.id,
+        metadata={"action": task.action, "state": instance.current_state},
+        request_id=request_id,
     )
     db.flush()
     return task, instance
-
-
-def commit_workflow(db: Session) -> None:
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(status_code=409, detail="workflow write conflicted with another transaction") from exc

@@ -19,9 +19,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from ..db import commit_db
 from ..financial.models import JournalEntry
 from ..financial.schemas import JournalEntryCreate, JournalLineCreate
-from ..financial.service import commit_financial, create_draft, post_entry
+from ..financial.service import create_draft, post_entry
 from . import service as construction_service
 from .models import (
     GoodsReceipt,
@@ -112,7 +113,7 @@ def _create_journal_entry(
         posted = post_entry(
             db, tenant_id=tenant_id, user_id=user_id, entry_id=entry.id, request_id=request_id
         )
-        commit_financial(db)
+        commit_db(db)
     except IntegrityError:
         # Lost a concurrent race on (tenant_id, reference) or entry_number.
         # The transaction is rolled back; return the winner if our reference

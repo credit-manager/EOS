@@ -12,7 +12,7 @@ class Record(Base):
     __table_args__ = (UniqueConstraint("tenant_id", "entity_code", "id", name="uq_record_tenant_entity_id"),)
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
-    tenant_id: Mapped[UUID] = mapped_column(Uuid, nullable=False, index=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     entity_code: Mapped[str] = mapped_column(String(100), nullable=False)
     data: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)

@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..audit.service import record as audit_record
-from ..db import get_db
+from ..db import commit_db, get_db
 from ..tenant import require_admin, require_tenant
 from .models import MetadataEntity
 from .schemas import MetadataDefinition, MetadataPermissions, MetadataResponse, MetadataSummary
@@ -73,7 +73,7 @@ def create_entity(
         metadata={"version": version, "permissions": payload.permissions.model_dump(mode="json")},
         request_id=request.state.request_id,
     )
-    db.commit()
+    commit_db(db)
     db.refresh(row)
     return _response(row)
 
@@ -104,7 +104,7 @@ def publish_entity(
             metadata={"version": row.version},
             request_id=request.state.request_id,
         )
-        db.commit()
+        commit_db(db)
         db.refresh(row)
     return _response(row)
 

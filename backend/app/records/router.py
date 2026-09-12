@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..audit.service import record as audit_record
-from ..db import get_db
+from ..db import commit_db, get_db
 from ..metadata.models import MetadataEntity
 from ..tenant import require_tenant
 from ..workflow.service import start_instance
@@ -196,7 +196,7 @@ def create_record(
         metadata={"workflow_instance_id": str(row.workflow_instance_id) if row.workflow_instance_id else None},
         request_id=request.state.request_id,
     )
-    db.commit()
+    commit_db(db)
     db.refresh(row)
     return _response(row)
 
@@ -281,7 +281,7 @@ def update_record(
         metadata={"version": row.version},
         request_id=request.state.request_id,
     )
-    db.commit()
+    commit_db(db)
     db.refresh(row)
     return _response(row)
 
@@ -316,4 +316,4 @@ def delete_record(
         request_id=request.state.request_id,
     )
     db.delete(row)
-    db.commit()
+    commit_db(db)

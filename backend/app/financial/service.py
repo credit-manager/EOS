@@ -4,10 +4,9 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from ..audit.models import AuditEvent
+from ..audit.service import record as audit_record
 from .models import Account, JournalEntry, JournalLine
 from .schemas import JournalEntryCreate
 
@@ -101,16 +100,15 @@ def create_draft(
             )
         )
     db.flush()
-    db.add(
-        AuditEvent(
-            tenant_id=tenant_id,
-            actor_id=user_id,
-            action="financial.journal.created",
-            resource_type="journal_entry",
-            resource_id=entry.id,
-            request_id=request_id,
-            details={"entry_number": entry.entry_number, "status": "draft"},
-        )
+    audit_record(
+        db,
+        tenant_id=tenant_id,
+        actor_id=user_id,
+        action="financial.journal.created",
+        resource_type="journal_entry",
+        resource_id=entry.id,
+        metadata={"entry_number": entry.entry_number, "status": "draft"},
+        request_id=request_id,
     )
     return entry
 
@@ -139,28 +137,19 @@ def post_entry(
 
     entry.status = "posted"
     entry.posted_at = datetime.now(UTC)
-    db.add(
-        AuditEvent(
-            tenant_id=tenant_id,
-            actor_id=user_id,
-            action="financial.journal.posted",
-            resource_type="journal_entry",
-            resource_id=entry.id,
-            request_id=request_id,
-            details={
-                "entry_number": entry.entry_number,
-                "debit_total": str(debit_total),
-                "currency": entry.currency,
-            },
-        )
+    audit_record(
+        db,
+        tenant_id=tenant_id,
+        actor_id=user_id,
+        action="financial.journal.posted",
+        resource_type="journal_entry",
+        resource_id=entry.id,
+        metadata={
+            "entry_number": entry.entry_number,
+            "debit_total": str(debit_total),
+            "currency": entry.currency,
+        },
+        request_id=request_id,
     )
     db.flush()
     return entry
-
-
-def commit_financial(db: Session) -> None:
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(status_code=409, detail="financial write conflicted with another transaction") from exc

@@ -5,7 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth.security import Principal, require_principal
-from ..db import get_db
+from ..db import commit_db, get_db
+from ..tenant import require_admin
 from .models import ApprovalTask, WorkflowDefinition, WorkflowInstance
 from .schemas import (
     ApprovalDecisionRequest,
@@ -17,7 +18,6 @@ from .schemas import (
     WorkflowTransitionRequest,
 )
 from .service import (
-    commit_workflow,
     create_definition,
     decide_approval,
     request_transition,
@@ -58,11 +58,10 @@ def _instance_response(db: Session, row: WorkflowInstance) -> WorkflowInstanceRe
 def create_workflow_definition(
     payload: WorkflowDefinitionCreate,
     request: Request,
+    tenant_id: UUID = Depends(require_admin),
     principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db),
 ) -> WorkflowDefinitionResponse:
-    if principal.role != "admin":
-        raise HTTPException(status_code=403, detail="admin role required")
     row = create_definition(
         db,
         tenant_id=principal.tenant_id,
@@ -70,7 +69,7 @@ def create_workflow_definition(
         payload=payload,
         request_id=request.state.request_id,
     )
-    commit_workflow(db)
+    commit_db(db)
     return _definition_response(row)
 
 
@@ -103,7 +102,7 @@ def start_workflow_instance(
         reference_id=payload.reference_id,
         request_id=request.state.request_id,
     )
-    commit_workflow(db)
+    commit_db(db)
     return _instance_response(db, row)
 
 
@@ -170,7 +169,7 @@ def transition_workflow_instance(
         action=payload.action,
         request_id=request.state.request_id,
     )
-    commit_workflow(db)
+    commit_db(db)
     if task is not None:
         return {"status": "pending_approval", "approval_task_id": str(task.id)}
     return {"status": "applied", "current_state": instance.current_state}
@@ -221,7 +220,7 @@ def decide_workflow_approval(
         approved=payload.approved,
         request_id=request.state.request_id,
     )
-    commit_workflow(db)
+    commit_db(db)
     return ApprovalTaskResponse(
         id=task.id,
         workflow_instance_id=task.workflow_instance_id,
