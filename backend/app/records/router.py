@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
@@ -59,12 +60,36 @@ def _validate_value(db: Session, tenant_id: UUID, code: str, value: object, fiel
     valid = True
     if field_type == "text":
         valid = isinstance(value, str)
+        if valid:
+            min_len = field.get("min_length")
+            max_len = field.get("max_length")
+            if min_len is not None and len(value) < min_len:
+                valid = False
+            if max_len is not None and len(value) > max_len:
+                valid = False
+            pattern = field.get("pattern")
+            if pattern and not re.search(pattern, value):
+                valid = False
     elif field_type == "integer":
         valid = isinstance(value, int) and not isinstance(value, bool)
+        if valid:
+            min_val = field.get("min_value")
+            max_val = field.get("max_value")
+            if min_val is not None and value < min_val:
+                valid = False
+            if max_val is not None and value > max_val:
+                valid = False
     elif field_type == "decimal":
         try:
             decimal_value = Decimal(str(value))
             valid = decimal_value.is_finite()
+            if valid:
+                min_val = field.get("min_value")
+                max_val = field.get("max_value")
+                if min_val is not None and decimal_value < Decimal(str(min_val)):
+                    valid = False
+                if max_val is not None and decimal_value > Decimal(str(max_val)):
+                    valid = False
         except (InvalidOperation, ValueError, TypeError):
             valid = False
     elif field_type == "boolean":
@@ -94,6 +119,25 @@ def _validate_value(db: Session, tenant_id: UUID, code: str, value: object, fiel
                     )
                 )
                 valid = target is not None
+    elif field_type == "enum":
+        valid = isinstance(value, str)
+        if valid:
+            options = field.get("options") or []
+            allowed_values = {opt.get("value") for opt in options}
+            valid = value in allowed_values
+    elif field_type == "email":
+        valid = isinstance(value, str) and bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", value))
+    elif field_type == "url":
+        valid = isinstance(value, str) and bool(re.match(r"^https?://", value))
+    elif field_type == "json":
+        valid = isinstance(value, (dict, list))
+    elif field_type == "array":
+        valid = isinstance(value, list)
+        if valid:
+            item_type = field.get("item_type")
+            if item_type:
+                for i, item in enumerate(value):
+                    _validate_value(db, tenant_id, f"{code}[{i}]", item, {"type": item_type, "code": code})
 
     if not valid:
         expected = f"relation to {field.get('target_entity')}" if field_type == "relation" else field_type
@@ -168,8 +212,13 @@ def create_record(
 ) -> RecordResponse:
     metadata = _get_published(db, tenant_id, entity_code)
     _require_permission(request, metadata, "create")
-    _validate(payload.data, metadata, db, tenant_id)
-    row = Record(tenant_id=tenant_id, entity_code=entity_code, data=payload.data)
+    data = dict(payload.data)
+    for field_def in metadata.definition.get("fields", []):
+        code = field_def["code"]
+        if code not in data and field_def.get("default") is not None:
+            data[code] = field_def["default"]
+    _validate(data, metadata, db, tenant_id)
+    row = Record(tenant_id=tenant_id, entity_code=entity_code, data=data)
     db.add(row)
     db.flush()
 

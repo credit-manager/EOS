@@ -63,13 +63,13 @@ def lookup_records(
     if q:
         needle = q.strip()
         if needle:
-            text_fields = [
+            searchable_fields = [
                 field["code"]
                 for field in metadata.definition.get("fields", [])
-                if field.get("type") == "text"
+                if field.get("type") in {"text", "enum", "email", "url"}
             ]
             expressions: list[Any] = [Record.id.cast(String).ilike(f"%{needle}%")]
-            expressions.extend(Record.data[field_code].as_string().ilike(f"%{needle}%") for field_code in text_fields)
+            expressions.extend(Record.data[field_code].as_string().ilike(f"%{needle}%") for field_code in searchable_fields)
             query = query.where(or_(*expressions))
 
     rows = db.scalars(query.order_by(Record.created_at.desc()).limit(limit)).all()
