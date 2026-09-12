@@ -30,6 +30,22 @@ from .security import (
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
+def _forbidden(
+    db: Session, request: Request, principal: Principal, path: str
+) -> None:
+    audit_record(
+        db,
+        tenant_id=principal.tenant_id,
+        actor_id=principal.user_id,
+        action="auth.forbidden",
+        resource_type="route",
+        resource_id=None,
+        metadata={"path": path, "role": principal.role},
+        request_id=request.state.request_id,
+    )
+    db.commit()
+
+
 def _token_response(user_id: UUID, tenant_id: UUID, role: str, db: Session) -> TokenResponse:
     settings = get_settings()
     access_token, session = create_access_token(user_id=user_id, tenant_id=tenant_id, role=role)
@@ -57,6 +73,15 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenRe
     db.add(TenantMembership(tenant_id=tenant.id, user_id=user.id, role="admin"))
     try:
         response = _token_response(user.id, tenant.id, "admin", db)
+        audit_record(
+            db,
+            tenant_id=tenant.id,
+            actor_id=user.id,
+            action="auth.registered",
+            resource_type="user",
+            resource_id=user.id,
+            metadata={"email": email},
+        )
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -65,10 +90,31 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenRe
 
 
 @router.post("/token", response_model=TokenResponse)
-def token(payload: TokenRequest, db: Session = Depends(get_db)) -> TokenResponse:
+def token(payload: TokenRequest, request: Request, db: Session = Depends(get_db)) -> TokenResponse:
     email = payload.email.strip().lower()
     user = db.scalar(select(User).where(User.email == email))
     if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
+        if user is not None:
+            tenant_id = payload.tenant_id
+            if tenant_id is None:
+                first = db.scalar(
+                    select(TenantMembership)
+                    .where(TenantMembership.user_id == user.id)
+                    .order_by(TenantMembership.created_at)
+                )
+                tenant_id = first.tenant_id if first is not None else None
+            if tenant_id is not None:
+                audit_record(
+                    db,
+                    tenant_id=tenant_id,
+                    actor_id=user.id,
+                    action="auth.login_failed",
+                    resource_type="user",
+                    resource_id=user.id,
+                    metadata={"email": email},
+                    request_id=request.state.request_id,
+                )
+                db.commit()
         raise HTTPException(status_code=401, detail="invalid email or password")
     memberships = db.scalars(
         select(TenantMembership).where(TenantMembership.user_id == user.id).order_by(TenantMembership.created_at)
@@ -82,16 +128,36 @@ def token(payload: TokenRequest, db: Session = Depends(get_db)) -> TokenResponse
     else:
         raise HTTPException(status_code=409, detail="tenant_id is required for multi-tenant users")
     response = _token_response(user.id, membership.tenant_id, membership.role, db)
+    audit_record(
+        db,
+        tenant_id=membership.tenant_id,
+        actor_id=user.id,
+        action="auth.login",
+        resource_type="user",
+        resource_id=user.id,
+        metadata={"email": email},
+        request_id=request.state.request_id,
+    )
     db.commit()
     return response
 
 
 @router.post("/logout", status_code=204)
 def logout(
+    request: Request,
     principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db),
 ) -> None:
     revoke_session(db, principal.session_id)
+    audit_record(
+        db,
+        tenant_id=principal.tenant_id,
+        actor_id=principal.user_id,
+        action="auth.logout",
+        resource_type="auth_session",
+        resource_id=principal.session_id,
+        request_id=request.state.request_id,
+    )
     db.commit()
 
 
@@ -109,11 +175,15 @@ def me(principal: Principal = Depends(require_principal), db: Session = Depends(
 
 
 @router.get("/members", response_model=list[MemberResponse])
+
+
 def list_members(
+    request: Request,
     principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db),
 ) -> list[MemberResponse]:
     if principal.role != "admin":
+        _forbidden(db, request, principal, "/api/v1/auth/members")
         raise HTTPException(status_code=403, detail="admin role required")
     rows = db.execute(
         select(TenantMembership, User)
@@ -140,6 +210,7 @@ def add_member(
     db: Session = Depends(get_db),
 ) -> MemberResponse:
     if principal.role != "admin":
+        _forbidden(db, request, principal, "/api/v1/auth/members")
         raise HTTPException(status_code=403, detail="admin role required")
     email = payload.email.strip().lower()
     user = db.scalar(select(User).where(User.email == email))
@@ -178,6 +249,7 @@ def update_member_role(
     db: Session = Depends(get_db),
 ) -> MemberResponse:
     if principal.role != "admin":
+        _forbidden(db, request, principal, f"/api/v1/auth/members/{user_id}")
         raise HTTPException(status_code=403, detail="admin role required")
     membership = db.scalar(
         select(TenantMembership).where(

@@ -2,24 +2,76 @@
 Financial Core Integration for Construction Module.
 
 All financial impacts from construction operations must go through Financial Core
-by creating journal entries via the financial service. Direct GL/Journal modifications
+by creating journal entries via the financial service. Direct GL/Journal mutations
 are prohibited.
+
+Posting is idempotent per business reference: calling a record_* function twice
+with the same source document returns the existing journal entry instead of
+creating a duplicate posting.
 """
 
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
+from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..financial.models import JournalEntry
 from ..financial.schemas import JournalEntryCreate, JournalLineCreate
 from ..financial.service import commit_financial, create_draft, post_entry
+from . import service as construction_service
 from .models import (
     GoodsReceipt,
     Payment,
     ProgressClaim,
+    ProjectFinancialAccounts,
     SupplierInvoice,
 )
+
+
+def get_project_accounts(
+    db: Session, tenant_id: UUID, project_id: UUID
+) -> ProjectFinancialAccounts | None:
+    """
+    Retrieve project-specific financial account configuration.
+    Returns None if not configured - caller should handle appropriately.
+    """
+    return db.scalar(
+        select(ProjectFinancialAccounts).where(
+            ProjectFinancialAccounts.tenant_id == tenant_id,
+            ProjectFinancialAccounts.project_id == project_id,
+        )
+    )
+
+
+def ensure_project_accounts_configured(
+    db: Session, tenant_id: UUID, project_id: UUID
+) -> ProjectFinancialAccounts:
+    """
+    Ensure project has financial accounts configured, raise if not.
+    """
+    accounts = get_project_accounts(db, tenant_id, project_id)
+    if accounts is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Project {project_id} does not have financial accounts configured. "
+                "Configure project financial accounts before processing financial transactions."
+            ),
+        )
+    return accounts
+
+
+def _find_existing_entry(db: Session, *, tenant_id: UUID, reference: str) -> JournalEntry | None:
+    """Return an already-posted entry for a business reference, if any."""
+    return db.scalar(
+        select(JournalEntry).where(
+            JournalEntry.tenant_id == tenant_id,
+            JournalEntry.reference == reference,
+        )
+    )
 
 
 def _create_journal_entry(
@@ -34,7 +86,14 @@ def _create_journal_entry(
     lines: list[JournalLineCreate],
     request_id: str | None = None,
 ) -> UUID:
-    """Create and post a journal entry through Financial Core."""
+    """Create and post a journal entry through Financial Core.
+
+    Idempotent: a journal entry already recorded for (tenant_id, reference)
+    is returned as-is; no duplicate posting is created.
+    """
+    existing = _find_existing_entry(db, tenant_id=tenant_id, reference=reference)
+    if existing is not None:
+        return existing.id
     payload = JournalEntryCreate(
         accounting_date=accounting_date,
         currency=currency,
@@ -46,6 +105,20 @@ def _create_journal_entry(
     posted = post_entry(db, tenant_id=tenant_id, user_id=user_id, entry_id=entry.id, request_id=request_id)
     commit_financial(db)
     return posted.id
+
+
+def _resolve_project_id_for_claim(db: Session, *, tenant_id: UUID, claim: ProgressClaim) -> UUID:
+    contract = construction_service.get_contract(db, tenant_id=tenant_id, contract_id=claim.contract_id)
+    return contract.project_id
+
+
+def _resolve_project_id_for_procurement(
+    db: Session, *, tenant_id: UUID, procurement_id: UUID
+) -> UUID:
+    procurement = construction_service.get_procurement(
+        db, tenant_id=tenant_id, procurement_id=procurement_id
+    )
+    return procurement.project_id
 
 
 def record_progress_claim_payment(
@@ -60,29 +133,33 @@ def record_progress_claim_payment(
 ) -> UUID:
     """
     Record payment for a progress claim.
-    
+
     Creates a journal entry:
-    - Debit: Accounts Receivable (or Cash/Bank)
+    - Debit: Accounts Receivable
     - Credit: Construction Revenue
     """
+    if claim.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="progress claim not found")
     if claim.total_amount <= 0:
         raise ValueError("claim amount must be greater than zero")
-    
+    project_id = _resolve_project_id_for_claim(db, tenant_id=tenant_id, claim=claim)
+    accounts = ensure_project_accounts_configured(db, tenant_id, project_id)
+
     lines = [
         JournalLineCreate(
-            account_id=claim.contract.project.client_receivable_account_id,  # To be configured
+            account_id=accounts.accounts_receivable_account_id,
             debit=claim.total_amount,
             credit=Decimal("0"),
             description=f"Progress claim {claim.claim_number} payment received",
         ),
         JournalLineCreate(
-            account_id=claim.contract.project.construction_revenue_account_id,  # To be configured
+            account_id=accounts.construction_revenue_account_id,
             debit=Decimal("0"),
             credit=claim.total_amount,
             description=f"Revenue recognized for progress claim {claim.claim_number}",
         ),
     ]
-    
+
     return _create_journal_entry(
         db,
         tenant_id=tenant_id,
@@ -108,30 +185,38 @@ def record_supplier_invoice(
 ) -> UUID:
     """
     Record a supplier invoice (AP entry).
-    
+
     Creates a journal entry:
-    - Debit: Construction Materials/Expenses (based on invoice lines)
+    - Debit: Construction Materials
     - Credit: Accounts Payable
     """
+    if invoice.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="supplier invoice not found")
     if invoice.total_amount <= 0:
         raise ValueError("invoice amount must be greater than zero")
-    
-    # For simplicity, using a single expense account - in reality would split by line
+    purchase_order = construction_service.get_purchase_order(
+        db, tenant_id=tenant_id, po_id=invoice.purchase_order_id
+    )
+    project_id = _resolve_project_id_for_procurement(
+        db, tenant_id=tenant_id, procurement_id=purchase_order.procurement_id
+    )
+    accounts = ensure_project_accounts_configured(db, tenant_id, project_id)
+
     lines = [
         JournalLineCreate(
-            account_id=invoice.purchase_order.procurement.project.materials_account_id,  # To be configured
+            account_id=accounts.materials_account_id,
             debit=invoice.total_amount,
             credit=Decimal("0"),
-            description=f"Supplier invoice {invoice.invoice_number} for PO {invoice.purchase_order.po_number}",
+            description=f"Supplier invoice {invoice.invoice_number} for PO {purchase_order.po_number}",
         ),
         JournalLineCreate(
-            account_id=invoice.purchase_order.procurement.project.accounts_payable_account_id,  # To be configured
+            account_id=accounts.accounts_payable_account_id,
             debit=Decimal("0"),
             credit=invoice.total_amount,
             description=f"AP for supplier invoice {invoice.invoice_number}",
         ),
     ]
-    
+
     return _create_journal_entry(
         db,
         tenant_id=tenant_id,
@@ -157,29 +242,41 @@ def record_payment(
 ) -> UUID:
     """
     Record a payment to supplier.
-    
+
     Creates a journal entry:
     - Debit: Accounts Payable
     - Credit: Cash/Bank
     """
+    if payment.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="payment not found")
     if payment.amount <= 0:
         raise ValueError("payment amount must be greater than zero")
-    
+    invoice = construction_service.get_supplier_invoice(
+        db, tenant_id=tenant_id, invoice_id=payment.supplier_invoice_id
+    )
+    purchase_order = construction_service.get_purchase_order(
+        db, tenant_id=tenant_id, po_id=invoice.purchase_order_id
+    )
+    project_id = _resolve_project_id_for_procurement(
+        db, tenant_id=tenant_id, procurement_id=purchase_order.procurement_id
+    )
+    accounts = ensure_project_accounts_configured(db, tenant_id, project_id)
+
     lines = [
         JournalLineCreate(
-            account_id=payment.supplier_invoice.purchase_order.procurement.project.accounts_payable_account_id,  # To be configured
+            account_id=accounts.accounts_payable_account_id,
             debit=payment.amount,
             credit=Decimal("0"),
-            description=f"Payment {payment.payment_number} for invoice {payment.supplier_invoice.invoice_number}",
+            description=f"Payment {payment.payment_number} for invoice {invoice.invoice_number}",
         ),
         JournalLineCreate(
-            account_id=payment.supplier_invoice.purchase_order.procurement.project.cash_account_id,  # To be configured
+            account_id=accounts.cash_account_id,
             debit=Decimal("0"),
             credit=payment.amount,
             description=f"Cash outflow for payment {payment.payment_number}",
         ),
     ]
-    
+
     return _create_journal_entry(
         db,
         tenant_id=tenant_id,
@@ -205,32 +302,52 @@ def record_goods_receipt(
 ) -> UUID:
     """
     Record goods receipt (inventory/accrual entry).
-    
+
     Creates a journal entry:
-    - Debit: Inventory/WIP (Construction Materials)
+    - Debit: Inventory (Construction Materials)
     - Credit: Goods Received Not Invoiced (GRNI) / Accrued Payables
     """
-    # Calculate total from lines
-    total = sum((line.quantity_accepted * line.po_line.unit_price for line in grn.lines), Decimal("0"))
-    
+    if grn.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="goods receipt not found")
+    purchase_order = construction_service.get_purchase_order(
+        db, tenant_id=tenant_id, po_id=grn.purchase_order_id
+    )
+    project_id = _resolve_project_id_for_procurement(
+        db, tenant_id=tenant_id, procurement_id=purchase_order.procurement_id
+    )
+    accounts = ensure_project_accounts_configured(db, tenant_id, project_id)
+
+    po_lines = construction_service.list_purchase_order_lines(
+        db, tenant_id=tenant_id, po_id=purchase_order.id
+    )
+    unit_price_by_line = {line.id: line.unit_price for line in po_lines}
+    grn_lines = construction_service.list_goods_receipt_lines(
+        db, tenant_id=tenant_id, grn_id=grn.id
+    )
+    total = sum(
+        (line.quantity_accepted * unit_price_by_line.get(line.po_line_id, Decimal("0"))
+         for line in grn_lines),
+        Decimal("0"),
+    )
+
     if total <= 0:
         raise ValueError("GRN total amount must be greater than zero")
-    
+
     lines = [
         JournalLineCreate(
-            account_id=grn.purchase_order.procurement.project.inventory_account_id,  # To be configured
+            account_id=accounts.inventory_account_id,
             debit=total,
             credit=Decimal("0"),
-            description=f"GRN {grn.grn_number} for PO {grn.purchase_order.po_number}",
+            description=f"GRN {grn.grn_number} for PO {purchase_order.po_number}",
         ),
         JournalLineCreate(
-            account_id=grn.purchase_order.procurement.project.grni_account_id,  # To be configured
+            account_id=accounts.grni_account_id,
             debit=Decimal("0"),
             credit=total,
             description=f"GRNI accrual for GRN {grn.grn_number}",
         ),
     ]
-    
+
     return _create_journal_entry(
         db,
         tenant_id=tenant_id,
@@ -242,91 +359,3 @@ def record_goods_receipt(
         lines=lines,
         request_id=request_id,
     )
-
-
-# ---------------------------------------------------------------------------
-# Project Account Configuration (to be set up per project)
-# ---------------------------------------------------------------------------
-
-class ProjectFinancialAccounts:
-    """Account IDs for a construction project's financial accounts.
-    
-    These should be configured per project/tenant during project setup.
-    """
-    def __init__(
-        self,
-        tenant_id: UUID,
-        project_id: UUID,
-        cash_account_id: UUID,
-        accounts_receivable_account_id: UUID,
-        accounts_payable_account_id: UUID,
-        inventory_account_id: UUID,
-        grni_account_id: UUID,
-        materials_account_id: UUID,
-        construction_revenue_account_id: UUID,
-        labor_account_id: UUID,
-        equipment_account_id: UUID,
-        subcontractor_account_id: UUID,
-        overhead_account_id: UUID,
-        wip_account_id: UUID,
-    ):
-        self.tenant_id = tenant_id
-        self.project_id = project_id
-        self.cash_account_id = cash_account_id
-        self.accounts_receivable_account_id = accounts_receivable_account_id
-        self.accounts_payable_account_id = accounts_payable_account_id
-        self.inventory_account_id = inventory_account_id
-        self.grni_account_id = grni_account_id
-        self.materials_account_id = materials_account_id
-        self.construction_revenue_account_id = construction_revenue_account_id
-        self.labor_account_id = labor_account_id
-        self.equipment_account_id = equipment_account_id
-        self.subcontractor_account_id = subcontractor_account_id
-        self.overhead_account_id = overhead_account_id
-        self.wip_account_id = wip_account_id
-
-
-def get_project_accounts(db: Session, tenant_id: UUID, project_id: UUID) -> ProjectFinancialAccounts | None:
-    """
-    Retrieve project-specific financial account configuration.
-    Returns None if not configured - caller should handle appropriately.
-    """
-    from .models import ProjectFinancialAccounts as PFAModel
-    
-    accounts = db.query(PFAModel).filter(
-        PFAModel.tenant_id == tenant_id,
-        PFAModel.project_id == project_id
-    ).first()
-    
-    if accounts is None:
-        return None
-    
-    return ProjectFinancialAccounts(
-        tenant_id=accounts.tenant_id,
-        project_id=accounts.project_id,
-        cash_account_id=accounts.cash_account_id,
-        accounts_receivable_account_id=accounts.accounts_receivable_account_id,
-        accounts_payable_account_id=accounts.accounts_payable_account_id,
-        inventory_account_id=accounts.inventory_account_id,
-        grni_account_id=accounts.grni_account_id,
-        materials_account_id=accounts.materials_account_id,
-        construction_revenue_account_id=accounts.construction_revenue_account_id,
-        labor_account_id=accounts.labor_account_id,
-        equipment_account_id=accounts.equipment_account_id,
-        subcontractor_account_id=accounts.subcontractor_account_id,
-        overhead_account_id=accounts.overhead_account_id,
-        wip_account_id=accounts.wip_account_id,
-    )
-
-
-def ensure_project_accounts_configured(db: Session, tenant_id: UUID, project_id: UUID) -> ProjectFinancialAccounts:
-    """
-    Ensure project has financial accounts configured, raise if not.
-    """
-    accounts = get_project_accounts(db, tenant_id, project_id)
-    if accounts is None:
-        raise ValueError(
-            f"Project {project_id} does not have financial accounts configured. "
-            "Please configure project financial accounts before processing financial transactions."
-        )
-    return accounts

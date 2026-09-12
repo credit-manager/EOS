@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     jwt_secret: str = "development-only-secret"
     access_token_ttl_seconds: int = Field(default=3600, ge=300, le=86400)
+    rate_limit_auth_per_minute: int = Field(default=120, ge=1, le=10000)
+    max_request_body_bytes: int = Field(default=1048576, ge=1024, le=104857600)
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 
