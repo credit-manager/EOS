@@ -291,11 +291,11 @@ def get_project_accounts(db: Session, tenant_id: UUID, project_id: UUID) -> Proj
     Retrieve project-specific financial account configuration.
     Returns None if not configured - caller should handle appropriately.
     """
-    from ..app.construction.models import ProjectFinancialAccounts
+    from .models import ProjectFinancialAccounts as PFAModel
     
-    accounts = db.query(ProjectFinancialAccounts).filter(
-        ProjectFinancialAccounts.tenant_id == tenant_id,
-        ProjectFinancialAccounts.project_id == project_id
+    accounts = db.query(PFAModel).filter(
+        PFAModel.tenant_id == tenant_id,
+        PFAModel.project_id == project_id
     ).first()
     
     if accounts is None:
