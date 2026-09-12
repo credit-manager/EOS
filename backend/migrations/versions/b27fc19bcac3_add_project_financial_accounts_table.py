@@ -19,7 +19,7 @@ def upgrade() -> None:
     op.create_table(
         "construction_project_financial_accounts",
         sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("tenant_id", sa.String(36), nullable=False),
+        sa.Column("tenant_id", sa.Uuid(), nullable=False),
         sa.Column("project_id", sa.Uuid(), nullable=False),
         sa.Column("cash_account_id", sa.Uuid(), nullable=False),
         sa.Column("accounts_receivable_account_id", sa.Uuid(), nullable=False),

@@ -715,8 +715,8 @@ class ProjectFinancialAccounts(Base):
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
-    tenant_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    tenant_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
     )
     project_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("construction_projects.id", ondelete="CASCADE"), nullable=False, index=True
