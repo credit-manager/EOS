@@ -10,7 +10,7 @@ Proves construction financial postings go through Financial Core with:
 
 from datetime import date
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -349,6 +349,211 @@ def test_inactive_account_rejected_without_posting() -> None:
         assert _count_entries(db, ctx["tenant_id"]) == before
     finally:
         _close(ctx)
+
+
+def test_concurrent_duplicate_postings_create_single_entry(tmp_path) -> None:
+    """Eight threads posting the same invoice concurrently.
+
+    Uses an isolated file-backed SQLite database with one connection per
+    thread: the suite's shared in-memory StaticPool connection cannot be
+    shared across threads. Exactly one journal entry must exist afterwards
+    and every thread must observe the same entry id.
+    """
+
+    import sqlite3
+    import threading
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from backend.app.construction import service as construction_service
+    from backend.app.construction.models import (
+        Procurement,
+        ProjectFinancialAccounts,
+        PurchaseOrder,
+        SupplierInvoice,
+    )
+    from backend.app.db import Base
+
+    file_db = create_engine(f"sqlite:///{tmp_path}/race.db")
+    Base.metadata.create_all(bind=file_db)
+    factory = sessionmaker(bind=file_db, autoflush=False, autocommit=False)
+    tenant_id = uuid4()
+    user_id = uuid4()
+    reference = "INV-RACE-1"
+
+    setup = factory()
+    try:
+        materials = Account(
+            tenant_id=tenant_id, code="MAT", name="Materials",
+            account_type="expense", currency="USD", is_active=True,
+        )
+        payable = Account(
+            tenant_id=tenant_id, code="AP", name="Payables",
+            account_type="liability", currency="USD", is_active=True,
+        )
+        setup.add_all([materials, payable])
+        setup.flush()
+        procurement = Procurement(
+            tenant_id=tenant_id, project_id=uuid4(),
+            requisition_number="REQ-RACE", title="Race procurement",
+            requested_by=user_id,
+        )
+        setup.add(procurement)
+        setup.flush()
+        purchase_order = PurchaseOrder(
+            tenant_id=tenant_id, procurement_id=procurement.id,
+            supplier_id=user_id, po_number="PO-RACE", created_by=user_id,
+        )
+        setup.add(purchase_order)
+        setup.flush()
+        setup.add(
+            ProjectFinancialAccounts(
+                tenant_id=tenant_id, project_id=procurement.project_id,
+                cash_account_id=uuid4(),
+                accounts_receivable_account_id=uuid4(),
+                accounts_payable_account_id=payable.id,
+                inventory_account_id=uuid4(), grni_account_id=uuid4(),
+                materials_account_id=materials.id,
+                construction_revenue_account_id=uuid4(),
+                labor_account_id=uuid4(), equipment_account_id=uuid4(),
+                subcontractor_account_id=uuid4(), overhead_account_id=uuid4(),
+                wip_account_id=uuid4(),
+            )
+        )
+        invoice = SupplierInvoice(
+            tenant_id=tenant_id, purchase_order_id=purchase_order.id,
+            invoice_number="RACE-1", supplier_invoice_number="SUP-RACE-1",
+            invoice_date=_TODAY, due_date=_TODAY, total_amount=Decimal("1000"),
+            submitted_by=user_id,
+        )
+        setup.add(invoice)
+        setup.commit()
+        invoice_id = invoice.id
+    finally:
+        setup.close()
+
+    barrier = threading.Barrier(8)
+    results: list = []
+    lock = threading.Lock()
+
+    def worker() -> None:
+        barrier.wait()
+        session = factory()
+        try:
+            for _ in range(10):
+                try:
+                    current = construction_service.get_supplier_invoice(
+                        session, tenant_id=tenant_id, invoice_id=invoice_id
+                    )
+                    entry_id = integration.record_supplier_invoice(
+                        session,
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                        invoice=current,
+                        accounting_date=_TODAY,
+                        currency="USD",
+                    )
+                except sqlite3.OperationalError as exc:
+                    # SQLite serializes file writers; a transient lock wait
+                    # is an engine artifact (PostgreSQL uses row locks).
+                    if "locked" not in str(exc).lower():
+                        raise
+                    session.rollback()
+                    continue
+                with lock:
+                    results.append(entry_id)
+                return
+            with lock:
+                results.append("UNRESOLVED")
+        finally:
+            session.close()
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    check = factory()
+    try:
+        assert len(results) == 8
+        assert set(results) != {"UNRESOLVED"}
+        assert len(set(results)) == 1
+        entries = (
+            check.scalars(
+                select(JournalEntry).where(
+                    JournalEntry.tenant_id == tenant_id,
+                    JournalEntry.reference == reference,
+                )
+            ).all()
+        )
+        assert len(entries) == 1
+        assert entries[0].id == results[0]
+        assert entries[0].status == "posted"
+        posted_lines = check.scalars(
+            select(JournalLine).where(JournalLine.journal_entry_id == entries[0].id)
+        ).all()
+        assert sum((line.debit for line in posted_lines), Decimal("0")) == Decimal("1000")
+        assert sum((line.credit for line in posted_lines), Decimal("0")) == Decimal("1000")
+    finally:
+        check.close()
+        file_db.dispose()
+
+
+def test_write_conflict_resolves_to_winning_entry(monkeypatch) -> None:
+    from sqlalchemy.exc import IntegrityError
+
+    ctx = _setup_chain("conflict")
+    db = ctx["db"]
+    try:
+        first = integration.record_supplier_invoice(
+            db, tenant_id=ctx["tenant_id"], user_id=ctx["user_id"],
+            invoice=ctx["invoice"], accounting_date=_TODAY, currency="USD",
+        )
+        real_find = integration._find_existing_entry
+        calls = {"count": 0}
+
+        def flaky_find(db_arg, *, tenant_id, reference):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                return None  # simulate stale read losing the race
+
+            return real_find(db_arg, tenant_id=tenant_id, reference=reference)
+
+        def colliding_draft(*args, **kwargs):
+            raise IntegrityError("INSERT", {}, Exception("duplicate key"))
+
+        monkeypatch.setattr(integration, "_find_existing_entry", flaky_find)
+        monkeypatch.setattr(integration, "create_draft", colliding_draft)
+        second = integration.record_supplier_invoice(
+            db, tenant_id=ctx["tenant_id"], user_id=ctx["user_id"],
+            invoice=ctx["invoice"], accounting_date=_TODAY, currency="USD",
+        )
+        assert second == first
+        assert _count_entries(db, ctx["tenant_id"]) == 1
+    finally:
+        _close(ctx)
+
+
+def test_same_reference_in_different_tenants_does_not_collide() -> None:
+    ctx_a = _setup_chain("refa")
+    ctx_b = _setup_chain("refb")
+    try:
+        entry_a = integration.record_payment(
+            ctx_a["db"], tenant_id=ctx_a["tenant_id"], user_id=ctx_a["user_id"],
+            payment=ctx_a["payment"], accounting_date=_TODAY, currency="USD",
+        )
+        entry_b = integration.record_payment(
+            ctx_b["db"], tenant_id=ctx_b["tenant_id"], user_id=ctx_b["user_id"],
+            payment=ctx_b["payment"], accounting_date=_TODAY, currency="USD",
+        )
+        assert entry_a != entry_b
+        assert _count_entries(ctx_a["db"], ctx_a["tenant_id"]) == 1
+        assert _count_entries(ctx_b["db"], ctx_b["tenant_id"]) == 1
+    finally:
+        _close(ctx_a)
+        _close(ctx_b)
 
 
 def test_payment_posts_ap_to_cash() -> None:

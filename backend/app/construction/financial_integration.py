@@ -16,6 +16,7 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..financial.models import JournalEntry
@@ -89,7 +90,10 @@ def _create_journal_entry(
     """Create and post a journal entry through Financial Core.
 
     Idempotent: a journal entry already recorded for (tenant_id, reference)
-    is returned as-is; no duplicate posting is created.
+    is returned as-is; no duplicate posting is created. Atomicity is enforced
+    by UNIQUE (tenant_id, reference): a concurrent duplicate insert raises
+    IntegrityError, in which case the transaction rolls back and the winning
+    entry is returned deterministically.
     """
     existing = _find_existing_entry(db, tenant_id=tenant_id, reference=reference)
     if existing is not None:
@@ -101,9 +105,34 @@ def _create_journal_entry(
         reference=reference,
         lines=lines,
     )
-    entry = create_draft(db, tenant_id=tenant_id, user_id=user_id, payload=payload, request_id=request_id)
-    posted = post_entry(db, tenant_id=tenant_id, user_id=user_id, entry_id=entry.id, request_id=request_id)
-    commit_financial(db)
+    try:
+        entry = create_draft(
+            db, tenant_id=tenant_id, user_id=user_id, payload=payload, request_id=request_id
+        )
+        posted = post_entry(
+            db, tenant_id=tenant_id, user_id=user_id, entry_id=entry.id, request_id=request_id
+        )
+        commit_financial(db)
+    except IntegrityError:
+        # Lost a concurrent race on (tenant_id, reference) or entry_number.
+        # The transaction is rolled back; return the winner if our reference
+        # won elsewhere, otherwise surface a genuine write conflict.
+        db.rollback()
+        winner = _find_existing_entry(db, tenant_id=tenant_id, reference=reference)
+        if winner is not None:
+            return winner.id
+        raise HTTPException(
+            status_code=409, detail="financial write conflicted with another transaction"
+        )
+    except HTTPException as exc:
+        # commit_financial maps an IntegrityError to HTTP 409 after rolling
+        # back; resolve it to the winning entry the same way.
+        if exc.status_code != 409 or "conflicted" not in exc.detail:
+            raise
+        winner = _find_existing_entry(db, tenant_id=tenant_id, reference=reference)
+        if winner is not None:
+            return winner.id
+        raise
     return posted.id
 
 

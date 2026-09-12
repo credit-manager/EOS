@@ -47,6 +47,9 @@ class JournalEntry(Base):
     __tablename__ = "financial_journal_entries"
     __table_args__ = (
         UniqueConstraint("tenant_id", "entry_number", name="uq_financial_journal_tenant_number"),
+        UniqueConstraint(
+            "tenant_id", "reference", name="uq_financial_journal_tenant_reference"
+        ),
         CheckConstraint("status IN ('draft', 'posted')", name="ck_financial_journal_status"),
     )
 
