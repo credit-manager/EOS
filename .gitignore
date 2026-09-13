@@ -17,3 +17,8 @@ htmlcov/
 .DS_Store
 .vscode/
 .idea/
+*.db
+*.db-journal
+*.egg-info/
+build/
+frontend/tsconfig.tsbuildinfo

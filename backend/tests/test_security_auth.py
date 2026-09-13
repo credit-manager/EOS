@@ -41,7 +41,12 @@ def test_invalid_password_and_unknown_user_are_indistinguishable() -> None:
     )
     assert wrong_password.status_code == 401
     assert unknown_user.status_code == 401
-    assert wrong_password.json() == unknown_user.json()
+    without_request_id = lambda body: {  # noqa: E731
+        k: v for k, v in body.items() if k != "request_id"
+    }
+    assert without_request_id(wrong_password.json()) == without_request_id(
+        unknown_user.json()
+    )
 
 
 def test_inactive_user_cannot_authenticate() -> None:
@@ -162,7 +167,7 @@ def test_auth_rate_limit_blocks_credential_burst(monkeypatch) -> None:
     monkeypatch.setattr(
         main_module.settings, "rate_limit_auth_per_minute", 3, raising=False
     )
-    main_module._RATE_LIMIT_STATE.clear()
+    main_module.reset_rate_limit_state()
     try:
         for _ in range(3):
             response = client.post(
@@ -177,7 +182,7 @@ def test_auth_rate_limit_blocks_credential_burst(monkeypatch) -> None:
         assert blocked.status_code == 429
         assert blocked.headers.get("Retry-After") is not None
     finally:
-        main_module._RATE_LIMIT_STATE.clear()
+        main_module.reset_rate_limit_state()
 
 
 def test_login_success_and_failure_are_audited() -> None:

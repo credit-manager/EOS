@@ -32,13 +32,13 @@ def _headers(token: dict) -> dict:
 
 
 def test_anonymous_requests_are_rejected() -> None:
-    assert client.get("/api/construction/projects").status_code == 401
+    assert client.get("/api/v1/construction/projects").status_code == 401
     assert client.get("/api/v1/financial/accounts").status_code == 401
     assert client.get("/api/v1/workflows/definitions").status_code == 401
     assert client.get("/api/v1/audit/events").status_code == 401
     assert client.get("/api/v1/metadata/entities").status_code == 401
     forged = client.get(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers={"Authorization": "Bearer not-a-token"},
     )
     assert forged.status_code == 401
@@ -97,7 +97,7 @@ def test_cross_tenant_construction_access_is_denied() -> None:
     headers_b = _headers(admin_b)
 
     project = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         json={"code": "S3-P1", "name": "Secret Project"},
         headers=headers_a,
     )
@@ -105,15 +105,15 @@ def test_cross_tenant_construction_access_is_denied() -> None:
     project_id = project.json()["id"]
 
     assert (
-        client.get(f"/api/construction/projects/{project_id}", headers=headers_b).status_code
+        client.get(f"/api/v1/construction/projects/{project_id}", headers=headers_b).status_code
         == 404
     )
-    listing = client.get("/api/construction/projects", headers=headers_b)
+    listing = client.get("/api/v1/construction/projects", headers=headers_b)
     assert listing.status_code == 200
     assert all(item["id"] != project_id for item in listing.json())
 
     foreign_contract = client.post(
-        "/api/construction/contracts",
+        "/api/v1/construction/contracts",
         json={
             "project_id": project_id,
             "contract_number": "S3-C1",
@@ -125,7 +125,7 @@ def test_cross_tenant_construction_access_is_denied() -> None:
     assert foreign_contract.status_code in (403, 404, 409, 422)
 
     tamper = client.patch(
-        f"/api/construction/projects/{project_id}",
+        f"/api/v1/construction/projects/{project_id}",
         json={"name": "Hijacked"},
         headers=headers_b,
     )
@@ -138,14 +138,14 @@ def test_injection_strings_are_treated_as_data() -> None:
     headers = _headers(admin)
     payload = "' OR '1'='1'; --"
     response = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         json={"code": "S4-P1", "name": payload},
         headers=headers,
     )
     assert response.status_code == 201
     assert response.json()["name"] == payload
     fetched = client.get(
-        f"/api/construction/projects/{response.json()['id']}", headers=headers
+        f"/api/v1/construction/projects/{response.json()['id']}", headers=headers
     )
     assert fetched.status_code == 200
     assert fetched.json()["name"] == payload
@@ -154,7 +154,7 @@ def test_injection_strings_are_treated_as_data() -> None:
 def test_malformed_identifiers_are_rejected_without_leakage() -> None:
     admin = _register("s4-malformed@example.com")
     headers = _headers(admin)
-    response = client.get("/api/construction/projects/not-a-uuid", headers=headers)
+    response = client.get("/api/v1/construction/projects/not-a-uuid", headers=headers)
     assert response.status_code == 422
     body = response.json()
     assert "detail" in body
@@ -186,7 +186,7 @@ def test_error_responses_do_not_leak_internals() -> None:
     admin = _register("s4-errors@example.com")
     headers = _headers(admin)
     missing = client.get(
-        "/api/construction/projects/00000000-0000-0000-0000-000000000000",
+        "/api/v1/construction/projects/00000000-0000-0000-0000-000000000000",
         headers=headers,
     )
     assert missing.status_code == 404

@@ -28,7 +28,7 @@ def test_create_project() -> None:
     user = _register("construction-proj@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     resp = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={
             "code": "PRJ-001",
@@ -51,16 +51,16 @@ def test_list_projects() -> None:
     user = _register("construction-list-proj@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-L1", "name": "Project One"},
     )
     client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-L2", "name": "Project Two"},
     )
-    resp = client.get("/api/construction/projects", headers=headers)
+    resp = client.get("/api/v1/construction/projects", headers=headers)
     assert resp.status_code == 200
     assert len(resp.json()) >= 2
 
@@ -69,12 +69,12 @@ def test_update_project() -> None:
     user = _register("construction-upd-proj@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-U1", "name": "Old Name"},
     ).json()
     resp = client.patch(
-        f"/api/construction/projects/{proj['id']}",
+        f"/api/v1/construction/projects/{proj['id']}",
         headers=headers,
         json={"name": "New Name", "status": "active"},
     )
@@ -87,11 +87,11 @@ def test_delete_project() -> None:
     user = _register("construction-del-proj@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-D1", "name": "Delete Me"},
     ).json()
-    resp = client.delete(f"/api/construction/projects/{proj['id']}", headers=headers)
+    resp = client.delete(f"/api/v1/construction/projects/{proj['id']}", headers=headers)
     assert resp.status_code == 204
 
 
@@ -99,12 +99,12 @@ def test_duplicate_project_code_rejected() -> None:
     user = _register("construction-dup-proj@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-DUP", "name": "First"},
     )
     resp = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-DUP", "name": "Second"},
     )
@@ -117,11 +117,11 @@ def test_project_tenant_scoped() -> None:
     headers_a = {"Authorization": f"Bearer {user_a['access_token']}"}
     headers_b = {"Authorization": f"Bearer {user_b['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers_a,
         json={"code": "PRJ-SC", "name": "Scoped Project"},
     ).json()
-    resp = client.get(f"/api/construction/projects/{proj['id']}", headers=headers_b)
+    resp = client.get(f"/api/v1/construction/projects/{proj['id']}", headers=headers_b)
     assert resp.status_code in {403, 404}
 
 
@@ -129,7 +129,7 @@ def test_invalid_project_status_rejected() -> None:
     user = _register("construction-invalid-status@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     resp = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-INV", "name": "Bad Status", "status": "invalid_status"},
     )
@@ -144,12 +144,12 @@ def test_create_contract() -> None:
     user = _register("construction-contract@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-C1", "name": "Contract Test"},
     ).json()
     resp = client.post(
-        "/api/construction/contracts",
+        "/api/v1/construction/contracts",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -172,12 +172,12 @@ def test_list_contracts() -> None:
     user = _register("construction-list-con@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-CL", "name": "List Contracts"},
     ).json()
     client.post(
-        "/api/construction/contracts",
+        "/api/v1/construction/contracts",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -187,7 +187,7 @@ def test_list_contracts() -> None:
         },
     )
     resp = client.get(
-        f"/api/construction/contracts?project_id={proj['id']}", headers=headers
+        f"/api/v1/construction/contracts?project_id={proj['id']}", headers=headers
     )
     assert resp.status_code == 200
     assert len(resp.json()) >= 1
@@ -197,12 +197,12 @@ def test_update_contract() -> None:
     user = _register("construction-upd-con@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-UC", "name": "Update Contract"},
     ).json()
     con = client.post(
-        "/api/construction/contracts",
+        "/api/v1/construction/contracts",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -212,7 +212,7 @@ def test_update_contract() -> None:
         },
     ).json()
     resp = client.patch(
-        f"/api/construction/contracts/{con['id']}",
+        f"/api/v1/construction/contracts/{con['id']}",
         headers=headers,
         json={"title": "New Title", "status": "active"},
     )
@@ -225,12 +225,12 @@ def test_delete_draft_contract() -> None:
     user = _register("construction-del-con@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-DC", "name": "Delete Contract"},
     ).json()
     con = client.post(
-        "/api/construction/contracts",
+        "/api/v1/construction/contracts",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -239,7 +239,7 @@ def test_delete_draft_contract() -> None:
             "counterparty": "Party",
         },
     ).json()
-    resp = client.delete(f"/api/construction/contracts/{con['id']}", headers=headers)
+    resp = client.delete(f"/api/v1/construction/contracts/{con['id']}", headers=headers)
     assert resp.status_code == 204
 
 
@@ -247,12 +247,12 @@ def test_duplicate_contract_number_rejected() -> None:
     user = _register("construction-dup-con@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-DC2", "name": "Dup Contract"},
     ).json()
     client.post(
-        "/api/construction/contracts",
+        "/api/v1/construction/contracts",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -262,7 +262,7 @@ def test_duplicate_contract_number_rejected() -> None:
         },
     )
     resp = client.post(
-        "/api/construction/contracts",
+        "/api/v1/construction/contracts",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -278,12 +278,12 @@ def test_invalid_contract_type_rejected() -> None:
     user = _register("construction-inv-con-type@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-ICT", "name": "Invalid Type"},
     ).json()
     resp = client.post(
-        "/api/construction/contracts",
+        "/api/v1/construction/contracts",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -304,12 +304,12 @@ def test_create_boq() -> None:
     user = _register("construction-boq@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-BQ", "name": "BOQ Test"},
     ).json()
     con = client.post(
-        "/api/construction/contracts",
+        "/api/v1/construction/contracts",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -319,7 +319,7 @@ def test_create_boq() -> None:
         },
     ).json()
     resp = client.post(
-        "/api/construction/boqs",
+        "/api/v1/construction/boqs",
         headers=headers,
         json={"contract_id": con["id"], "version": 1},
     )
@@ -332,12 +332,12 @@ def test_add_boq_items() -> None:
     user = _register("construction-boq-items@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-BQI", "name": "BOQ Items"},
     ).json()
     con = client.post(
-        "/api/construction/contracts",
+        "/api/v1/construction/contracts",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -347,12 +347,12 @@ def test_add_boq_items() -> None:
         },
     ).json()
     boq = client.post(
-        "/api/construction/boqs",
+        "/api/v1/construction/boqs",
         headers=headers,
         json={"contract_id": con["id"], "version": 1},
     ).json()
     item = client.post(
-        f"/api/construction/boqs/{boq['id']}/items",
+        f"/api/v1/construction/boqs/{boq['id']}/items",
         headers=headers,
         json={
             "item_number": 1,
@@ -372,12 +372,12 @@ def test_boq_status_transition() -> None:
     user = _register("construction-boq-status@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-BS", "name": "BOQ Status"},
     ).json()
     con = client.post(
-        "/api/construction/contracts",
+        "/api/v1/construction/contracts",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -387,19 +387,19 @@ def test_boq_status_transition() -> None:
         },
     ).json()
     boq = client.post(
-        "/api/construction/boqs",
+        "/api/v1/construction/boqs",
         headers=headers,
         json={"contract_id": con["id"], "version": 1},
     ).json()
     resp = client.post(
-        f"/api/construction/boqs/{boq['id']}/status?status=submitted",
+        f"/api/v1/construction/boqs/{boq['id']}/status?status=submitted",
         headers=headers,
     )
     assert resp.status_code == 200
     assert resp.json()["status"] == "submitted"
 
     resp2 = client.post(
-        f"/api/construction/boqs/{boq['id']}/status?status=approved",
+        f"/api/v1/construction/boqs/{boq['id']}/status?status=approved",
         headers=headers,
     )
     assert resp2.status_code == 200
@@ -410,12 +410,12 @@ def test_invalid_boq_transition_rejected() -> None:
     user = _register("construction-boq-inv-status@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-BIS", "name": "Invalid BOQ Status"},
     ).json()
     con = client.post(
-        "/api/construction/contracts",
+        "/api/v1/construction/contracts",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -425,12 +425,12 @@ def test_invalid_boq_transition_rejected() -> None:
         },
     ).json()
     boq = client.post(
-        "/api/construction/boqs",
+        "/api/v1/construction/boqs",
         headers=headers,
         json={"contract_id": con["id"], "version": 1},
     ).json()
     resp = client.post(
-        f"/api/construction/boqs/{boq['id']}/status?status=approved",
+        f"/api/v1/construction/boqs/{boq['id']}/status?status=approved",
         headers=headers,
     )
     assert resp.status_code == 409
@@ -444,12 +444,12 @@ def test_create_progress_claim() -> None:
     user = _register("construction-claim@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-CLM", "name": "Claim Test"},
     ).json()
     con = client.post(
-        "/api/construction/contracts",
+        "/api/v1/construction/contracts",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -459,7 +459,7 @@ def test_create_progress_claim() -> None:
         },
     ).json()
     resp = client.post(
-        "/api/construction/claims",
+        "/api/v1/construction/claims",
         headers=headers,
         json={
             "contract_id": con["id"],
@@ -478,12 +478,12 @@ def test_claim_status_transition() -> None:
     user = _register("construction-claim-status@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-CS", "name": "Claim Status"},
     ).json()
     con = client.post(
-        "/api/construction/contracts",
+        "/api/v1/construction/contracts",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -493,7 +493,7 @@ def test_claim_status_transition() -> None:
         },
     ).json()
     claim = client.post(
-        "/api/construction/claims",
+        "/api/v1/construction/claims",
         headers=headers,
         json={
             "contract_id": con["id"],
@@ -505,7 +505,7 @@ def test_claim_status_transition() -> None:
     ).json()
     for next_status in ["submitted", "approved", "paid"]:
         resp = client.post(
-            f"/api/construction/claims/{claim['id']}/status?status={next_status}",
+            f"/api/v1/construction/claims/{claim['id']}/status?status={next_status}",
             headers=headers,
         )
         assert resp.status_code == 200
@@ -516,12 +516,12 @@ def test_invalid_claim_transition_rejected() -> None:
     user = _register("construction-claim-inv@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-CIV", "name": "Invalid Claim"},
     ).json()
     con = client.post(
-        "/api/construction/contracts",
+        "/api/v1/construction/contracts",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -531,7 +531,7 @@ def test_invalid_claim_transition_rejected() -> None:
         },
     ).json()
     claim = client.post(
-        "/api/construction/claims",
+        "/api/v1/construction/claims",
         headers=headers,
         json={
             "contract_id": con["id"],
@@ -542,7 +542,7 @@ def test_invalid_claim_transition_rejected() -> None:
         },
     ).json()
     resp = client.post(
-        f"/api/construction/claims/{claim['id']}/status?status=paid",
+        f"/api/v1/construction/claims/{claim['id']}/status?status=paid",
         headers=headers,
     )
     assert resp.status_code == 409
@@ -556,12 +556,12 @@ def test_create_procurement() -> None:
     user = _register("construction-proc@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-PR", "name": "Procurement Test"},
     ).json()
     resp = client.post(
-        "/api/construction/procurements",
+        "/api/v1/construction/procurements",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -580,12 +580,12 @@ def test_procurement_status_transition() -> None:
     user = _register("construction-proc-status@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-PS", "name": "Procurement Status"},
     ).json()
     proc = client.post(
-        "/api/construction/procurements",
+        "/api/v1/construction/procurements",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -595,7 +595,7 @@ def test_procurement_status_transition() -> None:
     ).json()
     for next_status in ["pending_approval", "approved", "ordered", "received"]:
         resp = client.post(
-            f"/api/construction/procurements/{proc['id']}/status?status={next_status}",
+            f"/api/v1/construction/procurements/{proc['id']}/status?status={next_status}",
             headers=headers,
         )
         assert resp.status_code == 200
@@ -606,12 +606,12 @@ def test_invalid_procurement_transition_rejected() -> None:
     user = _register("construction-proc-inv@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-PI", "name": "Invalid Procurement"},
     ).json()
     proc = client.post(
-        "/api/construction/procurements",
+        "/api/v1/construction/procurements",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -620,7 +620,7 @@ def test_invalid_procurement_transition_rejected() -> None:
         },
     ).json()
     resp = client.post(
-        f"/api/construction/procurements/{proc['id']}/status?status=ordered",
+        f"/api/v1/construction/procurements/{proc['id']}/status?status=ordered",
         headers=headers,
     )
     assert resp.status_code == 409
@@ -630,12 +630,12 @@ def test_duplicate_requisition_number_rejected() -> None:
     user = _register("construction-dup-proc@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-DP", "name": "Dup Procurement"},
     ).json()
     client.post(
-        "/api/construction/procurements",
+        "/api/v1/construction/procurements",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -644,7 +644,7 @@ def test_duplicate_requisition_number_rejected() -> None:
         },
     )
     resp = client.post(
-        "/api/construction/procurements",
+        "/api/v1/construction/procurements",
         headers=headers,
         json={
             "project_id": proj["id"],
@@ -661,12 +661,12 @@ def test_procurement_tenant_scoped() -> None:
     headers_a = {"Authorization": f"Bearer {user_a['access_token']}"}
     headers_b = {"Authorization": f"Bearer {user_b['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers_a,
         json={"code": "PRJ-PTS", "name": "Tenant Scoped Proc"},
     ).json()
     proc = client.post(
-        "/api/construction/procurements",
+        "/api/v1/construction/procurements",
         headers=headers_a,
         json={
             "project_id": proj["id"],
@@ -675,7 +675,7 @@ def test_procurement_tenant_scoped() -> None:
         },
     ).json()
     resp = client.get(
-        f"/api/construction/procurements/{proc['id']}", headers=headers_b
+        f"/api/v1/construction/procurements/{proc['id']}", headers=headers_b
     )
     assert resp.status_code in {403, 404}
 
@@ -684,12 +684,12 @@ def test_invalid_priority_rejected() -> None:
     user = _register("construction-inv-priority@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     proj = client.post(
-        "/api/construction/projects",
+        "/api/v1/construction/projects",
         headers=headers,
         json={"code": "PRJ-IP", "name": "Invalid Priority"},
     ).json()
     resp = client.post(
-        "/api/construction/procurements",
+        "/api/v1/construction/procurements",
         headers=headers,
         json={
             "project_id": proj["id"],

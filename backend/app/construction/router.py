@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from ..auth.security import Principal, require_principal
@@ -8,7 +8,7 @@ from ..db import get_db
 from ..tenant import require_tenant
 from . import schemas, service
 
-router = APIRouter(prefix="/api/construction", tags=["construction"])
+router = APIRouter(prefix="/api/v1/construction", tags=["construction"])
 
 
 # ---------------------------------------------------------------------------
@@ -43,10 +43,12 @@ def create_project(
 
 @router.get("/projects", response_model=list[schemas.ProjectResponse])
 def list_projects(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ):
-    return service.list_projects(db, tenant_id=tenant_id)
+    return service.list_projects(db, tenant_id=tenant_id, limit=limit, offset=offset)
 
 
 @router.get("/projects/{project_id}", response_model=schemas.ProjectResponse)
@@ -129,10 +131,12 @@ def create_contract(
 @router.get("/contracts", response_model=list[schemas.ContractResponse])
 def list_contracts(
     project_id: UUID | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ):
-    return service.list_contracts(db, tenant_id=tenant_id, project_id=project_id)
+    return service.list_contracts(db, tenant_id=tenant_id, project_id=project_id, limit=limit, offset=offset)
 
 
 @router.get("/contracts/{contract_id}", response_model=schemas.ContractResponse)
@@ -402,10 +406,12 @@ def create_procurement(
 @router.get("/procurements", response_model=list[schemas.ProcurementResponse])
 def list_procurements(
     project_id: UUID | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ):
-    return service.list_procurements(db, tenant_id=tenant_id, project_id=project_id)
+    return service.list_procurements(db, tenant_id=tenant_id, project_id=project_id, limit=limit, offset=offset)
 
 
 @router.get("/procurements/{procurement_id}", response_model=schemas.ProcurementResponse)
@@ -597,10 +603,12 @@ def create_change_order(
 @router.get("/change-orders", response_model=list[schemas.ChangeOrderResponse])
 def list_change_orders(
     project_id: UUID | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ):
-    return service.list_change_orders(db, tenant_id=tenant_id, project_id=project_id)
+    return service.list_change_orders(db, tenant_id=tenant_id, project_id=project_id, limit=limit, offset=offset)
 
 
 @router.get("/change-orders/{change_order_id}", response_model=schemas.ChangeOrderResponse)
@@ -665,10 +673,12 @@ def create_subcontract(
 @router.get("/subcontracts", response_model=list[schemas.SubcontractResponse])
 def list_subcontracts(
     project_id: UUID | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ):
-    return service.list_subcontracts(db, tenant_id=tenant_id, project_id=project_id)
+    return service.list_subcontracts(db, tenant_id=tenant_id, project_id=project_id, limit=limit, offset=offset)
 
 
 @router.get("/subcontracts/{subcontract_id}", response_model=schemas.SubcontractResponse)
@@ -729,10 +739,12 @@ def create_site_warehouse(
 @router.get("/warehouses", response_model=list[schemas.SiteWarehouseResponse])
 def list_site_warehouses(
     project_id: UUID | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ):
-    return service.list_site_warehouses(db, tenant_id=tenant_id, project_id=project_id)
+    return service.list_site_warehouses(db, tenant_id=tenant_id, project_id=project_id, limit=limit, offset=offset)
 
 
 @router.get("/warehouses/{warehouse_id}", response_model=schemas.SiteWarehouseResponse)
@@ -812,10 +824,12 @@ def create_purchase_order(
 @router.get("/purchase-orders", response_model=list[schemas.PurchaseOrderResponse])
 def list_purchase_orders(
     procurement_id: UUID | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ):
-    return service.list_purchase_orders(db, tenant_id=tenant_id, procurement_id=procurement_id)
+    return service.list_purchase_orders(db, tenant_id=tenant_id, procurement_id=procurement_id, limit=limit, offset=offset)
 
 
 @router.get("/purchase-orders/{po_id}", response_model=schemas.PurchaseOrderResponse)
@@ -911,10 +925,12 @@ def create_goods_receipt(
 @router.get("/goods-receipts", response_model=list[schemas.GoodsReceiptResponse])
 def list_goods_receipts(
     po_id: UUID | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ):
-    return service.list_goods_receipts(db, tenant_id=tenant_id, po_id=po_id)
+    return service.list_goods_receipts(db, tenant_id=tenant_id, po_id=po_id, limit=limit, offset=offset)
 
 
 @router.get("/goods-receipts/{grn_id}", response_model=schemas.GoodsReceiptResponse)
@@ -1010,10 +1026,12 @@ def create_supplier_invoice(
 @router.get("/supplier-invoices", response_model=list[schemas.SupplierInvoiceResponse])
 def list_supplier_invoices(
     po_id: UUID | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ):
-    return service.list_supplier_invoices(db, tenant_id=tenant_id, po_id=po_id)
+    return service.list_supplier_invoices(db, tenant_id=tenant_id, po_id=po_id, limit=limit, offset=offset)
 
 
 @router.get("/supplier-invoices/{invoice_id}", response_model=schemas.SupplierInvoiceResponse)
@@ -1113,10 +1131,12 @@ def create_payment(
 @router.get("/payments", response_model=list[schemas.PaymentResponse])
 def list_payments(
     invoice_id: UUID | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ):
-    return service.list_payments(db, tenant_id=tenant_id, invoice_id=invoice_id)
+    return service.list_payments(db, tenant_id=tenant_id, invoice_id=invoice_id, limit=limit, offset=offset)
 
 
 @router.get("/payments/{payment_id}", response_model=schemas.PaymentResponse)

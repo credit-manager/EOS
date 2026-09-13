@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..audit.models import AuditEvent
+from ..audit.service import record as audit_record
 from .models import (
     BOQ,
     BOQItem,
@@ -31,41 +31,6 @@ from .models import (
 )
 
 _ZERO = Decimal("0")
-
-
-def _audit(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    user_id: UUID,
-    action: str,
-    resource_type: str,
-    resource_id: UUID,
-    request_id: str | None,
-    details: dict | None = None,
-) -> None:
-    db.add(
-        AuditEvent(
-            tenant_id=tenant_id,
-            actor_id=user_id,
-            action=action,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            request_id=request_id,
-            details=details or {},
-        )
-    )
-
-
-def _next_number(db: Session, tenant_id: UUID, model: type, prefix: str) -> int:
-    stmt = select(model).where(model.tenant_id == tenant_id).order_by(model.created_at.desc())
-    last = db.scalars(stmt).first()
-    if last is None:
-        return 1
-    num_attr = "entry_number" if hasattr(last, "entry_number") else None
-    if num_attr and hasattr(model, "claim_number"):
-        return 1
-    return 1
 
 
 # ---------------------------------------------------------------------------
@@ -108,15 +73,15 @@ def create_project(
     )
     db.add(project)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.project.created",
         resource_type="project",
         resource_id=project.id,
+        metadata={"code": code, "name": name},
         request_id=request_id,
-        details={"code": code, "name": name},
     )
     db.flush()
     return project
@@ -129,9 +94,13 @@ def get_project(db: Session, *, tenant_id: UUID, project_id: UUID) -> Project:
     return project
 
 
-def list_projects(db: Session, *, tenant_id: UUID) -> list[Project]:
+def list_projects(db: Session, *, tenant_id: UUID, limit: int = 50, offset: int = 0) -> list[Project]:
     return db.scalars(
-        select(Project).where(Project.tenant_id == tenant_id).order_by(Project.created_at.desc())
+        select(Project)
+        .where(Project.tenant_id == tenant_id)
+        .order_by(Project.created_at.desc())
+        .offset(offset)
+        .limit(limit)
     ).all()
 
 
@@ -149,15 +118,15 @@ def update_project(
         if value is not None:
             setattr(project, key, value)
     project.updated_at = datetime.now(UTC)
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.project.updated",
         resource_type="project",
         resource_id=project.id,
+        metadata=data,
         request_id=request_id,
-        details=data,
     )
     db.flush()
     return project
@@ -177,10 +146,10 @@ def delete_project(
     ).all()
     if contracts:
         raise HTTPException(status_code=409, detail="cannot delete project with existing contracts")
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.project.deleted",
         resource_type="project",
         resource_id=project.id,
@@ -233,15 +202,15 @@ def create_contract(
     )
     db.add(contract)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.contract.created",
         resource_type="contract",
         resource_id=contract.id,
+        metadata={"contract_number": contract_number, "title": title},
         request_id=request_id,
-        details={"contract_number": contract_number, "title": title},
     )
     db.flush()
     return contract
@@ -254,11 +223,11 @@ def get_contract(db: Session, *, tenant_id: UUID, contract_id: UUID) -> Contract
     return contract
 
 
-def list_contracts(db: Session, *, tenant_id: UUID, project_id: UUID | None = None) -> list[Contract]:
+def list_contracts(db: Session, *, tenant_id: UUID, project_id: UUID | None = None, limit: int = 50, offset: int = 0) -> list[Contract]:
     stmt = select(Contract).where(Contract.tenant_id == tenant_id)
     if project_id:
         stmt = stmt.where(Contract.project_id == project_id)
-    return db.scalars(stmt.order_by(Contract.created_at.desc())).all()
+    return db.scalars(stmt.order_by(Contract.created_at.desc()).offset(offset).limit(limit)).all()
 
 
 def update_contract(
@@ -275,15 +244,15 @@ def update_contract(
         if value is not None:
             setattr(contract, key, value)
     contract.updated_at = datetime.now(UTC)
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.contract.updated",
         resource_type="contract",
         resource_id=contract.id,
+        metadata=data,
         request_id=request_id,
-        details=data,
     )
     db.flush()
     return contract
@@ -305,10 +274,10 @@ def delete_contract(
     ).all()
     if boqs:
         raise HTTPException(status_code=409, detail="cannot delete contract with existing BOQs")
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.contract.deleted",
         resource_type="contract",
         resource_id=contract.id,
@@ -349,15 +318,15 @@ def create_boq(
     )
     db.add(boq)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.boq.created",
         resource_type="boq",
         resource_id=boq.id,
+        metadata={"contract_id": str(contract_id), "version": version},
         request_id=request_id,
-        details={"contract_id": str(contract_id), "version": version},
     )
     db.flush()
     return boq
@@ -400,10 +369,10 @@ def update_boq_status(
         )
     boq.status = status
     boq.updated_at = datetime.now(UTC)
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action=f"construction.boq.{status}",
         resource_type="boq",
         resource_id=boq.id,
@@ -442,15 +411,15 @@ def add_boq_item(
     )
     db.add(item)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.boq_item.created",
         resource_type="boq_item",
         resource_id=item.id,
+        metadata={"boq_id": str(boq_id), "item_number": item_number},
         request_id=request_id,
-        details={"boq_id": str(boq_id), "item_number": item_number},
     )
     db.flush()
     return item
@@ -500,15 +469,15 @@ def create_progress_claim(
     )
     db.add(claim)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.progress_claim.created",
         resource_type="progress_claim",
         resource_id=claim.id,
+        metadata={"claim_number": claim_number},
         request_id=request_id,
-        details={"claim_number": claim_number},
     )
     db.flush()
     return claim
@@ -557,10 +526,10 @@ def update_claim_status(
         )
     claim.status = status
     claim.updated_at = datetime.now(UTC)
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action=f"construction.progress_claim.{status}",
         resource_type="progress_claim",
         resource_id=claim.id,
@@ -597,10 +566,10 @@ def add_claim_line(
     db.flush()
     claim.total_amount = _sum_claim_amounts(db, claim_id)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.progress_claim_line.created",
         resource_type="progress_claim_line",
         resource_id=line.id,
@@ -664,15 +633,15 @@ def create_procurement(
     )
     db.add(proc)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.procurement.created",
         resource_type="procurement",
         resource_id=proc.id,
+        metadata={"requisition_number": requisition_number, "title": title},
         request_id=request_id,
-        details={"requisition_number": requisition_number, "title": title},
     )
     db.flush()
     return proc
@@ -686,12 +655,12 @@ def get_procurement(db: Session, *, tenant_id: UUID, procurement_id: UUID) -> Pr
 
 
 def list_procurements(
-    db: Session, *, tenant_id: UUID, project_id: UUID | None = None
+    db: Session, *, tenant_id: UUID, project_id: UUID | None = None, limit: int = 50, offset: int = 0
 ) -> list[Procurement]:
     stmt = select(Procurement).where(Procurement.tenant_id == tenant_id)
     if project_id:
         stmt = stmt.where(Procurement.project_id == project_id)
-    return db.scalars(stmt.order_by(Procurement.created_at.desc())).all()
+    return db.scalars(stmt.order_by(Procurement.created_at.desc()).offset(offset).limit(limit)).all()
 
 
 def update_procurement_status(
@@ -718,10 +687,10 @@ def update_procurement_status(
         )
     proc.status = status
     proc.updated_at = datetime.now(UTC)
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action=f"construction.procurement.{status}",
         resource_type="procurement",
         resource_id=proc.id,
@@ -762,10 +731,10 @@ def add_procurement_line(
     db.flush()
     proc.total_estimated = _sum_procurement_totals(db, procurement_id)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.procurement_line.created",
         resource_type="procurement_line",
         resource_id=line.id,
@@ -826,15 +795,15 @@ def create_budget(
     )
     db.add(budget)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.budget.created",
         resource_type="budget",
         resource_id=budget.id,
+        metadata={"project_id": str(project_id), "version": version},
         request_id=request_id,
-        details={"project_id": str(project_id), "version": version},
     )
     db.flush()
     return budget
@@ -877,10 +846,10 @@ def update_budget_status(
         )
     budget.status = status
     budget.updated_at = datetime.now(UTC)
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action=f"construction.budget.{status}",
         resource_type="budget",
         resource_id=budget.id,
@@ -921,10 +890,10 @@ def add_budget_line(
     db.flush()
     budget.total_amount = _sum_budget_amounts(db, budget_id)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.budget_line.created",
         resource_type="budget_line",
         resource_id=line.id,
@@ -995,15 +964,15 @@ def create_change_order(
     )
     db.add(co)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.change_order.created",
         resource_type="change_order",
         resource_id=co.id,
+        metadata={"change_order_number": change_order_number, "title": title},
         request_id=request_id,
-        details={"change_order_number": change_order_number, "title": title},
     )
     db.flush()
     return co
@@ -1017,12 +986,12 @@ def get_change_order(db: Session, *, tenant_id: UUID, change_order_id: UUID) -> 
 
 
 def list_change_orders(
-    db: Session, *, tenant_id: UUID, project_id: UUID | None = None
+    db: Session, *, tenant_id: UUID, project_id: UUID | None = None, limit: int = 50, offset: int = 0
 ) -> list[ChangeOrder]:
     stmt = select(ChangeOrder).where(ChangeOrder.tenant_id == tenant_id)
     if project_id:
         stmt = stmt.where(ChangeOrder.project_id == project_id)
-    return db.scalars(stmt.order_by(ChangeOrder.created_at.desc())).all()
+    return db.scalars(stmt.order_by(ChangeOrder.created_at.desc()).offset(offset).limit(limit)).all()
 
 
 def update_change_order_status(
@@ -1051,10 +1020,10 @@ def update_change_order_status(
     if status == "approved":
         co.approved_by = user_id
         co.approved_at = datetime.now(UTC)
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action=f"construction.change_order.{status}",
         resource_type="change_order",
         resource_id=co.id,
@@ -1109,15 +1078,15 @@ def create_subcontract(
     )
     db.add(sub)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.subcontract.created",
         resource_type="subcontract",
         resource_id=sub.id,
+        metadata={"subcontract_number": subcontract_number, "subcontractor_name": subcontractor_name},
         request_id=request_id,
-        details={"subcontract_number": subcontract_number, "subcontractor_name": subcontractor_name},
     )
     db.flush()
     return sub
@@ -1131,12 +1100,12 @@ def get_subcontract(db: Session, *, tenant_id: UUID, subcontract_id: UUID) -> Su
 
 
 def list_subcontracts(
-    db: Session, *, tenant_id: UUID, project_id: UUID | None = None
+    db: Session, *, tenant_id: UUID, project_id: UUID | None = None, limit: int = 50, offset: int = 0
 ) -> list[Subcontract]:
     stmt = select(Subcontract).where(Subcontract.tenant_id == tenant_id)
     if project_id:
         stmt = stmt.where(Subcontract.project_id == project_id)
-    return db.scalars(stmt.order_by(Subcontract.created_at.desc())).all()
+    return db.scalars(stmt.order_by(Subcontract.created_at.desc()).offset(offset).limit(limit)).all()
 
 
 def update_subcontract_status(
@@ -1162,10 +1131,10 @@ def update_subcontract_status(
         )
     sub.status = status
     sub.updated_at = datetime.now(UTC)
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action=f"construction.subcontract.{status}",
         resource_type="subcontract",
         resource_id=sub.id,
@@ -1210,15 +1179,15 @@ def create_site_warehouse(
     )
     db.add(wh)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.site_warehouse.created",
         resource_type="site_warehouse",
         resource_id=wh.id,
+        metadata={"code": code, "name": name},
         request_id=request_id,
-        details={"code": code, "name": name},
     )
     db.flush()
     return wh
@@ -1232,12 +1201,12 @@ def get_site_warehouse(db: Session, *, tenant_id: UUID, warehouse_id: UUID) -> S
 
 
 def list_site_warehouses(
-    db: Session, *, tenant_id: UUID, project_id: UUID | None = None
+    db: Session, *, tenant_id: UUID, project_id: UUID | None = None, limit: int = 50, offset: int = 0
 ) -> list[SiteWarehouse]:
     stmt = select(SiteWarehouse).where(SiteWarehouse.tenant_id == tenant_id)
     if project_id:
         stmt = stmt.where(SiteWarehouse.project_id == project_id)
-    return db.scalars(stmt.order_by(SiteWarehouse.created_at.desc())).all()
+    return db.scalars(stmt.order_by(SiteWarehouse.created_at.desc()).offset(offset).limit(limit)).all()
 
 
 def update_site_warehouse(
@@ -1254,15 +1223,15 @@ def update_site_warehouse(
         if value is not None:
             setattr(wh, key, value)
     wh.updated_at = datetime.now(UTC)
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.site_warehouse.updated",
         resource_type="site_warehouse",
         resource_id=wh.id,
+        metadata=data,
         request_id=request_id,
-        details=data,
     )
     db.flush()
     return wh
@@ -1277,10 +1246,10 @@ def delete_site_warehouse(
     request_id: str | None = None,
 ) -> None:
     wh = get_site_warehouse(db, tenant_id=tenant_id, warehouse_id=warehouse_id)
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.site_warehouse.deleted",
         resource_type="site_warehouse",
         resource_id=wh.id,
@@ -1328,15 +1297,15 @@ def create_purchase_order(
     )
     db.add(po)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.purchase_order.created",
         resource_type="purchase_order",
         resource_id=po.id,
+        metadata={"po_number": po_number, "procurement_id": str(procurement_id)},
         request_id=request_id,
-        details={"po_number": po_number, "procurement_id": str(procurement_id)},
     )
     db.flush()
     return po
@@ -1350,12 +1319,12 @@ def get_purchase_order(db: Session, *, tenant_id: UUID, po_id: UUID) -> Purchase
 
 
 def list_purchase_orders(
-    db: Session, *, tenant_id: UUID, procurement_id: UUID | None = None
+    db: Session, *, tenant_id: UUID, procurement_id: UUID | None = None, limit: int = 50, offset: int = 0
 ) -> list[PurchaseOrder]:
     stmt = select(PurchaseOrder).where(PurchaseOrder.tenant_id == tenant_id)
     if procurement_id:
         stmt = stmt.where(PurchaseOrder.procurement_id == procurement_id)
-    return db.scalars(stmt.order_by(PurchaseOrder.created_at.desc())).all()
+    return db.scalars(stmt.order_by(PurchaseOrder.created_at.desc()).offset(offset).limit(limit)).all()
 
 
 def update_purchase_order_status(
@@ -1382,10 +1351,10 @@ def update_purchase_order_status(
         )
     po.status = status
     po.updated_at = datetime.now(UTC)
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action=f"construction.purchase_order.{status}",
         resource_type="purchase_order",
         resource_id=po.id,
@@ -1426,10 +1395,10 @@ def add_purchase_order_line(
     db.flush()
     po.total_amount = _sum_po_amounts(db, po_id)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.purchase_order_line.created",
         resource_type="purchase_order_line",
         resource_id=line.id,
@@ -1497,15 +1466,15 @@ def create_goods_receipt(
     )
     db.add(grn)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.goods_receipt.created",
         resource_type="goods_receipt",
         resource_id=grn.id,
+        metadata={"grn_number": grn_number, "po_id": str(purchase_order_id)},
         request_id=request_id,
-        details={"grn_number": grn_number, "po_id": str(purchase_order_id)},
     )
     db.flush()
     return grn
@@ -1519,12 +1488,12 @@ def get_goods_receipt(db: Session, *, tenant_id: UUID, grn_id: UUID) -> GoodsRec
 
 
 def list_goods_receipts(
-    db: Session, *, tenant_id: UUID, po_id: UUID | None = None
+    db: Session, *, tenant_id: UUID, po_id: UUID | None = None, limit: int = 50, offset: int = 0
 ) -> list[GoodsReceipt]:
     stmt = select(GoodsReceipt).where(GoodsReceipt.tenant_id == tenant_id)
     if po_id:
         stmt = stmt.where(GoodsReceipt.purchase_order_id == po_id)
-    return db.scalars(stmt.order_by(GoodsReceipt.created_at.desc())).all()
+    return db.scalars(stmt.order_by(GoodsReceipt.created_at.desc()).offset(offset).limit(limit)).all()
 
 
 def update_goods_receipt_status(
@@ -1549,10 +1518,10 @@ def update_goods_receipt_status(
         )
     grn.status = status
     grn.updated_at = datetime.now(UTC)
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action=f"construction.goods_receipt.{status}",
         resource_type="goods_receipt",
         resource_id=grn.id,
@@ -1589,10 +1558,10 @@ def add_goods_receipt_line(
     )
     db.add(line)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.goods_receipt_line.created",
         resource_type="goods_receipt_line",
         resource_id=line.id,
@@ -1657,15 +1626,15 @@ def create_supplier_invoice(
     )
     db.add(inv)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.supplier_invoice.created",
         resource_type="supplier_invoice",
         resource_id=inv.id,
+        metadata={"invoice_number": invoice_number, "po_id": str(purchase_order_id)},
         request_id=request_id,
-        details={"invoice_number": invoice_number, "po_id": str(purchase_order_id)},
     )
     db.flush()
     return inv
@@ -1679,12 +1648,12 @@ def get_supplier_invoice(db: Session, *, tenant_id: UUID, invoice_id: UUID) -> S
 
 
 def list_supplier_invoices(
-    db: Session, *, tenant_id: UUID, po_id: UUID | None = None
+    db: Session, *, tenant_id: UUID, po_id: UUID | None = None, limit: int = 50, offset: int = 0
 ) -> list[SupplierInvoice]:
     stmt = select(SupplierInvoice).where(SupplierInvoice.tenant_id == tenant_id)
     if po_id:
         stmt = stmt.where(SupplierInvoice.purchase_order_id == po_id)
-    return db.scalars(stmt.order_by(SupplierInvoice.created_at.desc())).all()
+    return db.scalars(stmt.order_by(SupplierInvoice.created_at.desc()).offset(offset).limit(limit)).all()
 
 
 def update_supplier_invoice_status(
@@ -1713,10 +1682,10 @@ def update_supplier_invoice_status(
     if status == "approved":
         inv.approved_by = user_id
         inv.approved_at = datetime.now(UTC)
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action=f"construction.supplier_invoice.{status}",
         resource_type="supplier_invoice",
         resource_id=inv.id,
@@ -1763,10 +1732,10 @@ def add_supplier_invoice_line(
     inv.tax_amount = _sum_invoice_tax(db, invoice_id)
     inv.total_amount = inv.subtotal + inv.tax_amount
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.supplier_invoice_line.created",
         resource_type="supplier_invoice_line",
         resource_id=line.id,
@@ -1845,15 +1814,15 @@ def create_payment(
     )
     db.add(pay)
     db.flush()
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action="construction.payment.created",
         resource_type="payment",
         resource_id=pay.id,
+        metadata={"payment_number": payment_number, "invoice_id": str(supplier_invoice_id)},
         request_id=request_id,
-        details={"payment_number": payment_number, "invoice_id": str(supplier_invoice_id)},
     )
     db.flush()
     return pay
@@ -1867,12 +1836,12 @@ def get_payment(db: Session, *, tenant_id: UUID, payment_id: UUID) -> Payment:
 
 
 def list_payments(
-    db: Session, *, tenant_id: UUID, invoice_id: UUID | None = None
+    db: Session, *, tenant_id: UUID, invoice_id: UUID | None = None, limit: int = 50, offset: int = 0
 ) -> list[Payment]:
     stmt = select(Payment).where(Payment.tenant_id == tenant_id)
     if invoice_id:
         stmt = stmt.where(Payment.supplier_invoice_id == invoice_id)
-    return db.scalars(stmt.order_by(Payment.created_at.desc())).all()
+    return db.scalars(stmt.order_by(Payment.created_at.desc()).offset(offset).limit(limit)).all()
 
 
 def update_payment_status(
@@ -1904,10 +1873,10 @@ def update_payment_status(
         pay.approved_at = datetime.now(UTC)
     elif status == "completed":
         pay.processed_at = datetime.now(UTC)
-    _audit(
+    audit_record(
         db,
         tenant_id=tenant_id,
-        user_id=user_id,
+        actor_id=user_id,
         action=f"construction.payment.{status}",
         resource_type="payment",
         resource_id=pay.id,

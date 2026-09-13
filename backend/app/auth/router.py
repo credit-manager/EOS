@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -14,6 +15,7 @@ from .schemas import (
     MemberResponse,
     MemberRoleUpdate,
     MeResponse,
+    RefreshTokenRequest,
     RegisterRequest,
     TokenRequest,
     TokenResponse,
@@ -48,15 +50,17 @@ def _forbidden(
 
 def _token_response(user_id: UUID, tenant_id: UUID, role: str, db: Session) -> TokenResponse:
     settings = get_settings()
-    access_token, session = create_access_token(user_id=user_id, tenant_id=tenant_id, role=role)
+    access_token, refresh_token, session = create_access_token(user_id=user_id, tenant_id=tenant_id, role=role)
     db.add(session)
     db.flush()
     return TokenResponse(
         access_token=access_token,
+        refresh_token=refresh_token,
         user_id=user_id,
         tenant_id=tenant_id,
         role=role,
         expires_in=settings.access_token_ttl_seconds,
+        refresh_expires_in=settings.refresh_token_ttl_seconds,
     )
 
 
@@ -137,6 +141,62 @@ def token(payload: TokenRequest, request: Request, db: Session = Depends(get_db)
         resource_id=user.id,
         metadata={"email": email},
         request_id=request.state.request_id,
+    )
+    db.commit()
+    return response
+
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh_token(payload: RefreshTokenRequest, request: Request, db: Session = Depends(get_db)) -> TokenResponse:
+    try:
+        hash_password(payload.refresh_token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="invalid refresh token")
+    
+    from sqlalchemy import select
+
+    from .models import AuthSession
+    
+    session = db.scalar(select(AuthSession).where(AuthSession.refresh_token_hash.is_not(None)))
+    if session is None:
+        raise HTTPException(status_code=401, detail="invalid refresh token")
+    
+    import hmac as hmac_lib
+    if not hmac_lib.compare_digest(session.refresh_token_hash, hash_password(payload.refresh_token)):
+        raise HTTPException(status_code=401, detail="invalid refresh token")
+    
+    if session.revoked_at is not None:
+        raise HTTPException(status_code=401, detail="session is revoked")
+    
+    if session.refresh_expires_at is not None and session.refresh_expires_at.replace(tzinfo=UTC) <= datetime.now(UTC):
+        raise HTTPException(status_code=401, detail="refresh token expired")
+    
+    session.revoked_at = datetime.now(UTC)
+    db.flush()
+    
+    user = db.scalar(select(User).where(User.id == session.user_id, User.is_active.is_(True)))
+    if user is None:
+        raise HTTPException(status_code=401, detail="user not found or inactive")
+    
+    membership = db.scalar(
+        select(TenantMembership).where(
+            TenantMembership.user_id == session.user_id,
+            TenantMembership.tenant_id == session.tenant_id,
+        )
+    )
+    if membership is None:
+        raise HTTPException(status_code=403, detail="tenant membership not found")
+    
+    response = _token_response(session.user_id, session.tenant_id, membership.role, db)
+    
+    audit_record(
+        db,
+        tenant_id=session.tenant_id,
+        actor_id=session.user_id,
+        action="auth.token_refreshed",
+        resource_type="auth_session",
+        resource_id=session.id,
+        request_id=getattr(request.state, "request_id", None),
     )
     db.commit()
     return response

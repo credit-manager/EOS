@@ -1,0 +1,167 @@
+import { useState, useEffect, useMemo } from 'react';
+import { api } from '../api';
+import type { Metadata, RecordItem, Field, PermissionAction } from '../types';
+import { RelationField } from './RelationField';
+
+interface EntityPageProps {
+  token: string;
+  role: string;
+  entityCode: string;
+  onLogout: () => void;
+  onBack: () => void;
+}
+
+export function EntityPage({ token, role, entityCode, onLogout, onBack }: EntityPageProps) {
+  const [metadata, setMetadata] = useState<Metadata | null>(null);
+  const [records, setRecords] = useState<RecordItem[]>([]);
+  const [form, setForm] = useState<Record<string, string | boolean>>({});
+  const [busy, setBusy] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fields = useMemo(() => metadata?.definition.fields ?? [], [metadata]);
+  const permissions = metadata?.definition.permissions;
+
+  const allowed = (action: PermissionAction) =>
+    role === 'admin' || permissions?.[role === 'member' ? 'member' : 'admin']?.includes(action) === true;
+
+  async function load() {
+    setBusy(true);
+    setError(null);
+    try {
+      const [meta, items] = await Promise.all([
+        api<Metadata>(`/metadata/entities/${entityCode}`, token),
+        api<RecordItem[]>(`/entities/${entityCode}/records`, token),
+      ]);
+      setMetadata(meta);
+      setRecords(items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load entity');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, [entityCode, token]);
+
+  function setField(field: Field, value: string | boolean) {
+    setForm((current) => ({ ...current, [field.code]: value }));
+  }
+
+  function serializeField(field: Field, value: string | boolean): unknown {
+    if (field.type === 'integer') return Number(value);
+    return value;
+  }
+
+  async function create() {
+    setError(null);
+    try {
+      const data: Record<string, unknown> = {};
+      for (const field of fields) {
+        if (field.type === 'boolean') {
+          data[field.code] = Boolean(form[field.code]);
+        } else if (form[field.code] !== undefined && form[field.code] !== '') {
+          data[field.code] = serializeField(field, form[field.code]);
+        }
+      }
+      await api(`/entities/${entityCode}/records`, token, { method: 'POST', body: JSON.stringify({ data }) });
+      setForm({});
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to create record');
+    }
+  }
+
+  async function remove(record: RecordItem) {
+    setError(null);
+    try {
+      await api(`/entities/${entityCode}/records/${record.id}`, token, { method: 'DELETE' });
+      setRecords((current) => current.filter((item) => item.id !== record.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to delete record');
+    }
+  }
+
+  return (
+    <main className="shell">
+      <header className="hero">
+        <div>
+          <p className="eyebrow">2TO / EOS · {role}</p>
+          <h1>{metadata?.definition.name ?? entityCode}</h1>
+          <p className="muted">{entityCode}</p>
+        </div>
+        <div className="actions">
+          <div className="pill">{metadata ? `v${metadata.version} · Published` : 'Loading metadata'}</div>
+          <button className="secondary" onClick={onBack}>Entities</button>
+          <button className="secondary" onClick={onLogout}>Sign out</button>
+        </div>
+      </header>
+      {error && <div className="error" role="alert">{error}</div>}
+      {metadata && (
+        <section className="card">
+          <h2>New record</h2>
+          <div className="grid">
+            {fields.map((field) => (
+              <label key={field.code}>
+                <span>{field.label ?? field.code}{field.required ? ' *' : ''}</span>
+                {field.type === 'boolean' ? (
+                  <input type="checkbox" checked={Boolean(form[field.code])} onChange={(e) => setField(field, e.target.checked)} />
+                ) : field.type === 'relation' ? (
+                  <RelationField token={token} field={field} value={String(form[field.code] ?? '')} onChange={(value) => setField(field, value)} />
+                ) : (
+                  <input
+                    type={field.type === 'integer' || field.type === 'decimal' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                    value={String(form[field.code] ?? '')}
+                    onChange={(e) => setField(field, e.target.value)}
+                  />
+                )}
+              </label>
+            ))}
+          </div>
+          {allowed('create') && (
+            <button disabled={busy || fields.length === 0} onClick={() => void create()}>Create record</button>
+          )}
+        </section>
+      )}
+      {metadata && (
+        <section className="card">
+          <div className="section-head">
+            <h2>Records</h2>
+            <button className="secondary" onClick={() => void load()}>Refresh</button>
+          </div>
+          {records.length === 0 ? (
+            <p className="muted">No records yet.</p>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    {fields.map((field) => <th key={field.code}>{field.label ?? field.code}</th>)}
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {records.map((record) => (
+                    <tr key={record.id}>
+                      <td>{record.id.slice(0, 8)}…</td>
+                      {fields.map((field) => (
+                        <td key={field.code}>{String(record.data[field.code] ?? '')}</td>
+                      ))}
+                      <td>
+                        {allowed('delete') && (
+                          <button className="danger" onClick={() => void remove(record)}>Delete</button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+    </main>
+  );
+}

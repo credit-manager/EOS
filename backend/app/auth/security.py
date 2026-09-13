@@ -60,11 +60,12 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def create_access_token(*, user_id: UUID, tenant_id: UUID, role: str) -> tuple[str, AuthSession]:
+def create_access_token(*, user_id: UUID, tenant_id: UUID, role: str) -> tuple[str, str, AuthSession]:
     settings = get_settings()
     now = int(time.time())
     session_id = uuid4()
-    payload = {
+    
+    access_payload = {
         "iss": _ISSUER,
         "sub": str(user_id),
         "tid": str(tenant_id),
@@ -76,18 +77,23 @@ def create_access_token(*, user_id: UUID, tenant_id: UUID, role: str) -> tuple[s
     }
     header = {"alg": _ALGORITHM, "typ": "JWT"}
     encoded_header = _b64(json.dumps(header, separators=(",", ":")).encode())
-    encoded_payload = _b64(json.dumps(payload, separators=(",", ":")).encode())
+    encoded_payload = _b64(json.dumps(access_payload, separators=(",", ":")).encode())
     signing_input = f"{encoded_header}.{encoded_payload}".encode()
     signature = hmac.new(settings.jwt_secret.encode(), signing_input, hashlib.sha256).digest()
-    token = f"{encoded_header}.{encoded_payload}.{_b64(signature)}"
+    access_token = f"{encoded_header}.{encoded_payload}.{_b64(signature)}"
+    
+    refresh_token = secrets.token_urlsafe(64)
+    
     session = AuthSession(
         id=session_id,
         user_id=user_id,
         tenant_id=tenant_id,
-        token_hash=_hash_token(token),
-        expires_at=datetime.fromtimestamp(payload["exp"], tz=UTC),
+        token_hash=_hash_token(access_token),
+        refresh_token_hash=_hash_token(refresh_token),
+        expires_at=datetime.fromtimestamp(access_payload["exp"], tz=UTC),
+        refresh_expires_at=datetime.fromtimestamp(now + settings.refresh_token_ttl_seconds, tz=UTC),
     )
-    return token, session
+    return access_token, refresh_token, session
 
 
 def decode_access_token(token: str) -> Principal:
@@ -155,4 +161,5 @@ def revoke_session(db: Session, session_id: UUID) -> None:
     session = db.scalar(select(AuthSession).where(AuthSession.id == session_id))
     if session is not None and session.revoked_at is None:
         session.revoked_at = datetime.now(UTC)
+        session.refresh_token_hash = None
         db.flush()
