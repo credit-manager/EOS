@@ -47,6 +47,8 @@ from .redis_client import close_redis, get_redis
 from .reports_router import router as reports_router
 from .request_logger import RequestResponseLoggingMiddleware
 from .request_validator import RequestValidationMiddleware
+from .rules import engine as rules_engine
+from .rules.router import router as rules_router
 from .security_headers import SecurityHeadersMiddleware
 from .workflow.router import router as workflow_router
 
@@ -359,6 +361,10 @@ app = FastAPI(
             "description": "Platform event bus: publish and consume first-class domain events",
         },
         {
+            "name": "rules",
+            "description": "Rules engine (WHEN/IF/THEN): programmable business policies",
+        },
+        {
             "name": "system",
             "description": "System health and version information",
         },
@@ -405,6 +411,9 @@ app.include_router(workflow_router)
 app.include_router(construction_router)
 app.include_router(notification_router)
 app.include_router(events_router)
+app.include_router(rules_router)
 app.include_router(export_router)
 app.include_router(reports_router)
 app.include_router(permissions_router)
+
+rules_engine.install_listener()

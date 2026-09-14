@@ -17,7 +17,8 @@ _handlers: dict[str, list[EventHandler]] = {}
 
 
 def subscribe(event_type: str, handler: EventHandler) -> None:
-    """Register an in-process handler for a dotted event type (e.g. 'auth.user.registered')."""
+    """Register an in-process handler for a dotted event type
+    (e.g. 'auth.user.registered'). Use '*' to receive every event."""
     _handlers.setdefault(event_type, [])
     if handler not in _handlers[event_type]:
         _handlers[event_type].append(handler)
@@ -34,7 +35,8 @@ def clear_subscribers() -> None:
 
 
 def _dispatch(event: SystemEvent) -> None:
-    for handler in _handlers.get(event.event_type, []):
+    handlers = _handlers.get(event.event_type, []) + _handlers.get("*", [])
+    for handler in handlers:
         try:
             handler(event)
         except Exception:
@@ -63,6 +65,7 @@ def publish(
     )
     db.add(event)
     db.flush()
+    event.session = db
     _dispatch(event)
     logger.info("Event published: %s (tenant %s)", event_type, tenant_id)
     return event

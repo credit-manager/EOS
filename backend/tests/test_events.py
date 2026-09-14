@@ -36,7 +36,6 @@ def test_register_emits_event() -> None:
 
 
 def test_publish_and_list_via_api() -> None:
-    events_service.clear_subscribers()
     user = _register("events-publish@example.com")
     headers = {"Authorization": f"Bearer {user['access_token']}"}
     resp = client.post(
@@ -122,7 +121,6 @@ def test_publish_requires_auth() -> None:
 # ---------------------------------------------------------------------------
 
 def test_subscriber_dispatch() -> None:
-    events_service.clear_subscribers()
     calls: list[str] = []
 
     def handler(event) -> None:
@@ -141,7 +139,6 @@ def test_subscriber_dispatch() -> None:
         assert calls == ["demo.handler.ran"]
     finally:
         events_service.unsubscribe("demo.handler.ran", handler)
-        events_service.clear_subscribers()
 
 
 def test_constructor_project_create_emits_event() -> None:
