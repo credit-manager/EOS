@@ -8,6 +8,16 @@ from backend.app.db import Base
 
 @pytest.fixture(autouse=True, scope="session")
 def _create_all_tables():
+    try:
+        from backend.app.redis_client import get_redis
+
+        r = get_redis()
+        for key in r.scan_iter(match="rate_limit:*"):
+            r.delete(key)
+        for key in r.scan_iter(match="cache:*"):
+            r.delete(key)
+    except Exception:
+        pass
     if "sqlite" in db_module.engine.url.drivername:
         new_engine = create_engine(
             db_module.engine.url,
