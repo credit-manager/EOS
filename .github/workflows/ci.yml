@@ -186,11 +186,18 @@ jobs:
             sleep 1
           done
           if [ "$ok" != "1" ]; then
-            curl -v --max-time 5 http://localhost:8000/health 2>&1 | sed 's/%/%25/g; s/\r/%0D/g' > /tmp/curl-err.txt || true
-            while IFS= read -r line; do echo "::error file=docker-test.log::$line"; done < /tmp/curl-err.txt
-            docker logs test-api 2>&1 | tail -80 | sed 's/%/%25/g; s/\r/%0D/g' > /tmp/dkr-err.txt || true
-            while IFS= read -r line; do echo "::error file=docker-test.log::$line"; done < /tmp/dkr-err.txt
-            docker ps -a
+            {
+              echo "=== CURL VERBOSE ==="
+              curl -v --max-time 5 http://localhost:8000/health 2>&1 | tail -25
+              echo ""
+              echo "=== DOCKER LOGS (test-api) ==="
+              docker logs --tail 100 test-api 2>&1
+              echo ""
+              echo "=== DOCKER PS ==="
+              docker ps -a
+            } > /tmp/dkr-diag.txt 2>&1 || true
+            msg=$(sed -e 's/%/%25/g' -e 's/\r/%0D/g' /tmp/dkr-diag.txt | head -c 30000 | paste -sd ' ')
+            echo "::error file=docker-test.log::$msg"
             exit 1
           fi
           docker stop test-api
