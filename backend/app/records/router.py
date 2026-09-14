@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 from ..audit.service import record as audit_record
 from ..db import get_db
 from ..events.service import publish as publish_event
+from ..formula import evaluate_formula
 from ..graph.service import relation_edges
 from ..metadata.models import MetadataEntity
 from ..tenant import require_tenant
@@ -102,19 +104,80 @@ def _validate_value(db: Session, tenant_id: UUID, code: str, value: object, fiel
         raise HTTPException(status_code=422, detail={"invalid_fields": [f"{code}: expected {expected}"]})
 
 
-def _validate(payload: dict, metadata: MetadataEntity, db: Session, tenant_id: UUID) -> None:
+def _validate_field_rules(code: str, value: object, field: dict) -> None:
+    rules = field.get("validation")
+    if not isinstance(rules, dict) or value is None:
+        return
+    field_type = field["type"]
+    if field_type == "text" and isinstance(value, str):
+        if rules.get("min_length") is not None and len(value) < int(rules["min_length"]):
+            raise HTTPException(status_code=422, detail={"invalid_fields": [f"{code}: shorter than min_length"]})
+        if rules.get("max_length") is not None and len(value) > int(rules["max_length"]):
+            raise HTTPException(status_code=422, detail={"invalid_fields": [f"{code}: longer than max_length"]})
+        pattern = rules.get("pattern")
+        if pattern and re.fullmatch(pattern, value) is None:
+            raise HTTPException(status_code=422, detail={"invalid_fields": [f"{code}: does not match pattern"]})
+    if field_type in {"integer", "decimal"}:
+        try:
+            numeric = Decimal(str(value))
+        except (InvalidOperation, ValueError, TypeError):
+            return
+        if rules.get("min") is not None and numeric < Decimal(str(rules["min"])):
+            raise HTTPException(status_code=422, detail={"invalid_fields": [f"{code}: below minimum"]})
+        if rules.get("max") is not None and numeric > Decimal(str(rules["max"])):
+            raise HTTPException(status_code=422, detail={"invalid_fields": [f"{code}: above maximum"]})
+
+
+def _prepare(payload: dict, metadata: MetadataEntity, db: Session, tenant_id: UUID) -> dict:
     fields = {field["code"]: field for field in metadata.definition["fields"]}
+    computed = {code for code, field in fields.items() if field.get("computed")}
+    readonly = {code for code, field in fields.items() if field.get("readonly")}
+
     unknown = set(payload) - set(fields)
-    missing = {code for code, field in fields.items() if field.get("required") and code not in payload}
-    if unknown or missing:
-        detail: dict[str, list[str]] = {}
-        if unknown:
-            detail["unknown_fields"] = sorted(unknown)
-        if missing:
-            detail["missing_fields"] = sorted(missing)
-        raise HTTPException(status_code=422, detail=detail)
-    for code, value in payload.items():
+    if unknown:
+        raise HTTPException(status_code=422, detail={"unknown_fields": sorted(unknown)})
+    rejected = set(payload) & (computed | readonly)
+    if rejected:
+        raise HTTPException(status_code=422, detail={"readonly_fields": sorted(rejected)})
+
+    missing = {
+        code
+        for code, field in fields.items()
+        if field.get("required") and code not in payload and code not in computed
+    }
+    if missing:
+        raise HTTPException(status_code=422, detail={"missing_fields": sorted(missing)})
+
+    data = dict(payload)
+    for code, field in fields.items():
+        if code in data or code in computed:
+            continue
+        default = field.get("default")
+        if default is not None:
+            data[code] = default
+
+    for code, value in data.items():
         _validate_value(db, tenant_id, code, value, fields[code])
+        _validate_field_rules(code, value, fields[code])
+    return data
+
+
+def _apply_computed(data: dict, metadata: MetadataEntity) -> dict:
+    result = dict(data)
+    for field in metadata.definition.get("fields", []):
+        computed = field.get("computed")
+        if not isinstance(computed, dict):
+            continue
+        formula = computed.get("formula")
+        if not formula:
+            continue
+        value = evaluate_formula(str(formula), result)
+        if value is None:
+            continue
+        if field["type"] == "integer":
+            value = int(round(value))
+        result[field["code"]] = value
+    return result
 
 
 def _filter_expression(metadata: MetadataEntity, field_code: str, raw_value: str):
@@ -202,8 +265,9 @@ def create_record(
 ) -> RecordResponse:
     metadata = _get_published(db, tenant_id, entity_code)
     _require_permission(request, metadata, "create")
-    _validate(payload.data, metadata, db, tenant_id)
-    row = Record(tenant_id=tenant_id, entity_code=entity_code, data=payload.data)
+    data = _prepare(payload.data, metadata, db, tenant_id)
+    data = _apply_computed(data, metadata)
+    row = Record(tenant_id=tenant_id, entity_code=entity_code, data=data)
     db.add(row)
     db.flush()
 
@@ -212,7 +276,7 @@ def create_record(
         request=request,
         entity_code=entity_code,
         row_id=row.id,
-        edges=relation_edges(metadata, payload.data),
+        edges=relation_edges(metadata, data),
         created=True,
     )
 
@@ -300,7 +364,8 @@ def update_record(
 ) -> RecordResponse:
     metadata = _get_published(db, tenant_id, entity_code)
     _require_permission(request, metadata, "update")
-    _validate(payload.data, metadata, db, tenant_id)
+    new_data = _prepare(payload.data, metadata, db, tenant_id)
+    new_data = _apply_computed(new_data, metadata)
     row = db.scalar(
         select(Record).where(
             Record.id == record_id,
@@ -314,9 +379,9 @@ def update_record(
         raise HTTPException(status_code=409, detail="record version conflict")
     old_data = row.data
     old_keys = set(map(_edge_key, relation_edges(metadata, old_data)))
-    new_edges = relation_edges(metadata, payload.data)
+    new_edges = relation_edges(metadata, new_data)
     new_keys = set(map(_edge_key, new_edges))
-    row.data = payload.data
+    row.data = new_data
     row.version += 1
     removed = [edge for edge in relation_edges(metadata, old_data) if _edge_key(edge) not in new_keys]
     for edge in new_edges:
