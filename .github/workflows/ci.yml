@@ -81,14 +81,10 @@ jobs:
           cache: 'pip'
       
       - name: Install dependencies
-        run: pip install pip-audit safety
+        run: pip install pip-audit
       
       - name: Run pip-audit
         run: pip-audit
-      
-      - name: Run safety check
-        run: safety check
-        continue-on-error: true
 
   frontend:
     runs-on: ubuntu-latest
