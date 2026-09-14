@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..auth.security import Principal, require_principal
 from ..db import get_db
+from ..policy import evaluate_conditions
 from .models import ApprovalTask, WorkflowDefinition, WorkflowInstance
 from .schemas import (
     ApprovalDecisionRequest,
@@ -17,6 +18,7 @@ from .schemas import (
     WorkflowTransitionRequest,
 )
 from .service import (
+    build_workflow_context,
     commit_workflow,
     create_definition,
     decide_approval,
@@ -146,6 +148,10 @@ def list_available_transitions(
             "from_state": transition["from_state"],
             "to_state": transition["to_state"],
             "requires_approval": transition["requires_approval"],
+            "condition_satisfied": evaluate_conditions(
+                build_workflow_context(instance, definition, user_id=principal.user_id, role=principal.role, payload=None),
+                transition.get("conditions", []),
+            ),
         }
         for transition in definition.definition.get("transitions", [])
         if transition["from_state"] == instance.current_state
@@ -168,6 +174,7 @@ def transition_workflow_instance(
         role=principal.role,
         instance_id=instance_id,
         action=payload.action,
+        payload=payload.payload,
         request_id=request.state.request_id,
     )
     commit_workflow(db)

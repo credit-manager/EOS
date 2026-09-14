@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ..rules.schemas import Condition
+
 ROLES = {"admin", "member"}
 WorkflowActionType = Literal["set_record_field"]
 
@@ -23,6 +25,7 @@ class TransitionDefinition(BaseModel):
     action: str = Field(min_length=1, max_length=100)
     roles: list[str] = Field(min_length=1, max_length=5)
     requires_approval: bool = True
+    conditions: list[Condition] = Field(default_factory=list, max_length=20)
     actions: list[WorkflowActionDefinition] = Field(default_factory=list, max_length=20)
 
     @model_validator(mode="after")
@@ -93,6 +96,7 @@ class WorkflowTransitionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     action: str = Field(min_length=1, max_length=100)
+    payload: dict[str, Any] | None = None
 
 
 class ApprovalDecisionRequest(BaseModel):

@@ -11,6 +11,7 @@ from ..audit.service import record as audit_record
 from ..events.service import publish as publish_event
 from ..events.service import subscribe, unsubscribe
 from ..notification.service import create_notification
+from ..policy import evaluate_conditions, resolve_path
 from .models import Rule, RuleExecution
 
 logger = logging.getLogger("2to-eos.rules")
@@ -97,75 +98,9 @@ def _build_context(event) -> dict[str, Any]:
     }
 
 
-def _resolve(ctx: dict[str, Any], path: str) -> tuple[bool, Any]:
-    node: Any = ctx
-    for segment in path.split("."):
-        if isinstance(node, dict) and segment in node:
-            node = node[segment]
-        else:
-            return False, None
-    return True, node
-
-
-def _coerce_num(value: Any) -> float | None:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _num_or_none(a: Any, b: Any) -> tuple[float, float] | None:
-    na, nb = _coerce_num(a), _coerce_num(b)
-    if na is not None and nb is not None:
-        return na, nb
-    return None
-
-
-def _evaluate_condition(ctx: dict[str, Any], cond: dict) -> bool:
-    field = cond.get("field", "")
-    op = cond.get("op", "eq")
-    value = cond.get("value")
-    found, actual = _resolve(ctx, field)
-
-    if op == "exists":
-        return found is bool(value)
-
-    if not found:
-        return False
-
-    pair = _num_or_none(actual, value)
-    if pair is not None and op in ("eq", "neq", "gt", "gte", "lt", "lte"):
-        a, b = pair
-        if op == "eq":
-            return a == b
-        if op == "neq":
-            return a != b
-        if op == "gt":
-            return a > b
-        if op == "gte":
-            return a >= b
-        if op == "lt":
-            return a < b
-        return a <= b
-
-    if op == "eq":
-        return actual == value
-    if op == "neq":
-        return actual != value
-    if op == "contains":
-        return value in actual if isinstance(actual, (str, list, tuple)) else False
-    if op == "not_contains":
-        return value not in actual if isinstance(actual, (str, list, tuple)) else True
-    if op == "in":
-        return actual in value if isinstance(value, list) else False
-    if op == "starts_with":
-        return actual.startswith(value) if isinstance(actual, str) else False
-    return False
-
-
 def _render_template(template: str, ctx: dict[str, Any]) -> str:
     def replace(match: re.Match) -> str:
-        _, resolved = _resolve(ctx, match.group(1))
+        _, resolved = resolve_path(ctx, match.group(1))
         return "" if resolved is None else str(resolved)
 
     return _TEMPLATE_RE.sub(replace, template)
@@ -250,7 +185,7 @@ def _execute_action(
 def _evaluate(db: Session, rule: Rule, event) -> tuple[bool, str | None]:
     ctx = _build_context(event)
     conditions = json.loads(rule.conditions_json) if rule.conditions_json else []
-    if not all(_evaluate_condition(ctx, cond) for cond in conditions):
+    if not evaluate_conditions(ctx, conditions):
         return False, None
     actions = json.loads(rule.actions_json) if rule.actions_json else []
     for action in actions:

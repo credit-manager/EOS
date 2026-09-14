@@ -1,5 +1,6 @@
 from copy import deepcopy
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -8,10 +9,43 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..audit.models import AuditEvent
+from ..events.service import publish as publish_event
 from ..metadata.models import MetadataEntity
+from ..policy import evaluate_conditions
 from ..records.models import Record
 from .models import ApprovalTask, WorkflowDefinition, WorkflowInstance
 from .schemas import WorkflowDefinitionCreate
+
+
+def build_workflow_context(
+    instance: WorkflowInstance,
+    definition: WorkflowDefinition,
+    *,
+    user_id: UUID,
+    role: str,
+    payload: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return {
+        "workflow": {
+            "instance_id": str(instance.id),
+            "workflow_code": definition.code,
+            "current_state": instance.current_state,
+            "reference_type": instance.reference_type,
+            "reference_id": str(instance.reference_id),
+            "status": instance.status,
+        },
+        "actor": {"user_id": str(user_id), "role": role},
+        "payload": payload or {},
+    }
+
+
+def _transition_ref_payload(instance: WorkflowInstance, definition: WorkflowDefinition) -> dict[str, Any]:
+    return {
+        "workflow_code": definition.code,
+        "workflow_version": definition.version,
+        "reference_type": instance.reference_type,
+        "reference_id": str(instance.reference_id),
+    }
 
 
 def _definition_graph(definition: WorkflowDefinition) -> list[dict]:
@@ -113,6 +147,19 @@ def start_instance(
             details={"workflow_code": workflow_code, "state": instance.current_state},
         )
     )
+    publish_event(
+        db,
+        tenant_id=tenant_id,
+        event_type="workflow.instance.started",
+        entity_type=reference_type,
+        entity_id=str(reference_id),
+        actor_id=str(user_id),
+        payload={
+            **_transition_ref_payload(instance, definition),
+            "state": instance.current_state,
+        },
+        request_id=request_id,
+    )
     return instance
 
 
@@ -188,6 +235,7 @@ def request_transition(
     role: str,
     instance_id: UUID,
     action: str,
+    payload: dict[str, Any] | None = None,
     request_id: str | None,
 ) -> tuple[WorkflowInstance, ApprovalTask | None]:
     instance = db.scalar(
@@ -216,6 +264,12 @@ def request_transition(
         raise HTTPException(status_code=422, detail="transition is not allowed from the current state")
     if role not in transition["roles"]:
         raise HTTPException(status_code=403, detail="role cannot request this transition")
+
+    if not evaluate_conditions(
+        build_workflow_context(instance, definition, user_id=user_id, role=role, payload=payload),
+        transition.get("conditions", []),
+    ):
+        raise HTTPException(status_code=422, detail="transition conditions are not satisfied")
 
     if transition["requires_approval"]:
         pending = db.scalar(
@@ -271,8 +325,47 @@ def request_transition(
             details={"action": action, "state": instance.current_state},
         )
     )
+    _publish_transition(db, definition, instance, user_id, action, transition, request_id)
     db.flush()
     return instance, None
+
+
+def _publish_transition(
+    db: Session,
+    definition: WorkflowDefinition,
+    instance: WorkflowInstance,
+    user_id: UUID,
+    action: str,
+    transition: dict,
+    request_id: str | None,
+) -> None:
+    payload = {
+        **_transition_ref_payload(instance, definition),
+        "action": action,
+        "from_state": transition["from_state"],
+        "to_state": transition["to_state"],
+    }
+    publish_event(
+        db,
+        tenant_id=instance.tenant_id,
+        event_type="workflow.transition.applied",
+        entity_type=instance.reference_type,
+        entity_id=str(instance.reference_id),
+        actor_id=str(user_id),
+        payload=payload,
+        request_id=request_id,
+    )
+    if instance.status == "completed":
+        publish_event(
+            db,
+            tenant_id=instance.tenant_id,
+            event_type="workflow.instance.completed",
+            entity_type=instance.reference_type,
+            entity_id=str(instance.reference_id),
+            actor_id=str(user_id),
+            payload=_transition_ref_payload(instance, definition),
+            request_id=request_id,
+        )
 
 
 def decide_approval(
@@ -343,6 +436,25 @@ def decide_approval(
             details={"action": task.action, "state": instance.current_state},
         )
     )
+    if approved:
+        _publish_transition(db, definition, instance, user_id, task.action, transition, request_id)
+    else:
+        publish_event(
+            db,
+            tenant_id=tenant_id,
+            event_type="workflow.transition.rejected",
+            entity_type=instance.reference_type,
+            entity_id=str(instance.reference_id),
+            actor_id=str(user_id),
+            payload={
+                **_transition_ref_payload(instance, definition),
+                "action": task.action,
+                "from_state": task.from_state,
+                "to_state": task.to_state,
+                "task_id": str(task.id),
+            },
+            request_id=request_id,
+        )
     db.flush()
     return task, instance
 
