@@ -4,10 +4,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir --prefix=/install .
-
 COPY backend ./backend
 COPY main.py ./main.py
+RUN pip install --no-cache-dir --prefix=/install .
 
 FROM python:3.12-slim AS production
 
