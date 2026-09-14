@@ -54,7 +54,29 @@ jobs:
           DATABASE_URL: sqlite+pysqlite:///./eos_ci.db
       
       - name: Test SQLite
-        run: pytest -v
+        run: |
+          set +e
+          pytest -v --tb=long --disable-warnings 2>&1 | tee /tmp/sqlite-test.log
+          code=${PIPESTATUS[0]}
+          echo "PYTEST_EXIT_CODE=$code"
+          {
+            echo "=== FIRST 40 LINES ==="
+            head -40 /tmp/sqlite-test.log
+            echo ""
+            echo "=== FAILED / ERROR LINES ==="
+            grep -aE "^(FAILED|ERROR|ERRORS|Fatal|ImportError|ModuleNotFoundError|SyntaxError)" /tmp/sqlite-test.log
+            echo ""
+            echo "=== LAST 120 LINES ==="
+            tail -120 /tmp/sqlite-test.log
+            echo "PYTEST_EXIT_CODE=$code"
+          } > "$GITHUB_STEP_SUMMARY"
+          sed 's/%/%25/g; s/\r/%0D/g' /tmp/sqlite-test.log | grep -aE "^(FAILED|ERROR|ERRORS|Fatal|ImportError|ModuleNotFoundError|SyntaxError)|assert|Traceback" | tail -40 > /tmp/sqlite-err.txt
+          if [ -s /tmp/sqlite-err.txt ]; then
+            while IFS= read -r line; do
+              echo "::error file=sqlite-tests.log::$line"
+            done < /tmp/sqlite-err.txt
+          fi
+          exit $code
         env:
           DATABASE_URL: sqlite+pysqlite:///./eos_ci_test.db
           REDIS_URL: redis://localhost:6379/0
@@ -65,7 +87,29 @@ jobs:
           DATABASE_URL: postgresql+psycopg://eos:eos@localhost:5432/eos
       
       - name: Test PostgreSQL
-        run: pytest -v
+        run: |
+          set +e
+          pytest -v --tb=long --disable-warnings 2>&1 | tee /tmp/pg-test.log
+          code=${PIPESTATUS[0]}
+          echo "PYTEST_EXIT_CODE=$code"
+          {
+            echo "=== FIRST 40 LINES ==="
+            head -40 /tmp/pg-test.log
+            echo ""
+            echo "=== FAILED / ERROR LINES ==="
+            grep -aE "^(FAILED|ERROR|ERRORS|Fatal|ImportError|ModuleNotFoundError|SyntaxError)" /tmp/pg-test.log
+            echo ""
+            echo "=== LAST 120 LINES ==="
+            tail -120 /tmp/pg-test.log
+            echo "PYTEST_EXIT_CODE=$code"
+          } > "$GITHUB_STEP_SUMMARY"
+          sed 's/%/%25/g; s/\r/%0D/g' /tmp/pg-test.log | grep -aE "^(FAILED|ERROR|ERRORS|Fatal|ImportError|ModuleNotFoundError|SyntaxError)|assert|Traceback" | tail -40 > /tmp/pg-err.txt
+          if [ -s /tmp/pg-err.txt ]; then
+            while IFS= read -r line; do
+              echo "::error file=pg-tests.log::$line"
+            done < /tmp/pg-err.txt
+          fi
+          exit $code
         env:
           DATABASE_URL: postgresql+psycopg://eos:eos@localhost:5432/eos
           REDIS_URL: redis://localhost:6379/0
