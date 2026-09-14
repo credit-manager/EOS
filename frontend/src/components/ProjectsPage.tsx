@@ -38,18 +38,23 @@ export default function ProjectsPage({ t, token }: ProjectsPageProps) {
   const columns = [
     { key: 'code', header: t.projects.code, className: 'font-mono' },
     { key: 'name', header: t.projects.name },
-    { key: 'status', header: t.projects.status, render: (row: Project) => (
-      <StatusBadge status={row.status} t={t} />
-    )},
-    { key: 'budget', header: t.projects.budget, render: (row: Project) => (
-      <span className="font-mono">{formatCurrency(row.budget)}</span>
-    )},
+    {
+      key: 'status',
+      header: t.projects.status,
+      render: (row: Project) => <StatusBadge status={row.status} t={t} />,
+    },
+    {
+      key: 'budget',
+      header: t.projects.budget,
+      render: (row: Project) => <span className="font-mono">{formatCurrency(row.budget)}</span>,
+    },
     { key: 'client_name', header: t.projects.client },
     { key: 'location', header: t.projects.location },
   ];
 
   useEffect(() => {
     fetchProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchProjects = async () => {
@@ -61,7 +66,7 @@ export default function ProjectsPage({ t, token }: ProjectsPageProps) {
         const data = await response.json();
         setProjects(data.items || data);
       }
-    } catch (err) {
+    } catch {
       setError(t.common.error);
     } finally {
       setLoading(false);
@@ -70,7 +75,14 @@ export default function ProjectsPage({ t, token }: ProjectsPageProps) {
 
   const handleCreate = async () => {
     setEditingProject(null);
-    setFormData({ code: '', name: '', status: 'planning', budget: '', client_name: '', location: '' });
+    setFormData({
+      code: '',
+      name: '',
+      status: 'planning',
+      budget: '',
+      client_name: '',
+      location: '',
+    });
     setShowModal(true);
   };
 
@@ -88,13 +100,13 @@ export default function ProjectsPage({ t, token }: ProjectsPageProps) {
         ? `/api/v1/construction/projects/${editingProject.id}`
         : '/api/v1/construction/projects';
       const method = editingProject ? 'PUT' : 'POST';
-      
+
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(formData),
       });
-      
+
       if (response.ok) {
         setShowModal(false);
         fetchProjects();
@@ -102,7 +114,7 @@ export default function ProjectsPage({ t, token }: ProjectsPageProps) {
         const data = await response.json();
         setError(data.detail || t.common.error);
       }
-    } catch (err) {
+    } catch {
       setError(t.common.error);
     }
   };
@@ -121,7 +133,7 @@ export default function ProjectsPage({ t, token }: ProjectsPageProps) {
       if (response.ok) {
         fetchProjects();
       }
-    } catch (err) {
+    } catch {
       setError(t.common.error);
     } finally {
       setDeleteConfirm(null);
@@ -136,10 +148,7 @@ export default function ProjectsPage({ t, token }: ProjectsPageProps) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">{t.projects.title}</h1>
-        <button
-          onClick={handleCreate}
-          className="btn-primary"
-        >
+        <button onClick={handleCreate} className="btn-primary">
           <span className="mr-2">+</span> {t.projects.create}
         </button>
       </div>
@@ -161,7 +170,9 @@ export default function ProjectsPage({ t, token }: ProjectsPageProps) {
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t.projects.code} *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t.projects.code} *
+            </label>
             <input
               type="text"
               value={formData.code}
@@ -171,7 +182,9 @@ export default function ProjectsPage({ t, token }: ProjectsPageProps) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t.projects.name} *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t.projects.name} *
+            </label>
             <input
               type="text"
               value={formData.name}
@@ -181,7 +194,9 @@ export default function ProjectsPage({ t, token }: ProjectsPageProps) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t.projects.status}</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t.projects.status}
+            </label>
             <select
               value={formData.status}
               onChange={(e) => setFormData({ ...formData, status: e.target.value })}
@@ -194,7 +209,9 @@ export default function ProjectsPage({ t, token }: ProjectsPageProps) {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t.projects.budget}</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t.projects.budget}
+            </label>
             <input
               type="number"
               step="0.01"
@@ -204,7 +221,9 @@ export default function ProjectsPage({ t, token }: ProjectsPageProps) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t.projects.client}</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t.projects.client}
+            </label>
             <input
               type="text"
               value={formData.client_name}
@@ -213,7 +232,9 @@ export default function ProjectsPage({ t, token }: ProjectsPageProps) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t.projects.location}</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t.projects.location}
+            </label>
             <input
               type="text"
               value={formData.location}

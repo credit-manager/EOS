@@ -6,7 +6,11 @@ interface LanguageSwitcherProps {
   isRTL: boolean;
 }
 
-export default function LanguageSwitcher({ language, onSwitch, isRTL }: LanguageSwitcherProps) {
+export default function LanguageSwitcher({
+  language,
+  onSwitch,
+  isRTL: _isRTL,
+}: LanguageSwitcherProps) {
   return (
     <button
       onClick={() => onSwitch(language === 'en' ? 'ar' : 'en')}

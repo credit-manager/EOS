@@ -9,7 +9,7 @@ interface AuditEntry {
   resource_id: string;
   actor_id: string;
   created_at: string;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 interface AuditPageProps {
@@ -17,29 +17,14 @@ interface AuditPageProps {
   token: string;
 }
 
-export default function AuditPage({ t, token }: AuditPageProps) {
+export default function AuditPage({ t: _t, token }: AuditPageProps) {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState({ action: '', resource: '', date_from: '', date_to: '' });
 
-  const columns = [
-    { key: 'action', header: 'Action', className: 'max-w-xs truncate' },
-    { key: 'resource_type', header: 'Resource Type' },
-    { key: 'resource_id', header: 'Resource ID', className: 'font-mono text-xs' },
-    { key: 'actor_id', header: 'Actor', className: 'font-mono text-xs' },
-    { key: 'created_at', header: 'Timestamp', render: (row: AuditEntry) => formatDate(row.created_at), className: 'whitespace-nowrap' },
-    { key: 'metadata', header: 'Details', render: (row: AuditEntry) => (
-      <button
-        onClick={() => alert(JSON.stringify(row.metadata, null, 2))}
-        className="text-blue-600 hover:text-blue-800 text-sm underline"
-      >
-        View
-      </button>
-    )},
-  ];
-
   useEffect(() => {
     fetchEntries();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
   const fetchEntries = async () => {
@@ -120,18 +105,28 @@ export default function AuditPage({ t, token }: AuditPageProps) {
           { key: 'resource_type', header: 'Resource Type' },
           { key: 'resource_id', header: 'Resource ID', className: 'font-mono text-xs' },
           { key: 'actor_id', header: 'Actor', className: 'font-mono text-xs' },
-          { key: 'created_at', header: 'Timestamp', render: (row: AuditEntry) => formatDate(row.created_at), className: 'whitespace-nowrap' },
-          { key: 'metadata', header: 'Details', render: (row: AuditEntry) => (
-            <button
-              onClick={() => alert(JSON.stringify(row.metadata, null, 2))}
-              className="text-blue-600 hover:text-blue-800 text-sm underline"
-            >
-              View
-            </button>
-          )},
+          {
+            key: 'created_at',
+            header: 'Timestamp',
+            render: (row: AuditEntry) => formatDate(row.created_at),
+            className: 'whitespace-nowrap',
+          },
+          {
+            key: 'metadata',
+            header: 'Details',
+            render: (row: AuditEntry) => (
+              <button
+                onClick={() => alert(JSON.stringify(row.metadata, null, 2))}
+                className="text-blue-600 hover:text-blue-800 text-sm underline"
+              >
+                View
+              </button>
+            ),
+          },
         ]}
         onEdit={() => {}}
         onDelete={() => {}}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         t={{} as any}
       />
     </div>
@@ -139,12 +134,12 @@ export default function AuditPage({ t, token }: AuditPageProps) {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('ar-SA', { 
-    year: 'numeric', 
-    month: 'short', 
+  return new Date(dateStr).toLocaleDateString('ar-SA', {
+    year: 'numeric',
+    month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit'
+    second: '2-digit',
   });
 }

@@ -11,12 +11,16 @@ interface MetadataStudioProps {
 export function MetadataStudio({ token, defaultCode, onCreated }: MetadataStudioProps) {
   const [code, setCode] = useState(defaultCode || 'new_entity');
   const [name, setName] = useState('New Entity');
-  const [fields, setFields] = useState<FormField[]>([{ code: 'name', type: 'text', required: true, label: 'Name' }]);
+  const [fields, setFields] = useState<FormField[]>([
+    { code: 'name', type: 'text', required: true, label: 'Name' },
+  ]);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   function updateField(index: number, patch: Partial<FormField>) {
-    setFields((current) => current.map((field, position) => (position === index ? { ...field, ...patch } : field)));
+    setFields((current) =>
+      current.map((field, position) => (position === index ? { ...field, ...patch } : field))
+    );
   }
 
   async function publish() {
@@ -25,7 +29,11 @@ export function MetadataStudio({ token, defaultCode, onCreated }: MetadataStudio
     try {
       const created = await api<Metadata>('/metadata/entities', token, {
         method: 'POST',
-        body: JSON.stringify({ code, name, fields: fields.map((field) => ({ ...field, nullable: false })) }),
+        body: JSON.stringify({
+          code,
+          name,
+          fields: fields.map((field) => ({ ...field, nullable: false })),
+        }),
       });
       await api(`/metadata/entities/${created.definition.code}/publish`, token, { method: 'POST' });
       setMessage(`Published ${created.definition.code} v${created.version}.`);
@@ -43,8 +51,16 @@ export function MetadataStudio({ token, defaultCode, onCreated }: MetadataStudio
           <h2>Define an entity</h2>
         </div>
       </div>
-      {error && <div className="error" role="alert">{error}</div>}
-      {message && <div className="success" role="status">{message}</div>}
+      {error && (
+        <div className="error" role="alert">
+          {error}
+        </div>
+      )}
+      {message && (
+        <div className="success" role="status">
+          {message}
+        </div>
+      )}
       <div className="grid">
         <label>
           <span>Entity code</span>
@@ -58,8 +74,16 @@ export function MetadataStudio({ token, defaultCode, onCreated }: MetadataStudio
       <div className="field-list">
         {fields.map((field, index) => (
           <div className="field-row" key={`${index}-${field.code}`}>
-            <input value={field.code} onChange={(e) => updateField(index, { code: e.target.value })} aria-label="Field code" />
-            <select value={field.type} onChange={(e) => updateField(index, { type: e.target.value as FieldType })} aria-label="Field type">
+            <input
+              value={field.code}
+              onChange={(e) => updateField(index, { code: e.target.value })}
+              aria-label="Field code"
+            />
+            <select
+              value={field.type}
+              onChange={(e) => updateField(index, { type: e.target.value as FieldType })}
+              aria-label="Field type"
+            >
               <option value="text">Text</option>
               <option value="integer">Integer</option>
               <option value="decimal">Decimal</option>
@@ -68,7 +92,11 @@ export function MetadataStudio({ token, defaultCode, onCreated }: MetadataStudio
               <option value="uuid">UUID</option>
               <option value="relation">Relation</option>
             </select>
-            <input value={field.label} onChange={(e) => updateField(index, { label: e.target.value })} aria-label="Field label" />
+            <input
+              value={field.label}
+              onChange={(e) => updateField(index, { label: e.target.value })}
+              aria-label="Field label"
+            />
             {field.type === 'relation' && (
               <input
                 value={field.target_entity ?? ''}
@@ -78,9 +106,19 @@ export function MetadataStudio({ token, defaultCode, onCreated }: MetadataStudio
               />
             )}
             <label className="inline-check">
-              <input type="checkbox" checked={field.required} onChange={(e) => updateField(index, { required: e.target.checked })} /> Required
+              <input
+                type="checkbox"
+                checked={field.required}
+                onChange={(e) => updateField(index, { required: e.target.checked })}
+              />{' '}
+              Required
             </label>
-            <button className="danger" onClick={() => setFields((current) => current.filter((_, position) => position !== index))}>
+            <button
+              className="danger"
+              onClick={() =>
+                setFields((current) => current.filter((_, position) => position !== index))
+              }
+            >
               Remove
             </button>
           </div>
@@ -92,7 +130,12 @@ export function MetadataStudio({ token, defaultCode, onCreated }: MetadataStudio
           onClick={() =>
             setFields((current) => [
               ...current,
-              { code: `field_${current.length + 1}`, type: 'text', required: false, label: `Field ${current.length + 1}` },
+              {
+                code: `field_${current.length + 1}`,
+                type: 'text',
+                required: false,
+                label: `Field ${current.length + 1}`,
+              },
             ])
           }
         >

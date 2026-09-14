@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TranslationKeys } from '../i18n';
 import DataTable from './DataTable';
-import Modal from './Modal';
-import ConfirmDialog from './ConfirmDialog';
 
 interface Notification {
   id: string;
@@ -20,42 +18,27 @@ interface NotificationsPageProps {
   token: string;
 }
 
-export default function NotificationsPage({ t, token }: NotificationsPageProps) {
+export default function NotificationsPage({ t: _t, token }: NotificationsPageProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
-  const [showModal, setShowModal] = useState(false);
-  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
-
-  const columns = [
-    { key: 'title', header: 'Title', className: 'max-w-xs truncate' },
-    { key: 'message', header: 'Message', className: 'max-w-md truncate', render: (row: Notification) => (
-      <span className="text-sm text-gray-600 max-w-md truncate block">{row.message}</span>
-    )},
-    { key: 'notification_type', header: 'Type', render: (row: Notification) => (
-      <TypeBadge type={row.notification_type} />
-    )},
-    { key: 'category', header: 'Category', render: (row: Notification) => (
-      <CategoryBadge category={row.category} />
-    )},
-    { key: 'created_at', header: 'Date', render: (row: Notification) => formatDate(row.created_at), className: 'whitespace-nowrap' },
-    { key: 'is_read', header: 'Read', render: (row: Notification) => (
-      <span className={row.is_read ? 'text-green-600' : 'text-yellow-600'}>
-        {row.is_read ? '✓ Read' : '○ Unread'}
-      </span>
-    )},
-  ];
+  const [, setShowModal] = useState(false);
+  const [, setSelectedNotification] = useState<Notification | null>(null);
 
   useEffect(() => {
     fetchNotifications();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
   const fetchNotifications = async () => {
     try {
-      const response = await fetch(`/api/v1/notifications?is_read=${filter === 'unread' ? 'false' : ''}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await fetch(
+        `/api/v1/notifications?is_read=${filter === 'unread' ? 'false' : ''}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
       if (response.ok) {
         const data = await response.json();
         setNotifications(data.items || []);
@@ -117,7 +100,7 @@ export default function NotificationsPage({ t, token }: NotificationsPageProps) 
         <div className="flex gap-2">
           <select
             value={filter}
-            onChange={(e) => setFilter(e.target.value as any)}
+            onChange={(e) => setFilter(e.target.value as 'all' | 'unread')}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All</option>
@@ -135,20 +118,43 @@ export default function NotificationsPage({ t, token }: NotificationsPageProps) 
         data={notifications}
         columns={[
           { key: 'title', header: 'Title', className: 'max-w-xs truncate' },
-          { key: 'message', header: 'Message', className: 'max-w-md truncate', render: (row: Notification) => (
-            <span className="text-sm text-gray-600 max-w-md truncate block">{row.message}</span>
-          )},
-          { key: 'notification_type', header: 'Type', render: (row: Notification) => <TypeBadge type={row.notification_type} /> },
-          { key: 'category', header: 'Category', render: (row: Notification) => <CategoryBadge category={row.category} /> },
-          { key: 'created_at', header: 'Date', render: (row: Notification) => formatDate(row.created_at), className: 'whitespace-nowrap' },
-          { key: 'is_read', header: 'Read', render: (row: Notification) => (
-            <span className={row.is_read ? 'text-green-600' : 'text-yellow-600'}>
-              {row.is_read ? '✓ Read' : '○ Unread'}
-            </span>
-          )},
+          {
+            key: 'message',
+            header: 'Message',
+            className: 'max-w-md truncate',
+            render: (row: Notification) => (
+              <span className="text-sm text-gray-600 max-w-md truncate block">{row.message}</span>
+            ),
+          },
+          {
+            key: 'notification_type',
+            header: 'Type',
+            render: (row: Notification) => <TypeBadge type={row.notification_type} />,
+          },
+          {
+            key: 'category',
+            header: 'Category',
+            render: (row: Notification) => <CategoryBadge category={row.category} />,
+          },
+          {
+            key: 'created_at',
+            header: 'Date',
+            render: (row: Notification) => formatDate(row.created_at),
+            className: 'whitespace-nowrap',
+          },
+          {
+            key: 'is_read',
+            header: 'Read',
+            render: (row: Notification) => (
+              <span className={row.is_read ? 'text-green-600' : 'text-yellow-600'}>
+                {row.is_read ? '✓ Read' : '○ Unread'}
+              </span>
+            ),
+          },
         ]}
         onEdit={handleView}
         onDelete={() => {}}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         t={{} as any}
       />
     </div>
@@ -179,11 +185,11 @@ function CategoryBadge({ category }: { category: string }) {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('ar-SA', { 
-    year: 'numeric', 
-    month: 'short', 
+  return new Date(dateStr).toLocaleDateString('ar-SA', {
+    year: 'numeric',
+    month: 'short',
     day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   });
 }

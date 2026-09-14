@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from backend.app.main import app
 
@@ -52,6 +53,122 @@ def test_logout_revokes_only_the_current_session() -> None:
 
     repeated = client.post("/api/v1/auth/logout", headers=first_headers)
     assert repeated.status_code == 401
+
+
+def test_refresh_rotates_session_and_rejects_reuse() -> None:
+    registered = _register("refresh@example.com")
+
+    refreshed = client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": registered["refresh_token"]},
+    )
+    assert refreshed.status_code == 200
+    body = refreshed.json()
+    assert body["user_id"] == registered["user_id"]
+    assert body["tenant_id"] == registered["tenant_id"]
+    assert body["role"] == "admin"
+    assert body["access_token"] != registered["access_token"]
+    assert body["refresh_token"] != registered["refresh_token"]
+
+    me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {body['access_token']}"})
+    assert me.status_code == 200
+    assert me.json()["tenant_id"] == body["tenant_id"]
+
+    old_access = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {registered['access_token']}"},
+    )
+    assert old_access.status_code == 401
+
+    reused = client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": registered["refresh_token"]},
+    )
+    assert reused.status_code == 401
+
+
+def test_refresh_unique_session_lookup_does_not_match_other_sessions() -> None:
+    first = _register("refresh-first@example.com")
+    second = _register("refresh-second@example.com")
+
+    with_first = client.post("/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
+    assert with_first.status_code == 200
+    assert with_first.json()["user_id"] == first["user_id"]
+
+    with_second = client.post("/api/v1/auth/refresh", json={"refresh_token": second["refresh_token"]})
+    assert with_second.status_code == 200
+    assert with_second.json()["user_id"] == second["user_id"]
+
+    guess = client.post("/api/v1/auth/refresh", json={"refresh_token": "not-a-real-token"})
+    assert guess.status_code == 401
+
+
+def test_expired_refresh_token_is_rejected() -> None:
+    from datetime import datetime
+
+    from backend.app.auth.models import AuthSession
+    from backend.app.auth.security import hash_token
+    from backend.app.db import SessionLocal
+
+    registered = _register("refresh-expired@example.com")
+    session = SessionLocal()
+    try:
+        row = session.scalar(
+            select(AuthSession).where(
+                AuthSession.user_id == UUID(registered["user_id"]),
+            )
+        )
+        assert row is not None
+        assert row.refresh_token_hash == hash_token(registered["refresh_token"])
+        row.refresh_expires_at = datetime(2000, 1, 1)
+        session.commit()
+    finally:
+        session.close()
+
+    expired = client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": registered["refresh_token"]},
+    )
+    assert expired.status_code == 401
+
+
+def test_refresh_keeps_tenant_binding_without_escalation() -> None:
+    owner_a = _register("refresh-tenant-a@example.com")
+    owner_b = _register("refresh-tenant-b@example.com")
+
+    admin_headers = {"Authorization": f"Bearer {owner_a['access_token']}"}
+    added = client.post(
+        "/api/v1/auth/members",
+        json={"email": "refresh-tenant-b@example.com", "role": "member"},
+        headers=admin_headers,
+    )
+    assert added.status_code == 201
+
+    login_b_in_a = client.post(
+        "/api/v1/auth/token",
+        json={
+            "email": "refresh-tenant-b@example.com",
+            "password": "Correct-Horse-Battery-42",
+            "tenant_id": owner_a["tenant_id"],
+        },
+    )
+    assert login_b_in_a.status_code == 200
+
+    refreshed = client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": login_b_in_a.json()["refresh_token"]},
+    )
+    assert refreshed.status_code == 200
+    assert refreshed.json()["tenant_id"] == owner_a["tenant_id"]
+    assert refreshed.json()["user_id"] == owner_b["user_id"]
+
+    me = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {refreshed.json()['access_token']}"},
+    )
+    assert me.status_code == 200
+    assert me.json()["tenant_id"] == owner_a["tenant_id"]
+    assert me.json()["role"] == "member"
 
 
 def test_invalid_or_missing_access_token_is_rejected() -> None:

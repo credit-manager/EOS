@@ -20,7 +20,7 @@ interface ContractsPageProps {
 
 export default function ContractsPage({ t, token }: ContractsPageProps) {
   const [contracts, setContracts] = useState<Contract[]>([]);
-  const [projects, setProjects] = useState<any[]>([]);
+  const [projects, setProjects] = useState<{ id: string; name: string; code: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingContract, setEditingContract] = useState<Contract | null>(null);
@@ -36,17 +36,24 @@ export default function ContractsPage({ t, token }: ContractsPageProps) {
   const columns = [
     { key: 'number', header: t.contracts.number },
     { key: 'project_name', header: t.contracts.projectName },
-    { key: 'total_amount', header: t.contracts.totalAmount, render: (row: Contract) => (
-      <span className="font-mono">{formatCurrency(row.total_amount)}</span>
-    )},
-    { key: 'status', header: t.contracts.status, render: (row: Contract) => (
-      <StatusBadge status={row.status} t={t} />
-    )},
+    {
+      key: 'total_amount',
+      header: t.contracts.totalAmount,
+      render: (row: Contract) => (
+        <span className="font-mono">{formatCurrency(row.total_amount)}</span>
+      ),
+    },
+    {
+      key: 'status',
+      header: t.contracts.status,
+      render: (row: Contract) => <StatusBadge status={row.status} t={t} />,
+    },
   ];
 
   useEffect(() => {
     fetchContracts();
     fetchProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchContracts = async () => {
@@ -58,7 +65,7 @@ export default function ContractsPage({ t, token }: ContractsPageProps) {
         const data = await response.json();
         setContracts(data.items || data);
       }
-    } catch (err) {
+    } catch {
       setError(t.common.error);
     } finally {
       setLoading(false);
@@ -74,7 +81,7 @@ export default function ContractsPage({ t, token }: ContractsPageProps) {
         const data = await response.json();
         setProjects(data.items || data);
       }
-    } catch (err) {
+    } catch {
       // ignore
     }
   };
@@ -99,13 +106,13 @@ export default function ContractsPage({ t, token }: ContractsPageProps) {
         ? `/api/v1/construction/contracts/${editingContract.id}`
         : '/api/v1/construction/contracts';
       const method = editingContract ? 'PUT' : 'POST';
-      
+
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(formData),
       });
-      
+
       if (response.ok) {
         setShowModal(false);
         fetchContracts();
@@ -113,13 +120,13 @@ export default function ContractsPage({ t, token }: ContractsPageProps) {
         const data = await response.json();
         setError(data.detail || t.common.error);
       }
-    } catch (err) {
+    } catch {
       setError(t.common.error);
     }
   };
 
   const handleDelete = (id: string) => setDeleteConfirm(id);
-  
+
   const confirmDelete = async () => {
     if (!deleteConfirm) return;
     try {
@@ -133,7 +140,8 @@ export default function ContractsPage({ t, token }: ContractsPageProps) {
     }
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64">{t.common.loading}</div>;
+  if (loading)
+    return <div className="flex items-center justify-center h-64">{t.common.loading}</div>;
 
   return (
     <div className="space-y-6">
@@ -154,10 +162,16 @@ export default function ContractsPage({ t, token }: ContractsPageProps) {
         t={t}
       />
 
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingContract ? t.contracts.edit : t.contracts.create}>
+      <Modal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        title={editingContract ? t.contracts.edit : t.contracts.create}
+      >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t.contracts.number} *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t.contracts.number} *
+            </label>
             <input
               type="text"
               value={formData.number}
@@ -167,7 +181,9 @@ export default function ContractsPage({ t, token }: ContractsPageProps) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t.contracts.projectName} *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t.contracts.projectName} *
+            </label>
             <select
               value={formData.project_id}
               onChange={(e) => setFormData({ ...formData, project_id: e.target.value })}
@@ -175,13 +191,17 @@ export default function ContractsPage({ t, token }: ContractsPageProps) {
               required
             >
               <option value="">{t.common.selectAll}</option>
-              {projects.map((p: any) => (
-                <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.code})
+                </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t.contracts.totalAmount} *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t.contracts.totalAmount} *
+            </label>
             <input
               type="number"
               step="0.01"
@@ -192,7 +212,9 @@ export default function ContractsPage({ t, token }: ContractsPageProps) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t.contracts.status}</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t.contracts.status}
+            </label>
             <select
               value={formData.status}
               onChange={(e) => setFormData({ ...formData, status: e.target.value })}
@@ -204,13 +226,23 @@ export default function ContractsPage({ t, token }: ContractsPageProps) {
             </select>
           </div>
           <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">{t.common.cancel}</button>
-            <button type="submit" className="btn-primary">{t.common.save}</button>
+            <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">
+              {t.common.cancel}
+            </button>
+            <button type="submit" className="btn-primary">
+              {t.common.save}
+            </button>
           </div>
         </form>
       </Modal>
 
-      <ConfirmDialog isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} onConfirm={confirmDelete} title={t.common.confirm} message={t.common.confirm} />
+      <ConfirmDialog
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={confirmDelete}
+        title={t.common.confirm}
+        message={t.common.confirm}
+      />
     </div>
   );
 }

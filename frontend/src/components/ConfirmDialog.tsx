@@ -50,7 +50,10 @@ export default function ConfirmDialog({
                 {cancelText}
               </button>
               <button
-                onClick={() => { onConfirm(); onClose(); }}
+                onClick={() => {
+                  onConfirm();
+                  onClose();
+                }}
                 className={`px-4 py-2 text-white rounded-lg ${variantColors[variant]}`}
               >
                 {confirmText}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { api, TOKEN_KEY, REFRESH_TOKEN_KEY, refreshToken as apiRefreshToken } from '../api';
+import { api, TOKEN_KEY, REFRESH_TOKEN_KEY } from '../api';
 import type { Session } from '../types';
 import { AuthScreen } from './AuthScreen';
 import { CatalogPage } from './CatalogPage';
@@ -11,7 +11,16 @@ const DEFAULT_ENTITY = import.meta.env.VITE_ENTITY_CODE ?? '';
 function sessionFromStorage(): Session | null {
   const token = localStorage.getItem(TOKEN_KEY);
   const refreshTokenValue = localStorage.getItem(REFRESH_TOKEN_KEY);
-  return token ? { access_token: token, user_id: '', tenant_id: '', role: '', expires_in: 0, refresh_token: refreshTokenValue ?? undefined } : null;
+  return token
+    ? {
+        access_token: token,
+        user_id: '',
+        tenant_id: '',
+        role: '',
+        expires_in: 0,
+        refresh_token: refreshTokenValue ?? undefined,
+      }
+    : null;
 }
 
 export function App() {
@@ -30,9 +39,17 @@ export function App() {
       return;
     }
     let active = true;
-    void api<{ user_id: string; tenant_id: string; role: string; email: string }>('/auth/me', session.access_token)
+    void api<{ user_id: string; tenant_id: string; role: string; email: string }>(
+      '/auth/me',
+      session.access_token
+    )
       .then((me) => {
-        if (active) setSession((current) => (current ? { ...current, user_id: me.user_id, tenant_id: me.tenant_id, role: me.role } : current));
+        if (active)
+          setSession((current) =>
+            current
+              ? { ...current, user_id: me.user_id, tenant_id: me.tenant_id, role: me.role }
+              : current
+          );
       })
       .catch(() => {
         if (active) {
@@ -87,7 +104,9 @@ export function App() {
             <p className="eyebrow">2TO / EOS</p>
             <h1>Metadata Studio</h1>
           </div>
-          <button className="secondary" onClick={() => setStudioOnly(false)}>Back</button>
+          <button className="secondary" onClick={() => setStudioOnly(false)}>
+            Back
+          </button>
         </header>
         <MetadataStudio
           token={session.access_token}

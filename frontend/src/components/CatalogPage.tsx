@@ -12,7 +12,14 @@ interface CatalogPageProps {
   onCreate: () => void;
 }
 
-export function CatalogPage({ token, role, defaultEntity, onSelect, onLogout, onCreate }: CatalogPageProps) {
+export function CatalogPage({
+  token,
+  role,
+  defaultEntity,
+  onSelect,
+  onLogout,
+  onCreate,
+}: CatalogPageProps) {
   const [entities, setEntities] = useState<MetadataSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
@@ -31,6 +38,7 @@ export function CatalogPage({ token, role, defaultEntity, onSelect, onLogout, on
 
   useEffect(() => {
     void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   return (
@@ -39,19 +47,31 @@ export function CatalogPage({ token, role, defaultEntity, onSelect, onLogout, on
         <div>
           <p className="eyebrow">2TO / EOS</p>
           <h1>Entity workspace</h1>
-          <p className="muted">Choose a published metadata entity. The UI is generated from its definition.</p>
+          <p className="muted">
+            Choose a published metadata entity. The UI is generated from its definition.
+          </p>
         </div>
-        <button className="secondary" onClick={onLogout}>Sign out</button>
+        <button className="secondary" onClick={onLogout}>
+          Sign out
+        </button>
       </header>
-      {error && <div className="error" role="alert">{error}</div>}
-      {role === 'admin' && <MetadataStudio token={token} defaultCode={defaultEntity} onCreated={onSelect} />}
+      {error && (
+        <div className="error" role="alert">
+          {error}
+        </div>
+      )}
+      {role === 'admin' && (
+        <MetadataStudio token={token} defaultCode={defaultEntity} onCreated={onSelect} />
+      )}
       <section className="card">
         <div className="section-head">
           <h2>Published entities</h2>
           <div className="actions">
             <span className="pill">{entities.length} available</span>
             {role === 'admin' && <button onClick={onCreate}>New entity</button>}
-            <button className="secondary" onClick={() => void load()}>Refresh</button>
+            <button className="secondary" onClick={() => void load()}>
+              Refresh
+            </button>
           </div>
         </div>
         {busy ? (
@@ -61,10 +81,16 @@ export function CatalogPage({ token, role, defaultEntity, onSelect, onLogout, on
         ) : (
           <div className="catalog-grid">
             {entities.map((entity) => (
-              <button className="entity-card" key={entity.code} onClick={() => onSelect(entity.code)}>
+              <button
+                className="entity-card"
+                key={entity.code}
+                onClick={() => onSelect(entity.code)}
+              >
                 <strong>{entity.name}</strong>
                 <span>{entity.code}</span>
-                <small>v{entity.version} · {entity.field_count} fields</small>
+                <small>
+                  v{entity.version} · {entity.field_count} fields
+                </small>
               </button>
             ))}
           </div>

@@ -18,9 +18,11 @@ interface BOQPageProps {
   token: string;
 }
 
-export default function BOQPage({ t, token }: BOQPageProps) {
+export default function BOQPage({ t: _t, token }: BOQPageProps) {
   const [boqs, setBoqs] = useState<BOQ[]>([]);
-  const [contracts, setContracts] = useState<any[]>([]);
+  const [contracts, setContracts] = useState<
+    { id: string; number: string; project_name: string }[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingBOQ, setEditingBOQ] = useState<BOQ | null>(null);
@@ -35,12 +37,17 @@ export default function BOQPage({ t, token }: BOQPageProps) {
     { key: 'contract_name', header: 'Contract' },
     { key: 'status', header: 'Status', render: (row: BOQ) => <StatusBadge status={row.status} /> },
     { key: 'items_count', header: 'Items', className: 'text-right' },
-    { key: 'total_amount', header: 'Total', render: (row: BOQ) => <span className="font-mono">{formatCurrency(row.total_amount)}</span> },
+    {
+      key: 'total_amount',
+      header: 'Total',
+      render: (row: BOQ) => <span className="font-mono">{formatCurrency(row.total_amount)}</span>,
+    },
   ];
 
   useEffect(() => {
     fetchBOQs();
     fetchContracts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchBOQs = async () => {
@@ -52,7 +59,7 @@ export default function BOQPage({ t, token }: BOQPageProps) {
         const data = await response.json();
         setBoqs(data.items || data);
       }
-    } catch (err) {
+    } catch {
       setError('Failed to load BOQs');
     } finally {
       setLoading(false);
@@ -68,7 +75,7 @@ export default function BOQPage({ t, token }: BOQPageProps) {
         const data = await response.json();
         setContracts(data.items || data);
       }
-    } catch (err) {
+    } catch {
       // ignore
     }
   };
@@ -93,13 +100,13 @@ export default function BOQPage({ t, token }: BOQPageProps) {
         ? `/api/v1/construction/boqs/${editingBOQ.id}`
         : '/api/v1/construction/boqs';
       const method = editingBOQ ? 'PUT' : 'POST';
-      
+
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(formData),
       });
-      
+
       if (response.ok) {
         setShowModal(false);
         fetchBOQs();
@@ -107,14 +114,14 @@ export default function BOQPage({ t, token }: BOQPageProps) {
         const data = await response.json();
         setError(data.detail || 'Failed to save');
       }
-    } catch (err) {
+    } catch {
       setError('Failed to save');
     }
   };
 
   const handleDelete = (id: string) => setDeleteConfirm(id);
-  
-  const confirmDelete = async () => {
+
+  const _confirmDelete = async () => {
     if (!deleteConfirm) return;
     try {
       const response = await fetch(`/api/v1/construction/boqs/${deleteConfirm}`, {
@@ -145,10 +152,15 @@ export default function BOQPage({ t, token }: BOQPageProps) {
         columns={columns}
         onEdit={handleEdit}
         onDelete={handleDelete}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         t={{} as any}
       />
 
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingBOQ ? 'Edit BOQ' : 'Create BOQ'}>
+      <Modal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        title={editingBOQ ? 'Edit BOQ' : 'Create BOQ'}
+      >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Contract *</label>
@@ -159,8 +171,10 @@ export default function BOQPage({ t, token }: BOQPageProps) {
               required
             >
               <option value="">Select Contract</option>
-              {contracts.map((c: any) => (
-                <option key={c.id} value={c.id}>{c.number} - {c.project_name}</option>
+              {contracts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.number} - {c.project_name}
+                </option>
               ))}
             </select>
           </div>
@@ -177,23 +191,36 @@ export default function BOQPage({ t, token }: BOQPageProps) {
             </select>
           </div>
           <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">Cancel</button>
-            <button type="submit" className="btn-primary">Save</button>
+            <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary">
+              Save
+            </button>
           </div>
         </form>
       </Modal>
 
-      <ConfirmDialog isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} onConfirm={() => { if(deleteConfirm) { fetch(`/api/v1/construction/boqs/${deleteConfirm}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).then(r => { if (r.ok) fetchBOQs(); }); setDeleteConfirm(null); }} } title="Confirm" message="Are you sure?" />
+      <ConfirmDialog
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => {
+          if (deleteConfirm) {
+            fetch(`/api/v1/construction/boqs/${deleteConfirm}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${token}` },
+            }).then((r) => {
+              if (r.ok) fetchBOQs();
+            });
+            setDeleteConfirm(null);
+          }
+        }}
+        title="Confirm"
+        message="Are you sure?"
+      />
     </div>
   );
 }
-
-const columns = [
-  { key: 'contract_name', header: 'Contract' },
-  { key: 'status', header: 'Status', render: (row: any) => <StatusBadge status={row.status} /> },
-  { key: 'items_count', header: 'Items', className: 'text-right' },
-  { key: 'total_amount', header: 'Total', render: (row: any) => <span className="font-mono">{formatCurrency(row.total_amount)}</span> },
-];
 
 function StatusBadge({ status }: { status: string }) {
   const statusMap: Record<string, { label: string; class: string }> = {

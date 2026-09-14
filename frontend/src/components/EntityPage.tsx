@@ -22,7 +22,8 @@ export function EntityPage({ token, role, entityCode, onLogout, onBack }: Entity
   const permissions = metadata?.definition.permissions;
 
   const allowed = (action: PermissionAction) =>
-    role === 'admin' || permissions?.[role === 'member' ? 'member' : 'admin']?.includes(action) === true;
+    role === 'admin' ||
+    permissions?.[role === 'member' ? 'member' : 'admin']?.includes(action) === true;
 
   async function load() {
     setBusy(true);
@@ -43,6 +44,7 @@ export function EntityPage({ token, role, entityCode, onLogout, onBack }: Entity
 
   useEffect(() => {
     void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityCode, token]);
 
   function setField(field: Field, value: string | boolean) {
@@ -65,7 +67,10 @@ export function EntityPage({ token, role, entityCode, onLogout, onBack }: Entity
           data[field.code] = serializeField(field, form[field.code]);
         }
       }
-      await api(`/entities/${entityCode}/records`, token, { method: 'POST', body: JSON.stringify({ data }) });
+      await api(`/entities/${entityCode}/records`, token, {
+        method: 'POST',
+        body: JSON.stringify({ data }),
+      });
       setForm({});
       await load();
     } catch (err) {
@@ -92,26 +97,54 @@ export function EntityPage({ token, role, entityCode, onLogout, onBack }: Entity
           <p className="muted">{entityCode}</p>
         </div>
         <div className="actions">
-          <div className="pill">{metadata ? `v${metadata.version} · Published` : 'Loading metadata'}</div>
-          <button className="secondary" onClick={onBack}>Entities</button>
-          <button className="secondary" onClick={onLogout}>Sign out</button>
+          <div className="pill">
+            {metadata ? `v${metadata.version} · Published` : 'Loading metadata'}
+          </div>
+          <button className="secondary" onClick={onBack}>
+            Entities
+          </button>
+          <button className="secondary" onClick={onLogout}>
+            Sign out
+          </button>
         </div>
       </header>
-      {error && <div className="error" role="alert">{error}</div>}
+      {error && (
+        <div className="error" role="alert">
+          {error}
+        </div>
+      )}
       {metadata && (
         <section className="card">
           <h2>New record</h2>
           <div className="grid">
             {fields.map((field) => (
               <label key={field.code}>
-                <span>{field.label ?? field.code}{field.required ? ' *' : ''}</span>
+                <span>
+                  {field.label ?? field.code}
+                  {field.required ? ' *' : ''}
+                </span>
                 {field.type === 'boolean' ? (
-                  <input type="checkbox" checked={Boolean(form[field.code])} onChange={(e) => setField(field, e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form[field.code])}
+                    onChange={(e) => setField(field, e.target.checked)}
+                  />
                 ) : field.type === 'relation' ? (
-                  <RelationField token={token} field={field} value={String(form[field.code] ?? '')} onChange={(value) => setField(field, value)} />
+                  <RelationField
+                    token={token}
+                    field={field}
+                    value={String(form[field.code] ?? '')}
+                    onChange={(value) => setField(field, value)}
+                  />
                 ) : (
                   <input
-                    type={field.type === 'integer' || field.type === 'decimal' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                    type={
+                      field.type === 'integer' || field.type === 'decimal'
+                        ? 'number'
+                        : field.type === 'date'
+                          ? 'date'
+                          : 'text'
+                    }
                     value={String(form[field.code] ?? '')}
                     onChange={(e) => setField(field, e.target.value)}
                   />
@@ -120,7 +153,9 @@ export function EntityPage({ token, role, entityCode, onLogout, onBack }: Entity
             ))}
           </div>
           {allowed('create') && (
-            <button disabled={busy || fields.length === 0} onClick={() => void create()}>Create record</button>
+            <button disabled={busy || fields.length === 0} onClick={() => void create()}>
+              Create record
+            </button>
           )}
         </section>
       )}
@@ -128,7 +163,9 @@ export function EntityPage({ token, role, entityCode, onLogout, onBack }: Entity
         <section className="card">
           <div className="section-head">
             <h2>Records</h2>
-            <button className="secondary" onClick={() => void load()}>Refresh</button>
+            <button className="secondary" onClick={() => void load()}>
+              Refresh
+            </button>
           </div>
           {records.length === 0 ? (
             <p className="muted">No records yet.</p>
@@ -138,7 +175,9 @@ export function EntityPage({ token, role, entityCode, onLogout, onBack }: Entity
                 <thead>
                   <tr>
                     <th>ID</th>
-                    {fields.map((field) => <th key={field.code}>{field.label ?? field.code}</th>)}
+                    {fields.map((field) => (
+                      <th key={field.code}>{field.label ?? field.code}</th>
+                    ))}
                     <th />
                   </tr>
                 </thead>
@@ -151,7 +190,9 @@ export function EntityPage({ token, role, entityCode, onLogout, onBack }: Entity
                       ))}
                       <td>
                         {allowed('delete') && (
-                          <button className="danger" onClick={() => void remove(record)}>Delete</button>
+                          <button className="danger" onClick={() => void remove(record)}>
+                            Delete
+                          </button>
                         )}
                       </td>
                     </tr>

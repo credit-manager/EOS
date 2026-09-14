@@ -56,7 +56,7 @@ def verify_password(password: str, encoded: str) -> bool:
         return False
 
 
-def _hash_token(token: str) -> str:
+def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
@@ -88,8 +88,8 @@ def create_access_token(*, user_id: UUID, tenant_id: UUID, role: str) -> tuple[s
         id=session_id,
         user_id=user_id,
         tenant_id=tenant_id,
-        token_hash=_hash_token(access_token),
-        refresh_token_hash=_hash_token(refresh_token),
+        token_hash=hash_token(access_token),
+        refresh_token_hash=hash_token(refresh_token),
         expires_at=datetime.fromtimestamp(access_payload["exp"], tz=UTC),
         refresh_expires_at=datetime.fromtimestamp(now + settings.refresh_token_ttl_seconds, tz=UTC),
     )
@@ -143,7 +143,7 @@ def require_principal(
         raise HTTPException(status_code=401, detail="access session is not valid")
     if session.revoked_at is not None or _utc(session.expires_at) <= now:
         raise HTTPException(status_code=401, detail="access session is revoked or expired")
-    if not hmac.compare_digest(session.token_hash, _hash_token(token)):
+    if not hmac.compare_digest(session.token_hash, hash_token(token)):
         raise HTTPException(status_code=401, detail="access session is not valid")
     user = db.scalar(select(User).where(User.id == principal.user_id, User.is_active.is_(True)))
     membership = db.scalar(

@@ -7,9 +7,11 @@ interface SettingsPageProps {
   token: string;
 }
 
-export default function SettingsPage({ t, token }: SettingsPageProps) {
-  const { language, setLanguage, isRTL } = useI18n();
-  const [activeTab, setActiveTab] = useState<'general' | 'appearance' | 'notifications' | 'security'>('general');
+export default function SettingsPage({ t: _t, token: _token }: SettingsPageProps) {
+  const { language, setLanguage, isRTL: _isRTL } = useI18n();
+  const [activeTab, setActiveTab] = useState<
+    'general' | 'appearance' | 'notifications' | 'security'
+  >('general');
   const [formData, setFormData] = useState({
     company_name: '',
     timezone: 'Asia/Riyadh',
@@ -42,22 +44,29 @@ export default function SettingsPage({ t, token }: SettingsPageProps) {
         console.error('Failed to load settings:', e);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSaveGeneral = () => {
-    localStorage.setItem('2to-eos-settings', JSON.stringify({
-      general: formData,
-      notifications,
-    }));
+    localStorage.setItem(
+      '2to-eos-settings',
+      JSON.stringify({
+        general: formData,
+        notifications,
+      })
+    );
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };
 
   const handleSaveNotifications = () => {
-    localStorage.setItem('2to-eos-settings', JSON.stringify({
-      general: formData,
-      notifications,
-    }));
+    localStorage.setItem(
+      '2to-eos-settings',
+      JSON.stringify({
+        general: formData,
+        notifications,
+      })
+    );
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };
@@ -89,7 +98,9 @@ export default function SettingsPage({ t, token }: SettingsPageProps) {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() =>
+                  setActiveTab(tab.id as 'general' | 'appearance' | 'notifications' | 'security')
+                }
                 className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === tab.id
                     ? 'border-blue-500 text-blue-600'
@@ -115,7 +126,9 @@ export default function SettingsPage({ t, token }: SettingsPageProps) {
               <h2 className="text-lg font-semibold text-gray-900">Company Information</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Company Name
+                  </label>
                   <input
                     type="text"
                     value={formData.company_name}
@@ -136,7 +149,9 @@ export default function SettingsPage({ t, token }: SettingsPageProps) {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date Format</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Date Format
+                  </label>
                   <select
                     value={formData.date_format}
                     onChange={(e) => setFormData({ ...formData, date_format: e.target.value })}
@@ -160,7 +175,9 @@ export default function SettingsPage({ t, token }: SettingsPageProps) {
                   </select>
                 </div>
               </div>
-              <button onClick={handleSaveGeneral} className="btn-primary">Save Changes</button>
+              <button onClick={handleSaveGeneral} className="btn-primary">
+                Save Changes
+              </button>
             </div>
           )}
 
@@ -172,7 +189,10 @@ export default function SettingsPage({ t, token }: SettingsPageProps) {
                   <h3 className="text-medium font-medium text-gray-900 mb-4">Language</h3>
                   <div className="space-y-3">
                     {['en', 'ar'].map((lang) => (
-                      <label key={lang} className="flex items-center gap-3 p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
+                      <label
+                        key={lang}
+                        className="flex items-center gap-3 p-4 border rounded-lg cursor-pointer hover:bg-gray-50"
+                      >
                         <input
                           type="radio"
                           name="language"
@@ -182,7 +202,9 @@ export default function SettingsPage({ t, token }: SettingsPageProps) {
                           className="text-blue-600 focus:ring-blue-500"
                         />
                         <span className="font-medium">{lang === 'en' ? 'English' : 'العربية'}</span>
-                        <span className="text-sm text-gray-500">({lang === 'en' ? 'LTR' : 'RTL'})</span>
+                        <span className="text-sm text-gray-500">
+                          ({lang === 'en' ? 'LTR' : 'RTL'})
+                        </span>
                       </label>
                     ))}
                   </div>
@@ -191,7 +213,13 @@ export default function SettingsPage({ t, token }: SettingsPageProps) {
                   <h3 className="text-medium font-medium text-gray-900 mb-4">Theme</h3>
                   <div className="space-y-3">
                     <label className="flex items-center gap-3 p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
-                      <input type="radio" name="theme" value="light" checked className="text-blue-600" />
+                      <input
+                        type="radio"
+                        name="theme"
+                        value="light"
+                        checked
+                        className="text-blue-600"
+                      />
                       <span className="font-medium">Light Mode</span>
                     </label>
                     <label className="flex items-center gap-3 p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
@@ -213,18 +241,25 @@ export default function SettingsPage({ t, token }: SettingsPageProps) {
               <h2 className="text-lg font-semibold text-gray-900">Notification Preferences</h2>
               <div className="space-y-4">
                 {Object.entries(notifications).map(([key, value]) => (
-                  <label key={key} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
+                  <label
+                    key={key}
+                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                  >
                     <span className="font-medium capitalize">{key.replace('_', ' ')}</span>
                     <input
                       type="checkbox"
                       checked={value}
-                      onChange={(e) => setNotifications({ ...notifications, [key]: e.target.checked })}
+                      onChange={(e) =>
+                        setNotifications({ ...notifications, [key]: e.target.checked })
+                      }
                       className="h-5 w-5 text-blue-600 focus:ring-blue-500 rounded"
                     />
                   </label>
                 ))}
               </div>
-              <button onClick={handleSaveNotifications} className="btn-primary">Save Changes</button>
+              <button onClick={handleSaveNotifications} className="btn-primary">
+                Save Changes
+              </button>
             </div>
           )}
 
@@ -233,7 +268,9 @@ export default function SettingsPage({ t, token }: SettingsPageProps) {
               <h2 className="text-lg font-semibold text-gray-900 mb-6">Change Password</h2>
               <form onSubmit={handleChangePassword} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Current Password
+                  </label>
                   <input
                     type="password"
                     value={passwordData.current}
@@ -243,7 +280,9 @@ export default function SettingsPage({ t, token }: SettingsPageProps) {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    New Password
+                  </label>
                   <input
                     type="password"
                     value={passwordData.new}
@@ -254,7 +293,9 @@ export default function SettingsPage({ t, token }: SettingsPageProps) {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Confirm New Password
+                  </label>
                   <input
                     type="password"
                     value={passwordData.confirm}
@@ -263,7 +304,9 @@ export default function SettingsPage({ t, token }: SettingsPageProps) {
                     required
                   />
                 </div>
-                <button type="submit" className="btn-primary">Change Password</button>
+                <button type="submit" className="btn-primary">
+                  Change Password
+                </button>
               </form>
             </div>
           )}

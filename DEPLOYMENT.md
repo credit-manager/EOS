@@ -45,19 +45,20 @@ docker-compose -f docker-compose.prod.yml up -d
 docker-compose -f docker-compose.prod.yml exec backend alembic upgrade head
 ```
 
-5. Create admin user
+5. Create the initial admin user
+
+The first registration creates the first workspace and its admin. Use an environment-provided password — never a static one from documentation.
+
 ```bash
-docker-compose -f docker-compose.prod.yml exec backend python -c "
-from backend.app.db import SessionLocal
-from backend.app.auth.service import create_user, create_tenant
-db = SessionLocal()
-tenant = create_tenant(db, name='Admin Organization')
-user = create_user(db, email='admin@2to-eos.com', password='admin123', tenant_id=tenant.id, role='admin')
-db.commit()
-print(f'Admin user created: {user.email}')
-db.close()
-"
+export ADMIN_EMAIL='admin@yourdomain.com'
+export ADMIN_PASSWORD="$(openssl rand -base64 24)"
+echo "Admin password for $ADMIN_EMAIL: $ADMIN_PASSWORD"
+curl -sS -X POST http://localhost/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\",\"tenant_name\":\"Your Organization\"}"
 ```
+
+Rotate this password after first login and store it in a secrets manager.
 
 ### SSL Setup (Let's Encrypt)
 

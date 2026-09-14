@@ -19,6 +19,7 @@ export default function Dashboard({ t, token }: DashboardProps) {
 
   useEffect(() => {
     fetchStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchStats = async () => {
@@ -101,7 +102,9 @@ function StatCard({
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-      <div className={`inline-flex items-center justify-center w-12 h-12 rounded-lg ${colorClasses[color]}`}>
+      <div
+        className={`inline-flex items-center justify-center w-12 h-12 rounded-lg ${colorClasses[color]}`}
+      >
         <span className="text-xl font-bold">{displayValue.charAt(0)}</span>
       </div>
       <h3 className="mt-4 text-sm font-medium text-gray-500">{title}</h3>

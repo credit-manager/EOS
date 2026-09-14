@@ -20,7 +20,9 @@ interface ClaimsPageProps {
 
 export default function ClaimsPage({ t, token }: ClaimsPageProps) {
   const [claims, setClaims] = useState<Claim[]>([]);
-  const [contracts, setContracts] = useState<any[]>([]);
+  const [contracts, setContracts] = useState<
+    { id: string; number: string; project_name: string }[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingClaim, setEditingClaim] = useState<Claim | null>(null);
@@ -36,17 +38,22 @@ export default function ClaimsPage({ t, token }: ClaimsPageProps) {
   const columns = [
     { key: 'claim_number', header: t.claims.claimNumber },
     { key: 'contract_name', header: t.contracts.projectName },
-    { key: 'amount', header: t.claims.amount, render: (row: Claim) => (
-      <span className="font-mono">{formatCurrency(row.amount)}</span>
-    )},
-    { key: 'status', header: t.claims.status, render: (row: Claim) => (
-      <StatusBadge status={row.status} t={t} />
-    )},
+    {
+      key: 'amount',
+      header: t.claims.amount,
+      render: (row: Claim) => <span className="font-mono">{formatCurrency(row.amount)}</span>,
+    },
+    {
+      key: 'status',
+      header: t.claims.status,
+      render: (row: Claim) => <StatusBadge status={row.status} t={t} />,
+    },
   ];
 
   useEffect(() => {
     fetchClaims();
     fetchContracts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchClaims = async () => {
@@ -58,7 +65,7 @@ export default function ClaimsPage({ t, token }: ClaimsPageProps) {
         const data = await response.json();
         setClaims(data.items || data);
       }
-    } catch (err) {
+    } catch {
       setError(t.common.error);
     } finally {
       setLoading(false);
@@ -74,7 +81,7 @@ export default function ClaimsPage({ t, token }: ClaimsPageProps) {
         const data = await response.json();
         setContracts(data.items || data);
       }
-    } catch (err) {
+    } catch {
       // ignore
     }
   };
@@ -99,13 +106,13 @@ export default function ClaimsPage({ t, token }: ClaimsPageProps) {
         ? `/api/v1/construction/claims/${editingClaim.id}`
         : '/api/v1/construction/claims';
       const method = editingClaim ? 'PUT' : 'POST';
-      
+
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(formData),
       });
-      
+
       if (response.ok) {
         setShowModal(false);
         fetchClaims();
@@ -113,13 +120,13 @@ export default function ClaimsPage({ t, token }: ClaimsPageProps) {
         const data = await response.json();
         setError(data.detail || t.common.error);
       }
-    } catch (err) {
+    } catch {
       setError(t.common.error);
     }
   };
 
   const handleDelete = (id: string) => setDeleteConfirm(id);
-  
+
   const confirmDelete = async () => {
     if (!deleteConfirm) return;
     try {
@@ -133,7 +140,8 @@ export default function ClaimsPage({ t, token }: ClaimsPageProps) {
     }
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64">{t.common.loading}</div>;
+  if (loading)
+    return <div className="flex items-center justify-center h-64">{t.common.loading}</div>;
 
   return (
     <div className="space-y-6">
@@ -154,7 +162,11 @@ export default function ClaimsPage({ t, token }: ClaimsPageProps) {
         t={t}
       />
 
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingClaim ? 'Edit Claim' : 'Create Claim'}>
+      <Modal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        title={editingClaim ? 'Edit Claim' : 'Create Claim'}
+      >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Claim Number *</label>
@@ -175,8 +187,10 @@ export default function ClaimsPage({ t, token }: ClaimsPageProps) {
               required
             >
               <option value="">Select Contract</option>
-              {contracts.map((c: any) => (
-                <option key={c.id} value={c.id}>{c.number} - {c.project_name}</option>
+              {contracts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.number} - {c.project_name}
+                </option>
               ))}
             </select>
           </div>
@@ -205,13 +219,23 @@ export default function ClaimsPage({ t, token }: ClaimsPageProps) {
             </select>
           </div>
           <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">{t.common.cancel}</button>
-            <button type="submit" className="btn-primary">{t.common.save}</button>
+            <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">
+              {t.common.cancel}
+            </button>
+            <button type="submit" className="btn-primary">
+              {t.common.save}
+            </button>
           </div>
         </form>
       </Modal>
 
-      <ConfirmDialog isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} onConfirm={confirmDelete} title={t.common.confirm} message={t.common.confirm} />
+      <ConfirmDialog
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={confirmDelete}
+        title={t.common.confirm}
+        message={t.common.confirm}
+      />
     </div>
   );
 }

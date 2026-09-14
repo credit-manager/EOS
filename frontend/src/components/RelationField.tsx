@@ -22,8 +22,13 @@ export function RelationField({ token, field, value, onChange }: RelationFieldPr
       setBusy(true);
       setError(null);
       try {
-        const suffix = query.trim() ? `?q=${encodeURIComponent(query.trim())}&limit=25` : '?limit=25';
-        const data = await api<LookupItem[]>(`/entities/${field.target_entity}/lookup${suffix}`, token);
+        const suffix = query.trim()
+          ? `?q=${encodeURIComponent(query.trim())}&limit=25`
+          : '?limit=25';
+        const data = await api<LookupItem[]>(
+          `/entities/${field.target_entity}/lookup${suffix}`,
+          token
+        );
         if (active) setItems(data);
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Unable to load choices');
@@ -39,17 +44,28 @@ export function RelationField({ token, field, value, onChange }: RelationFieldPr
 
   return (
     <div className="relation-field">
-      {error && <div className="error" role="alert">{error}</div>}
+      {error && (
+        <div className="error" role="alert">
+          {error}
+        </div>
+      )}
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search related records"
         aria-label={`${field.label ?? field.code} search`}
       />
-      <select value={value} onChange={(e) => onChange(e.target.value)} disabled={busy} aria-label={field.label ?? field.code}>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={busy}
+        aria-label={field.label ?? field.code}
+      >
         <option value="">{busy ? 'Loading…' : 'Select a record'}</option>
         {items.map((item) => (
-          <option key={item.id} value={item.id}>{item.label}</option>
+          <option key={item.id} value={item.id}>
+            {item.label}
+          </option>
         ))}
       </select>
       {value && <small className="muted">Selected: {value.slice(0, 8)}…</small>}

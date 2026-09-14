@@ -124,11 +124,21 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       
-      - name: Install dependencies
-        run: pip install pip-audit
+      - name: Install project dependencies
+        run: pip install '.[test]'
       
-      - name: Run pip-audit
+      - name: Audit Python dependencies
         run: pip-audit
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Audit frontend dependencies
+        working-directory: frontend
+        run: npm audit --audit-level=high
 
   frontend:
     runs-on: ubuntu-latest
@@ -148,12 +158,10 @@ jobs:
       - name: Run linter
         working-directory: frontend
         run: npm run lint
-        continue-on-error: true
       
       - name: Check formatting
         working-directory: frontend
         run: npm run format:check
-        continue-on-error: true
       
       - name: Build
         working-directory: frontend

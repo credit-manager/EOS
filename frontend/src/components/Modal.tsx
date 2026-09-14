@@ -27,7 +27,9 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
           onClick={onClose}
           aria-hidden="true"
         />
-        <div className={`relative w-full ${sizeClasses[size]} bg-white rounded-xl shadow-xl transform transition-all`}>
+        <div
+          className={`relative w-full ${sizeClasses[size]} bg-white rounded-xl shadow-xl transform transition-all`}
+        >
           <div className="flex items-center justify-between p-4 border-b border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
             <button

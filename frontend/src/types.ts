@@ -1,11 +1,45 @@
 export type FieldType = 'text' | 'integer' | 'decimal' | 'boolean' | 'date' | 'uuid' | 'relation';
 export type PermissionAction = 'create' | 'read' | 'update' | 'delete';
 export type Permissions = { admin: PermissionAction[]; member: PermissionAction[] };
-export type Field = { code: string; type: FieldType; required: boolean; nullable: boolean; label?: string | null; target_entity?: string | null };
+export type Field = {
+  code: string;
+  type: FieldType;
+  required: boolean;
+  nullable: boolean;
+  label?: string | null;
+  target_entity?: string | null;
+};
 export type Definition = { code: string; name: string; fields: Field[]; permissions?: Permissions };
-export type Metadata = { id: string; tenant_id: string; definition: Definition; version: number; published: boolean };
-export type MetadataSummary = { id: string; code: string; name: string; version: number; field_count: number; permissions: Permissions };
+export type Metadata = {
+  id: string;
+  tenant_id: string;
+  definition: Definition;
+  version: number;
+  published: boolean;
+};
+export type MetadataSummary = {
+  id: string;
+  code: string;
+  name: string;
+  version: number;
+  field_count: number;
+  permissions: Permissions;
+};
 export type RecordItem = { id: string; data: Record<string, unknown>; version: number };
 export type LookupItem = { id: string; label: string; data: Record<string, unknown> };
-export type Session = { access_token: string; user_id: string; tenant_id: string; role: string; expires_in: number; refresh_token?: string; refresh_expires_in?: number };
-export type FormField = { code: string; type: FieldType; required: boolean; label: string; target_entity?: string };
+export type Session = {
+  access_token: string;
+  user_id: string;
+  tenant_id: string;
+  role: string;
+  expires_in: number;
+  refresh_token?: string;
+  refresh_expires_in?: number;
+};
+export type FormField = {
+  code: string;
+  type: FieldType;
+  required: boolean;
+  label: string;
+  target_entity?: string;
+};

@@ -19,7 +19,8 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
     setError(null);
     try {
       const path = mode === 'login' ? '/auth/token' : '/auth/register';
-      const body = mode === 'login' ? { email, password } : { email, password, tenant_name: tenantName };
+      const body =
+        mode === 'login' ? { email, password } : { email, password, tenant_name: tenantName };
       const response = await fetch(`${API}${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -45,7 +46,11 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
         <p className="eyebrow">2TO / EOS</p>
         <h1>{mode === 'login' ? 'Sign in' : 'Create your workspace'}</h1>
         <p className="muted">Your workspace and permissions come from the signed access token.</p>
-        {error && <div className="error" role="alert">{error}</div>}
+        {error && (
+          <div className="error" role="alert">
+            {error}
+          </div>
+        )}
         <label>
           <span>Email</span>
           <input value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
@@ -66,12 +71,20 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
           </label>
         )}
         <button
-          disabled={busy || !email || password.length < (mode === 'register' ? 12 : 1) || (mode === 'register' && !tenantName)}
+          disabled={
+            busy ||
+            !email ||
+            password.length < (mode === 'register' ? 12 : 1) ||
+            (mode === 'register' && !tenantName)
+          }
           onClick={() => void submit()}
         >
           {busy ? 'Working…' : mode === 'login' ? 'Sign in' : 'Create workspace'}
         </button>
-        <button className="secondary" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
+        <button
+          className="secondary"
+          onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
+        >
           {mode === 'login' ? 'Create a new workspace' : 'I already have an account'}
         </button>
       </section>

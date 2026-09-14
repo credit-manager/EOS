@@ -26,11 +26,7 @@ export default function DataTable<T extends { id: string }>({
   emptyMessage,
 }: DataTableProps<T>) {
   if (data.length === 0) {
-    return (
-      <div className="text-center py-12 text-gray-500">
-        {emptyMessage || t.common.noData}
-      </div>
-    );
+    return <div className="text-center py-12 text-gray-500">{emptyMessage || t.common.noData}</div>;
   }
 
   return (
@@ -58,8 +54,13 @@ export default function DataTable<T extends { id: string }>({
             {data.map((row) => (
               <tr key={row.id} className="hover:bg-gray-50">
                 {columns.map((col) => (
-                  <td key={col.key} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-900 ${col.className || ''}`}>
-                    {col.render ? col.render(row) : (row as any)[col.key]}
+                  <td
+                    key={col.key}
+                    className={`px-6 py-4 whitespace-nowrap text-sm text-gray-900 ${col.className || ''}`}
+                  >
+                    {col.render
+                      ? col.render(row)
+                      : ((row as Record<string, unknown>)[col.key] as React.ReactNode)}
                   </td>
                 ))}
                 {(onEdit || onDelete) && (

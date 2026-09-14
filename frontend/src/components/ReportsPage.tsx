@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { TranslationKeys } from '../i18n';
 
-type ReportType = 'financial' | 'profit_loss' | 'trial_balance' | 'account_balances' | 'projects' | 'claims';
+type ReportType =
+  'financial' | 'profit_loss' | 'trial_balance' | 'account_balances' | 'projects' | 'claims';
 
 interface ReportsPageProps {
   t: TranslationKeys;
@@ -11,7 +12,7 @@ interface ReportsPageProps {
 export default function ReportsPage({ t, token }: ReportsPageProps) {
   const [reportType, setReportType] = useState<ReportType>('financial');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const [exportFormat, setExportFormat] = useState<'csv' | 'xlsx' | 'pdf'>('csv');
 
@@ -65,7 +66,7 @@ export default function ReportsPage({ t, token }: ReportsPageProps) {
 
   const handleExport = async () => {
     if (!data) return;
-    
+
     let url = '';
     switch (reportType) {
       case 'financial':
@@ -87,7 +88,9 @@ export default function ReportsPage({ t, token }: ReportsPageProps) {
       });
       if (response.ok) {
         const blob = await response.blob();
-        const filename = response.headers.get('content-disposition')?.split('filename=')[1]?.replace(/"/g, '') || `report.${exportFormat}`;
+        const filename =
+          response.headers.get('content-disposition')?.split('filename=')[1]?.replace(/"/g, '') ||
+          `report.${exportFormat}`;
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -104,6 +107,7 @@ export default function ReportsPage({ t, token }: ReportsPageProps) {
     if (dateRange.start && dateRange.end) {
       fetchReport();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportType, dateRange]);
 
   return (
@@ -113,7 +117,9 @@ export default function ReportsPage({ t, token }: ReportsPageProps) {
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t.reports.dateRange}</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t.reports.dateRange}
+            </label>
             <div className="flex gap-2">
               <input
                 type="date"
@@ -134,11 +140,13 @@ export default function ReportsPage({ t, token }: ReportsPageProps) {
             <label className="block text-sm font-medium text-gray-700 mb-1">Report Type</label>
             <select
               value={reportType}
-              onChange={(e) => setReportType(e.target.value as any)}
+              onChange={(e) => setReportType(e.target.value as ReportType)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               {reportTypes.map((r) => (
-                <option key={r.id} value={r.id}>{r.icon} {r.label}</option>
+                <option key={r.id} value={r.id}>
+                  {r.icon} {r.label}
+                </option>
               ))}
             </select>
           </div>
@@ -146,7 +154,7 @@ export default function ReportsPage({ t, token }: ReportsPageProps) {
             <label className="block text-sm font-medium text-gray-700 mb-1">Export Format</label>
             <select
               value={exportFormat}
-              onChange={(e) => setExportFormat(e.target.value as any)}
+              onChange={(e) => setExportFormat(e.target.value as 'csv' | 'xlsx' | 'pdf')}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="csv">CSV</option>
@@ -164,23 +172,19 @@ export default function ReportsPage({ t, token }: ReportsPageProps) {
           >
             {loading ? t.common.loading : 'Generate Report'}
           </button>
-          <button
-            onClick={handleExport}
-            disabled={loading || !data}
-            className="btn-secondary"
-          >
+          <button onClick={handleExport} disabled={loading || !data} className="btn-secondary">
             {t.reports.export} {exportFormat.toUpperCase()}
           </button>
         </div>
       </div>
 
-      {data && (
+      {data ? (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <pre className="bg-gray-50 p-4 rounded-lg overflow-x-auto text-sm max-h-96">
             {JSON.stringify(data, null, 2)}
           </pre>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -51,14 +51,23 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      if (response.ok) {
-        const data = await response.json();
-        localStorage.setItem('token', data.access_token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        setToken(data.access_token);
-        setUser(data.user);
-        setIsAuthenticated(true);
-      }
+      if (!response.ok) return;
+      const data = await response.json();
+      const meResponse = await fetch('/api/v1/auth/me', {
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      });
+      const me = meResponse.ok ? await meResponse.json() : null;
+      const currentUser: User = {
+        id: data.user_id,
+        email: me?.email ?? email,
+        tenant_id: data.tenant_id,
+        role: data.role,
+      };
+      localStorage.setItem('token', data.access_token);
+      localStorage.setItem('user', JSON.stringify(currentUser));
+      setToken(data.access_token);
+      setUser(currentUser);
+      setIsAuthenticated(true);
     } catch (error) {
       console.error('Login failed:', error);
     }
@@ -113,12 +122,7 @@ export default function App() {
 
   return (
     <div className={`flex h-screen bg-gray-50 ${isRTL ? 'flex-row-reverse' : ''}`}>
-      <Sidebar
-        t={t}
-        currentPage={currentPage}
-        onNavigate={setCurrentPage}
-        isRTL={isRTL}
-      />
+      <Sidebar t={t} currentPage={currentPage} onNavigate={setCurrentPage} isRTL={isRTL} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">
@@ -127,10 +131,7 @@ export default function App() {
           <div className="flex items-center gap-4">
             <LanguageSwitcher language={language} onSwitch={setLanguage} isRTL={isRTL} />
             <span className="text-sm text-gray-600">{user?.email}</span>
-            <button
-              onClick={handleLogout}
-              className="text-sm text-red-600 hover:text-red-800"
-            >
+            <button onClick={handleLogout} className="text-sm text-red-600 hover:text-red-800">
               {t.auth.logout}
             </button>
           </div>
@@ -145,7 +146,10 @@ function LoginScreen({
   t,
   onLogin,
 }: {
-  t: any;
+  t: {
+    app: { name: string; description: string };
+    auth: { email: string; password: string; login: string };
+  };
   onLogin: (email: string, password: string) => void;
 }) {
   const [email, setEmail] = useState('');
@@ -173,7 +177,9 @@ function LoginScreen({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t.auth.password}</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t.auth.password}
+            </label>
             <input
               type="password"
               value={password}

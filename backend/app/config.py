@@ -24,8 +24,14 @@ class Settings(BaseSettings):
     @classmethod
     def validate_jwt_secret(cls, value: str, info) -> str:
         env = info.data.get("app_env", "development")
-        if env == "production" and (value == "development-only-secret" or len(value) < 32):
-            raise ValueError("JWT_SECRET must be at least 32 characters in production")
+        placeholder_hints = ("development-only-secret", "change-me", "change-this", "changeme")
+        lowered = value.lower()
+        if env == "production" and (
+            value == "development-only-secret"
+            or len(value) < 32
+            or any(hint in lowered for hint in placeholder_hints)
+        ):
+            raise ValueError("JWT_SECRET must be a unique 32+ character secret in production")
         if not value:
             raise ValueError("JWT_SECRET cannot be empty")
         return value

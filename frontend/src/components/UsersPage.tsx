@@ -27,15 +27,9 @@ export default function UsersPage({ t, token }: UsersPageProps) {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const columns = [
-    { key: 'email', header: t.users.title },
-    { key: 'role', header: t.users.role, render: (row: User) => (
-      <RoleBadge role={row.role} t={t} />
-    )},
-  ];
-
   useEffect(() => {
     fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchUsers = async () => {
@@ -47,7 +41,7 @@ export default function UsersPage({ t, token }: UsersPageProps) {
         const data = await response.json();
         setUsers(data.users || []);
       }
-    } catch (err) {
+    } catch {
       setError(t.common.error);
     } finally {
       setLoading(false);
@@ -74,13 +68,13 @@ export default function UsersPage({ t, token }: UsersPageProps) {
         ? `/api/v1/permissions/users/${editingUser.id}/role`
         : '/api/v1/permissions/users';
       const method = editingUser ? 'PUT' : 'POST';
-      
+
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(formData),
       });
-      
+
       if (response.ok) {
         setShowModal(false);
         fetchUsers();
@@ -88,14 +82,14 @@ export default function UsersPage({ t, token }: UsersPageProps) {
         const data = await response.json();
         setError(data.detail || t.common.error);
       }
-    } catch (err) {
+    } catch {
       setError(t.common.error);
     }
   };
 
   const handleDelete = (id: string) => setDeleteConfirm(id);
-  
-  const confirmDelete = async () => {
+
+  const _confirmDelete = async () => {
     if (!deleteConfirm) return;
     try {
       const response = await fetch(`/api/v1/permissions/users/${deleteConfirm}`, {
@@ -108,7 +102,8 @@ export default function UsersPage({ t, token }: UsersPageProps) {
     }
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64">{t.common.loading}</div>;
+  if (loading)
+    return <div className="flex items-center justify-center h-64">{t.common.loading}</div>;
 
   return (
     <div className="space-y-6">
@@ -125,14 +120,22 @@ export default function UsersPage({ t, token }: UsersPageProps) {
         data={users}
         columns={[
           { key: 'email', header: t.users.title },
-          { key: 'role', header: t.users.role, render: (row: User) => <RoleBadge role={row.role} t={t} /> },
+          {
+            key: 'role',
+            header: t.users.role,
+            render: (row: User) => <RoleBadge role={row.role} t={t} />,
+          },
         ]}
         onEdit={handleEdit}
         onDelete={handleDelete}
         t={t}
       />
 
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingUser ? t.users.changeRole : t.users.addMember}>
+      <Modal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        title={editingUser ? t.users.changeRole : t.users.addMember}
+      >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{t.auth.email} *</label>
@@ -159,13 +162,33 @@ export default function UsersPage({ t, token }: UsersPageProps) {
             </select>
           </div>
           <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">{t.common.cancel}</button>
-            <button type="submit" className="btn-primary">{t.common.save}</button>
+            <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">
+              {t.common.cancel}
+            </button>
+            <button type="submit" className="btn-primary">
+              {t.common.save}
+            </button>
           </div>
         </form>
       </Modal>
 
-      <ConfirmDialog isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} onConfirm={() => { if(deleteConfirm) { fetch(`/api/v1/permissions/users/${deleteConfirm}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).then(r => { if (r.ok) fetchUsers(); }); setDeleteConfirm(null); }} } title={t.common.confirm} message={t.common.confirm} />
+      <ConfirmDialog
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => {
+          if (deleteConfirm) {
+            fetch(`/api/v1/permissions/users/${deleteConfirm}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${token}` },
+            }).then((r) => {
+              if (r.ok) fetchUsers();
+            });
+            setDeleteConfirm(null);
+          }
+        }}
+        title={t.common.confirm}
+        message={t.common.confirm}
+      />
     </div>
   );
 }

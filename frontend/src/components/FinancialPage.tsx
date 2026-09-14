@@ -50,14 +50,22 @@ export default function FinancialPage({ t, token }: FinancialPageProps) {
   const accountColumns: ColumnDef[] = [
     { key: 'code', header: t.financial.accountType, className: 'font-mono' },
     { key: 'name', header: t.financial.accountType },
-    { key: 'account_type', header: t.financial.accountType, render: (row: FinancialRow) => {
-      const acc = row as Account;
-      return <TypeBadge type={acc.account_type} t={t} />;
-    }},
+    {
+      key: 'account_type',
+      header: t.financial.accountType,
+      render: (row: FinancialRow) => {
+        const acc = row as Account;
+        return <TypeBadge type={acc.account_type} t={t} />;
+      },
+    },
   ];
 
   const entryColumns: ColumnDef[] = [
-    { key: 'entry_date', header: t.financial.accountType, render: (row: FinancialRow) => formatDate((row as JournalEntry).entry_date) },
+    {
+      key: 'entry_date',
+      header: t.financial.accountType,
+      render: (row: FinancialRow) => formatDate((row as JournalEntry).entry_date),
+    },
     { key: 'description', header: t.financial.accountType },
     { key: 'reference', header: t.financial.accountType, className: 'font-mono' },
   ];
@@ -65,6 +73,7 @@ export default function FinancialPage({ t, token }: FinancialPageProps) {
   useEffect(() => {
     fetchAccounts();
     fetchEntries();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchAccounts = async () => {
@@ -76,7 +85,7 @@ export default function FinancialPage({ t, token }: FinancialPageProps) {
         const data = await response.json();
         setAccounts(data.items || data);
       }
-    } catch (err) {
+    } catch {
       setError(t.common.error);
     } finally {
       setLoading(false);
@@ -92,7 +101,7 @@ export default function FinancialPage({ t, token }: FinancialPageProps) {
         const data = await response.json();
         setEntries(data.items || data);
       }
-    } catch (err) {
+    } catch {
       // ignore
     }
   };
@@ -117,13 +126,13 @@ export default function FinancialPage({ t, token }: FinancialPageProps) {
         ? `/api/v1/financial/accounts/${editingAccount.id}`
         : '/api/v1/financial/accounts';
       const method = editingAccount ? 'PUT' : 'POST';
-      
+
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(formData),
       });
-      
+
       if (response.ok) {
         setShowModal(false);
         fetchAccounts();
@@ -131,14 +140,14 @@ export default function FinancialPage({ t, token }: FinancialPageProps) {
         const data = await response.json();
         setError(data.detail || t.common.error);
       }
-    } catch (err) {
+    } catch {
       setError(t.common.error);
     }
   };
 
   const handleDelete = (id: string) => setDeleteConfirm(id);
-  
-  const confirmDelete = async () => {
+
+  const _confirmDelete = async () => {
     if (!deleteConfirm) return;
     try {
       const response = await fetch(`/api/v1/financial/accounts/${deleteConfirm}`, {
@@ -151,12 +160,14 @@ export default function FinancialPage({ t, token }: FinancialPageProps) {
     }
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64">{t.common.loading}</div>;
+  if (loading)
+    return <div className="flex items-center justify-center h-64">{t.common.loading}</div>;
 
   const currentData = activeTab === 'accounts' ? accounts : entries;
   const currentColumns = activeTab === 'accounts' ? accountColumns : entryColumns;
   const currentTitle = activeTab === 'accounts' ? t.financial.accounts : t.financial.journalEntries;
-  const currentCreateLabel = activeTab === 'accounts' ? t.financial.accounts : t.financial.createEntry;
+  const _currentCreateLabel =
+    activeTab === 'accounts' ? t.financial.accounts : t.financial.createEntry;
 
   return (
     <div className="space-y-6">
@@ -187,14 +198,18 @@ export default function FinancialPage({ t, token }: FinancialPageProps) {
       {error && <div className="alert-error">{error}</div>}
 
       <DataTable
-        data={currentData as any}
+        data={currentData as FinancialRow[]}
         columns={currentColumns}
-        onEdit={handleEdit}
+        onEdit={handleEdit as (row: FinancialRow) => void}
         onDelete={handleDelete}
         t={t}
       />
 
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingAccount ? 'Edit Account' : 'Create Account'}>
+      <Modal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        title={editingAccount ? 'Edit Account' : 'Create Account'}
+      >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Code *</label>
@@ -232,13 +247,33 @@ export default function FinancialPage({ t, token }: FinancialPageProps) {
             </select>
           </div>
           <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">{t.common.cancel}</button>
-            <button type="submit" className="btn-primary">{t.common.save}</button>
+            <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">
+              {t.common.cancel}
+            </button>
+            <button type="submit" className="btn-primary">
+              {t.common.save}
+            </button>
           </div>
         </form>
       </Modal>
 
-      <ConfirmDialog isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} onConfirm={() => { if(deleteConfirm) { fetch(`/api/v1/financial/accounts/${deleteConfirm}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).then(r => { if (r.ok) fetchAccounts(); }); setDeleteConfirm(null); }} } title="Confirm" message="Are you sure?" />
+      <ConfirmDialog
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => {
+          if (deleteConfirm) {
+            fetch(`/api/v1/financial/accounts/${deleteConfirm}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${token}` },
+            }).then((r) => {
+              if (r.ok) fetchAccounts();
+            });
+            setDeleteConfirm(null);
+          }
+        }}
+        title="Confirm"
+        message="Are you sure?"
+      />
     </div>
   );
 }

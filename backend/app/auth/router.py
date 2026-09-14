@@ -10,7 +10,7 @@ from ..audit.service import record as audit_record
 from ..config import get_settings
 from ..db import get_db
 from ..events.service import publish as publish_event
-from .models import Tenant, TenantMembership, User
+from .models import AuthSession, Tenant, TenantMembership, User
 from .schemas import (
     MemberCreateRequest,
     MemberResponse,
@@ -25,6 +25,7 @@ from .security import (
     Principal,
     create_access_token,
     hash_password,
+    hash_token,
     require_principal,
     revoke_session,
     verify_password,
@@ -158,30 +159,20 @@ def token(payload: TokenRequest, request: Request, db: Session = Depends(get_db)
 
 @router.post("/refresh", response_model=TokenResponse)
 def refresh_token(payload: RefreshTokenRequest, request: Request, db: Session = Depends(get_db)) -> TokenResponse:
-    try:
-        hash_password(payload.refresh_token)
-    except Exception:
-        raise HTTPException(status_code=401, detail="invalid refresh token")
-    
-    from sqlalchemy import select
-
-    from .models import AuthSession
-    
-    session = db.scalar(select(AuthSession).where(AuthSession.refresh_token_hash.is_not(None)))
+    session = db.scalar(
+        select(AuthSession).where(AuthSession.refresh_token_hash == hash_token(payload.refresh_token))
+    )
     if session is None:
         raise HTTPException(status_code=401, detail="invalid refresh token")
-    
-    import hmac as hmac_lib
-    if not hmac_lib.compare_digest(session.refresh_token_hash, hash_password(payload.refresh_token)):
-        raise HTTPException(status_code=401, detail="invalid refresh token")
-    
+
     if session.revoked_at is not None:
         raise HTTPException(status_code=401, detail="session is revoked")
-    
+
     if session.refresh_expires_at is not None and session.refresh_expires_at.replace(tzinfo=UTC) <= datetime.now(UTC):
         raise HTTPException(status_code=401, detail="refresh token expired")
-    
+
     session.revoked_at = datetime.now(UTC)
+    session.refresh_token_hash = None
     db.flush()
     
     user = db.scalar(select(User).where(User.id == session.user_id, User.is_active.is_(True)))
