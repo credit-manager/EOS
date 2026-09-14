@@ -45,6 +45,7 @@ from .rate_limiter import (
 )
 from .records.router import router as records_router
 from .redis_client import close_redis, get_redis
+from .reporting.router import router as analytics_router
 from .reports_router import router as reports_router
 from .request_logger import RequestResponseLoggingMiddleware
 from .request_validator import RequestValidationMiddleware
@@ -370,6 +371,10 @@ app = FastAPI(
             "description": "Business Graph: entity story across related business objects",
         },
         {
+            "name": "analytics",
+            "description": "Analytics Engine: saved KPI reports, drill-to-source refs, and the Workspace home feed",
+        },
+        {
             "name": "system",
             "description": "System health and version information",
         },
@@ -418,6 +423,7 @@ app.include_router(notification_router)
 app.include_router(events_router)
 app.include_router(rules_router)
 app.include_router(graph_router)
+app.include_router(analytics_router)
 app.include_router(export_router)
 app.include_router(reports_router)
 app.include_router(permissions_router)
