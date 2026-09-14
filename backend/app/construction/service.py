@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..audit.service import record as audit_record
+from ..events.service import publish as publish_event
 from .models import (
     BOQ,
     BOQItem,
@@ -81,6 +82,16 @@ def create_project(
         resource_type="project",
         resource_id=project.id,
         metadata={"code": code, "name": name},
+        request_id=request_id,
+    )
+    publish_event(
+        db,
+        tenant_id=tenant_id,
+        event_type="construction.project.created",
+        entity_type="project",
+        entity_id=str(project.id),
+        actor_id=str(user_id),
+        payload={"code": code, "name": name, "status": project.status},
         request_id=request_id,
     )
     db.flush()

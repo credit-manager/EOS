@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from ..audit.service import record as audit_record
 from ..config import get_settings
 from ..db import get_db
+from ..events.service import publish as publish_event
 from .models import Tenant, TenantMembership, User
 from .schemas import (
     MemberCreateRequest,
@@ -76,6 +77,15 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenRe
     db.flush()
     db.add(TenantMembership(tenant_id=tenant.id, user_id=user.id, role="admin"))
     try:
+        publish_event(
+            db,
+            tenant_id=tenant.id,
+            event_type="auth.user.registered",
+            entity_type="user",
+            entity_id=str(user.id),
+            actor_id=str(user.id),
+            payload={"email": email},
+        )
         response = _token_response(user.id, tenant.id, "admin", db)
         audit_record(
             db,

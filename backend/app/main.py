@@ -23,6 +23,7 @@ from .config import get_settings
 from .construction.router import router as construction_router
 from .db import Base, engine
 from .error_handlers import setup_error_handlers
+from .events.router import router as events_router
 from .export_router import router as export_router
 from .financial.router import router as financial_router
 from .health import router as health_router
@@ -354,6 +355,10 @@ app = FastAPI(
             "description": "Construction project management",
         },
         {
+            "name": "events",
+            "description": "Platform event bus: publish and consume first-class domain events",
+        },
+        {
             "name": "system",
             "description": "System health and version information",
         },
@@ -399,6 +404,7 @@ app.include_router(financial_router)
 app.include_router(workflow_router)
 app.include_router(construction_router)
 app.include_router(notification_router)
+app.include_router(events_router)
 app.include_router(export_router)
 app.include_router(reports_router)
 app.include_router(permissions_router)
