@@ -205,6 +205,7 @@ def test_available_transitions_are_role_and_tenant_scoped() -> None:
             "from_state": "draft",
             "to_state": "review",
             "requires_approval": True,
+            "condition_satisfied": True,
         }
     ]
 

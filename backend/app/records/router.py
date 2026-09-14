@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from ..audit.service import record as audit_record
 from ..db import get_db
+from ..events.service import publish as publish_event
+from ..graph.service import relation_edges
 from ..metadata.models import MetadataEntity
 from ..tenant import require_tenant
 from ..workflow.service import start_instance
@@ -158,6 +160,38 @@ def _response(row: Record) -> RecordResponse:
     )
 
 
+def _publish_graph_edges(
+    db: Session,
+    *,
+    request: Request,
+    entity_code: str,
+    row_id: UUID,
+    edges: list[dict],
+    created: bool,
+) -> None:
+    for edge in edges:
+        publish_event(
+            db,
+            tenant_id=request.state.tenant_id,
+            event_type="graph.relationship.created" if created else "graph.relationship.removed",
+            entity_type=entity_code,
+            entity_id=str(row_id),
+            actor_id=str(request.state.user_id),
+            payload={
+                "source_entity": entity_code,
+                "source_id": str(row_id),
+                "field": edge["field"],
+                "target_entity": edge["target_entity"],
+                "target_id": edge["target_id"],
+            },
+            request_id=request.state.request_id,
+        )
+
+
+def _edge_key(edge: dict) -> tuple[str, str]:
+    return edge["field"], edge["target_id"]
+
+
 @router.post("", response_model=RecordResponse, status_code=201)
 def create_record(
     entity_code: str,
@@ -172,6 +206,15 @@ def create_record(
     row = Record(tenant_id=tenant_id, entity_code=entity_code, data=payload.data)
     db.add(row)
     db.flush()
+
+    _publish_graph_edges(
+        db,
+        request=request,
+        entity_code=entity_code,
+        row_id=row.id,
+        edges=relation_edges(metadata, payload.data),
+        created=True,
+    )
 
     workflow = metadata.definition.get("workflow")
     if isinstance(workflow, dict) and workflow.get("auto_start_on_create", True):
@@ -269,8 +312,24 @@ def update_record(
         raise HTTPException(status_code=404, detail="record not found")
     if row.version != payload.version:
         raise HTTPException(status_code=409, detail="record version conflict")
+    old_data = row.data
+    old_keys = set(map(_edge_key, relation_edges(metadata, old_data)))
+    new_edges = relation_edges(metadata, payload.data)
+    new_keys = set(map(_edge_key, new_edges))
     row.data = payload.data
     row.version += 1
+    removed = [edge for edge in relation_edges(metadata, old_data) if _edge_key(edge) not in new_keys]
+    for edge in new_edges:
+        if _edge_key(edge) not in old_keys:
+            _publish_graph_edges(
+                db, request=request, entity_code=entity_code,
+                row_id=row.id, edges=[edge], created=True,
+            )
+    for edge in removed:
+        _publish_graph_edges(
+            db, request=request, entity_code=entity_code,
+            row_id=row.id, edges=[edge], created=False,
+        )
     audit_record(
         db,
         tenant_id=tenant_id,
@@ -314,6 +373,14 @@ def delete_record(
         resource_id=row.id,
         metadata={"workflow_instance_id": str(row.workflow_instance_id) if row.workflow_instance_id else None},
         request_id=request.state.request_id,
+    )
+    _publish_graph_edges(
+        db,
+        request=request,
+        entity_code=entity_code,
+        row_id=row.id,
+        edges=relation_edges(metadata, row.data),
+        created=False,
     )
     db.delete(row)
     db.commit()

@@ -26,6 +26,7 @@ from .error_handlers import setup_error_handlers
 from .events.router import router as events_router
 from .export_router import router as export_router
 from .financial.router import router as financial_router
+from .graph.router import router as graph_router
 from .health import router as health_router
 from .logging_config import setup_logging
 from .lookup.router import router as lookup_router
@@ -365,6 +366,10 @@ app = FastAPI(
             "description": "Rules engine (WHEN/IF/THEN): programmable business policies",
         },
         {
+            "name": "graph",
+            "description": "Business Graph: entity story across related business objects",
+        },
+        {
             "name": "system",
             "description": "System health and version information",
         },
@@ -412,6 +417,7 @@ app.include_router(construction_router)
 app.include_router(notification_router)
 app.include_router(events_router)
 app.include_router(rules_router)
+app.include_router(graph_router)
 app.include_router(export_router)
 app.include_router(reports_router)
 app.include_router(permissions_router)
