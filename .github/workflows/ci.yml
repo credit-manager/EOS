@@ -178,7 +178,7 @@ jobs:
             eos-api:latest
           ok=0
           for i in $(seq 1 45); do
-            if curl -fsS http://localhost:8000/health >/tmp/health.json 2>&1; then
+            if curl -fsS http://localhost:8000/api/v1/health >/tmp/health.json 2>&1; then
               ok=1
               echo "HEALTH_OK: $(cat /tmp/health.json)"
               break
@@ -188,7 +188,7 @@ jobs:
           if [ "$ok" != "1" ]; then
             {
               echo "=== CURL VERBOSE ==="
-              curl -v --max-time 5 http://localhost:8000/health 2>&1 | tail -25
+              curl -v --max-time 5 http://localhost:8000/api/v1/health 2>&1 | tail -25
               echo ""
               echo "=== DOCKER LOGS (test-api) ==="
               docker logs --tail 100 test-api 2>&1
