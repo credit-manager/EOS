@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { API, TOKEN_KEY, REFRESH_TOKEN_KEY } from '../api';
+import { authenticate } from '../api';
 import type { Session } from '../types';
 
 interface AuthScreenProps {
@@ -21,17 +21,7 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
       const path = mode === 'login' ? '/auth/token' : '/auth/register';
       const body =
         mode === 'login' ? { email, password } : { email, password, tenant_name: tenantName };
-      const response = await fetch(`${API}${path}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
-      const data = (await response.json()) as Session;
-      localStorage.setItem(TOKEN_KEY, data.access_token);
-      if (data.refresh_token) {
-        localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
-      }
+      const data = await authenticate(path, body);
       onAuthenticated(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed');

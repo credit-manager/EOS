@@ -41,10 +41,15 @@ Data   Rules   Workflow       Agents Tools Reasoning
 The rebuild follows one production runtime and explicit boundaries:
 
 - `backend/app` — application and domain code.
-- `backend/tests` — executable contract tests (green suite = released).
-- `frontend` — the only web UI source.
-- `infra` — local/production infrastructure definitions.
+- `backend/tests` — executable API and domain tests.
+- `frontend/src/main.tsx` → `frontend/src/App.tsx` → `frontend/src/components/App.tsx` — the single canonical web runtime.
+- `frontend/src/api.ts` — the shared API/session client; the runtime uses configured `VITE_API_URL`, refresh rotation, and server logout.
+- `docker-compose*.yml` and Dockerfiles — local/production infrastructure definitions.
 - PostgreSQL is the production database; SQLite is used for fast local/CI validation.
+
+The initial canonical routes are hash-based: `#/workspace`, `#/objects`, `#/objects/:entity`, and `#/builder`. The workspace is backed by the analytics home API and the object explorer is driven by published metadata.
+
+Read [ARCHITECTURE.md](ARCHITECTURE.md) for the actual runtime boundaries, [SECURITY.md](SECURITY.md) for the current security baseline, and [EOS_PRODUCT_VISION_V1_AR.md](EOS_PRODUCT_VISION_V1_AR.md) for the product execution plan.
 
 ## Current status
 

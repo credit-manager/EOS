@@ -33,6 +33,7 @@ export type Session = {
   tenant_id: string;
   role: string;
   expires_in: number;
+  expires_at?: number;
   refresh_token?: string;
   refresh_expires_in?: number;
 };

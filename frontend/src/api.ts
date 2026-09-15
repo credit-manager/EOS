@@ -2,6 +2,20 @@ export const API = import.meta.env.VITE_API_URL ?? '/api/v1';
 export const DEFAULT_ENTITY = import.meta.env.VITE_ENTITY_CODE ?? '';
 export const TOKEN_KEY = '2to_eos_access_token';
 export const REFRESH_TOKEN_KEY = '2to_eos_refresh_token';
+export const SESSION_KEY = '2to_eos_session';
+
+export async function authenticate(
+  path: '/auth/token' | '/auth/register',
+  body: Record<string, string | undefined>
+): Promise<import('./types').Session> {
+  const response = await fetch(`${API}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
+  return response.json() as Promise<import('./types').Session>;
+}
 
 export async function api<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API}${path}`, {
@@ -33,4 +47,14 @@ export async function refreshToken(refreshToken: string): Promise<{
   });
   if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
   return response.json();
+}
+
+export async function logoutSession(token: string): Promise<void> {
+  const response = await fetch(`${API}/auth/logout`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok && response.status !== 401) {
+    throw new Error((await response.text()) || `HTTP ${response.status}`);
+  }
 }
