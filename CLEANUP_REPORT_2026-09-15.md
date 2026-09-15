@@ -54,3 +54,7 @@ The pull request must verify:
 ## Cleanup policy
 
 Do not delete remaining code solely because it is large, old-looking, or not exposed in the current UI. Remove it only after proving it is dead, duplicated, or obsolete and checking runtime, CI, Docker, migrations, tests, and documentation references.
+
+## Verification note
+
+This cleanup deliberately preserves existing platform foundations and regression/security tests. Acceptance depends on the pull-request CI remaining green after the deletions.
