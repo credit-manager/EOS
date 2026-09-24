@@ -300,7 +300,7 @@ def create_template(
     )
 
 
-@router.delete("/templates/{code}", status_code=204)
+@router.delete("/templates/{code}", status_code=204, response_model=None)
 def delete_template(
     code: str,
     request: Request,

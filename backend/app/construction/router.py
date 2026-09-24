@@ -81,7 +81,7 @@ def update_project(
     return project
 
 
-@router.delete("/projects/{project_id}", status_code=204)
+@router.delete("/projects/{project_id}", status_code=204, response_model=None)
 def delete_project(
     project_id: UUID,
     request: Request,
@@ -169,7 +169,7 @@ def update_contract(
     return contract
 
 
-@router.delete("/contracts/{contract_id}", status_code=204)
+@router.delete("/contracts/{contract_id}", status_code=204, response_model=None)
 def delete_contract(
     contract_id: UUID,
     request: Request,
@@ -301,7 +301,7 @@ def update_boq(
     return boq
 
 
-@router.delete("/boqs/{boq_id}", status_code=204)
+@router.delete("/boqs/{boq_id}", status_code=204, response_model=None)
 def delete_boq(
     boq_id: UUID,
     request: Request,
@@ -434,7 +434,7 @@ def update_progress_claim(
     return claim
 
 
-@router.delete("/claims/{claim_id}", status_code=204)
+@router.delete("/claims/{claim_id}", status_code=204, response_model=None)
 def delete_progress_claim(
     claim_id: UUID,
     request: Request,
@@ -573,7 +573,7 @@ def update_procurement(
     return proc
 
 
-@router.delete("/procurements/{procurement_id}", status_code=204)
+@router.delete("/procurements/{procurement_id}", status_code=204, response_model=None)
 def delete_procurement(
     procurement_id: UUID,
     request: Request,
@@ -891,7 +891,7 @@ def update_site_warehouse(
     return wh
 
 
-@router.delete("/warehouses/{warehouse_id}", status_code=204)
+@router.delete("/warehouses/{warehouse_id}", status_code=204, response_model=None)
 def delete_site_warehouse(
     warehouse_id: UUID,
     request: Request,

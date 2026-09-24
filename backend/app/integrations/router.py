@@ -96,7 +96,7 @@ def update_integration(
     return IntegrationResponse.model_validate(integration)
 
 
-@router.delete("/{integration_id}", status_code=204)
+@router.delete("/{integration_id}", status_code=204, response_model=None)
 def delete_integration(
     integration_id: str,
     tenant_id: UUID = Depends(require_tenant),

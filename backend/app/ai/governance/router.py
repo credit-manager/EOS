@@ -301,7 +301,7 @@ def update_policy(
     return _policy_to_response(policy)
 
 
-@router.delete("/policies/{policy_id}", status_code=204)
+@router.delete("/policies/{policy_id}", status_code=204, response_model=None)
 def delete_policy(
     policy_id: int,
     tenant_id: UUID = Depends(require_tenant),
@@ -425,7 +425,7 @@ def update_limit(
     return _limit_to_response(limit)
 
 
-@router.delete("/limits/{limit_id}", status_code=204)
+@router.delete("/limits/{limit_id}", status_code=204, response_model=None)
 def delete_limit(
     limit_id: int,
     tenant_id: UUID = Depends(require_tenant),

@@ -489,7 +489,7 @@ def update_record(
     return _response(row, metadata, request)
 
 
-@router.delete("/{record_id}", status_code=204)
+@router.delete("/{record_id}", status_code=204, response_model=None)
 def delete_record(
     entity_code: str,
     record_id: UUID,

@@ -136,7 +136,7 @@ def update_rule(
     return schemas.RuleResponse.model_validate(service._rule_to_dict(rule))
 
 
-@router.delete("/{rule_id}", status_code=204)
+@router.delete("/{rule_id}", status_code=204, response_model=None)
 def delete_rule(
     rule_id: UUID,
     request: Request,

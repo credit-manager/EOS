@@ -195,7 +195,7 @@ def create_route(
     )
 
 
-@router.delete("/routes/{route_name}", status_code=204)
+@router.delete("/routes/{route_name}", status_code=204, response_model=None)
 def delete_route(
     route_name: str,
     principal: Principal = Depends(require_admin),
@@ -384,7 +384,7 @@ def create_persistent_sub(
     return sub
 
 
-@router.delete("/persistent-subscriptions/{sub_id}", status_code=204)
+@router.delete("/persistent-subscriptions/{sub_id}", status_code=204, response_model=None)
 def delete_persistent_sub(
     sub_id: UUID,
     principal: Principal = Depends(require_admin),

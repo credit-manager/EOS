@@ -212,7 +212,7 @@ def refresh_token(payload: RefreshTokenRequest, request: Request, db: Session = 
     return response
 
 
-@router.post("/logout", status_code=204)
+@router.post("/logout", status_code=204, response_model=None)
 def logout(
     request: Request,
     principal: Principal = Depends(require_principal),

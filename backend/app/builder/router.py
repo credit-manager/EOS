@@ -1,7 +1,7 @@
 """EOS Builder router."""
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -81,7 +81,7 @@ def update_object(
     return BuilderObjectResponse.model_validate(obj)
 
 
-@router.delete("/objects/{object_id}", status_code=204)
+@router.delete("/objects/{object_id}", status_code=204, response_class=Response, response_model=None)
 def delete_object(
     object_id: str,
     tenant_id: UUID = Depends(require_tenant),
@@ -457,7 +457,7 @@ def update_record(
     return result
 
 
-@router.delete("/objects/{object_id}/records/{record_id}", status_code=204)
+@router.delete("/objects/{object_id}/records/{record_id}", status_code=204, response_class=Response, response_model=None)
 def delete_record(
     object_id: str,
     record_id: str,

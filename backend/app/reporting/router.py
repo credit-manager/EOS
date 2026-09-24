@@ -137,7 +137,7 @@ def update_report(
     return _response(report)
 
 
-@router.delete("/reports/{code}", status_code=204)
+@router.delete("/reports/{code}", status_code=204, response_model=None)
 def delete_report(
     code: str,
     principal: Principal = Depends(require_principal),
@@ -390,7 +390,7 @@ def create_scheduled_report(
     )
 
 
-@router.delete("/scheduled/{scheduled_id}", status_code=204)
+@router.delete("/scheduled/{scheduled_id}", status_code=204, response_model=None)
 def delete_scheduled_report(
     scheduled_id: UUID,
     principal: Principal = Depends(require_principal),
