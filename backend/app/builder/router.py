@@ -1,12 +1,15 @@
 """EOS Builder router."""
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..audit.service import record as audit_record
 from ..db import get_db
-from ..tenant import require_tenant
+from ..metadata.models import MetadataEntity
+from ..tenant import require_admin, require_tenant
 from .schemas import (
     BuilderAutomationCreate,
     BuilderAutomationResponse,
@@ -307,15 +310,100 @@ class DeployResponse(BaseModel):
     metadata_entities: list[dict]
 
 
-from pydantic import BaseModel
+_BUILDER_TO_METADATA_FIELD_TYPE = {
+    "text": "text",
+    "number": "decimal",
+    "boolean": "boolean",
+    "date": "date",
+    "email": "email",
+    "phone": "phone",
+    "url": "url",
+    "select": "select",
+    "multiselect": "multi_select",
+    "json": "json",
+    "relation": "relation",
+}
+
+
+def _builder_field_to_metadata(field, target_entity: str | None = None) -> dict:
+    metadata_type = _BUILDER_TO_METADATA_FIELD_TYPE.get(field.field_type, "text")
+    result = {
+        "code": field.code,
+        "type": metadata_type,
+        "required": field.is_required,
+        "nullable": not field.is_required,
+        "label": field.name,
+        "default": field.default_value,
+        "validation": field.validation_rules,
+    }
+
+    if metadata_type == "relation" and target_entity:
+        result["target_entity"] = target_entity
+
+    if metadata_type in {"select", "multi_select"}:
+        raw_options = field.options or {}
+        options = raw_options.get("options", raw_options if isinstance(raw_options, list) else [])
+        if isinstance(options, list):
+            result["select_options"] = [
+                option if isinstance(option, dict) and "value" in option and "label" in option
+                else {"value": str(option), "label": str(option)}
+                for option in options
+            ]
+
+    return result
+
+
+def _build_metadata_definition(svc: BuilderService, obj, tenant_id: str) -> tuple[dict, int]:
+    fields = svc.list_fields(obj.id, tenant_id)
+    metadata_fields = []
+
+    relations = svc.list_relations(tenant_id)
+    for field in fields:
+        target_entity = None
+        if field.field_type == "relation":
+            for relation in relations:
+                if relation.source_object_id == obj.id and relation.source_field == field.code:
+                    target = svc.get_object(relation.target_object_id, tenant_id)
+                    if target:
+                        target_entity = target.code
+                        break
+        metadata_fields.append(_builder_field_to_metadata(field, target_entity))
+
+    permissions = {"admin": ["create", "read", "update", "delete"], "member": ["create", "read", "update"]}
+    if isinstance(obj.config, dict):
+        configured = obj.config.get("permissions")
+        if isinstance(configured, dict):
+            permissions = {
+                "admin": list(configured.get("admin", permissions["admin"])),
+                "member": list(configured.get("member", permissions["member"])),
+            }
+
+    definition = {
+        "code": obj.code,
+        "name": obj.name,
+        "fields": metadata_fields,
+        "permissions": permissions,
+    }
+
+    workflows = [w for w in svc.list_workflows(tenant_id) if w.object_id == obj.id]
+    if workflows:
+        workflow = workflows[0]
+        definition["workflow"] = {
+            "code": workflow.code,
+            "reference_type": workflow.code,
+            "auto_start_on_create": workflow.trigger_type in {"on_create", "create"},
+        }
+
+    return definition, len(fields)
 
 
 @router.post("/deploy", response_model=DeployResponse)
 def deploy_objects(
-    tenant_id: UUID = Depends(require_tenant),
+    request: Request,
+    tenant_id: UUID = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> DeployResponse:
-    """Deploy builder objects to the metadata engine as publishable entities."""
+    """Materialize Builder objects into draft Metadata Engine versions."""
     svc = BuilderService(db)
     objects = svc.list_objects(str(tenant_id))
 
@@ -324,40 +412,68 @@ def deploy_objects(
     metadata_entities = []
 
     for obj in objects:
-        fields = svc.list_fields(obj.id, str(tenant_id))
-        definition = {
-            "fields": [],
-            "permissions": {"admin": ["create", "read", "update", "delete"], "member": ["create", "read", "update"]},
-        }
+        definition, field_count = _build_metadata_definition(svc, obj, str(tenant_id))
+        latest = db.scalar(
+            select(MetadataEntity)
+            .where(
+                MetadataEntity.tenant_id == tenant_id,
+                MetadataEntity.code == obj.code,
+            )
+            .order_by(MetadataEntity.version.desc())
+        )
 
-        for field in fields:
-            field_def = {
-                "code": field.field_code,
-                "name": field.field_name,
-                "type": field.field_type,
-                "required": field.is_required,
+        if latest is not None and latest.published_at is None:
+            row = latest
+            row.name = obj.name
+            row.definition = definition
+        else:
+            next_version = latest.version + 1 if latest is not None else 1
+            row = MetadataEntity(
+                tenant_id=tenant_id,
+                code=obj.code,
+                name=obj.name,
+                version=next_version,
+                definition=definition,
+            )
+            db.add(row)
+
+        db.flush()
+
+        audit_record(
+            db,
+            tenant_id=tenant_id,
+            actor_id=request.state.user_id,
+            action="metadata.deployed",
+            resource_type=obj.code,
+            resource_id=row.id,
+            metadata={
+                "builder_object_id": obj.id,
+                "version": row.version,
+                "field_count": field_count,
+            },
+            request_id=request.state.request_id,
+        )
+
+        metadata_entities.append(
+            {
+                "id": str(row.id),
+                "code": row.code,
+                "name": row.name,
+                "version": row.version,
+                "published": row.published_at is not None,
+                "fields_count": field_count,
             }
-            if field.field_type == "relation" and field.target_object_id:
-                target_obj = svc.get_object(field.target_object_id, str(tenant_id))
-                if target_obj:
-                    field_def["target_entity"] = target_obj.object_code
-            definition["fields"].append(field_def)
-            deployed_fields += 1
-
-        metadata_entities.append({
-            "code": obj.object_code,
-            "name": obj.object_name,
-            "description": obj.description or "",
-            "fields_count": len(fields),
-        })
+        )
         deployed_objects += 1
+        deployed_fields += field_count
+
+    db.commit()
 
     return DeployResponse(
         deployed_objects=deployed_objects,
         deployed_fields=deployed_fields,
         metadata_entities=metadata_entities,
     )
-
 
 # ---------------------------------------------------------------------------
 # Dynamic CRUD endpoints — work with any Builder-defined object
