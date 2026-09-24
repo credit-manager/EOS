@@ -11,39 +11,58 @@ from .auth.security import decode_access_token
 
 class Role(str, Enum):
     ADMIN = "admin"
+    MEMBER = "member"
     MANAGER = "manager"
     USER = "user"
     VIEWER = "viewer"
 
 
+# Prefixes that are platform-administration surfaces. The auth plane only
+# issues {admin, member}; legacy tokens may carry manager/user/viewer.
+# Fine-grained record/entity access is enforced downstream by the metadata
+# permission layer (records/metadata/graph routers), NOT by coarse prefix RBAC.
+_ADMIN_ONLY_PREFIXES = [
+    "/api/v1/auth/members",
+    "/api/v1/admin",
+    "/api/v1/builder",
+    "/api/v1/integrations",
+    "/api/v1/marketplace",
+    "/api/v1/sdk",
+    "/api/v1/settings",
+    "/api/v1/policy",
+]
+
+_OPERATIONAL_PREFIXES = [
+    "/api/v1/financial",
+    "/api/v1/construction",
+    "/api/v1/retail",
+    "/api/v1/manufacturing",
+    "/api/v1/workflows",
+    "/api/v1/documents",
+    "/api/v1/analytics",
+    "/api/v1/reporting",
+    "/api/v1/ai",
+    "/api/v1/notification",
+    "/api/v1/globalization",
+    "/api/v1/records",
+    "/api/v1/metadata",
+    "/api/v1/lookup",
+    "/api/v1/graph",
+    "/api/v1/events",
+    "/api/v1/rules",
+]
+
+
 # Permissions per role for route prefixes
 ROLE_PERMISSIONS: dict[str, list[str]] = {
     Role.ADMIN: ["*"],
-    Role.MANAGER: [
-        "/api/v1/financial",
-        "/api/v1/construction",
-        "/api/v1/retail",
-        "/api/v1/manufacturing",
-        "/api/v1/workflows",
-        "/api/v1/documents",
-        "/api/v1/analytics",
-        "/api/v1/reporting",
-        "/api/v1/integrations",
-        "/api/v1/ai",
-        "/api/v1/builder",
-        "/api/v1/settings",
-        "/api/v1/notification",
-        "/api/v1/marketplace",
-        "/api/v1/sdk",
-        "/api/v1/globalization",
-        "/api/v1/records",
-        "/api/v1/metadata",
-        "/api/v1/lookup",
-        "/api/v1/graph",
-        "/api/v1/events",
-        "/api/v1/rules",
-        "/api/v1/policy",
-    ],
+    # Member: operational/business surface. Entity-level visibility and write
+    # permissions are governed by metadata-driven permissions in the routers.
+    Role.MEMBER: _OPERATIONAL_PREFIXES,
+    # Legacy tokens (manager/user/viewer are no longer issued by the auth
+    # plane but may exist in older deployments): manager keeps operational
+    # surface plus reporting, without platform-administration prefixes.
+    Role.MANAGER: _OPERATIONAL_PREFIXES + ["/api/v1/policy"],
     Role.USER: [
         "/api/v1/financial",
         "/api/v1/construction",
