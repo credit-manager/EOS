@@ -31,6 +31,22 @@ def _create_all_tables():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """Clear in-memory rate-limit buckets between tests.
+
+    Production middleware enforces per-tenant/per-route limits; the full
+    test suite issues far more requests per 60s window than a real tenant
+    would. Resetting between tests keeps rate limiting active (so security
+    tests that assert on it still pass) without cross-test pollution.
+    """
+    from backend.app.main import reset_rate_limit_state
+
+    reset_rate_limit_state()
+    yield
+    reset_rate_limit_state()
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _seed_user():
     from backend.app.auth.security import hash_password
