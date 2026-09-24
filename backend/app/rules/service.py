@@ -138,3 +138,93 @@ def list_executions(
         for execution, rule_name in rows
     ]
     return items, total
+
+
+# ---------------------------------------------------------------------------
+# Async / Delayed Actions
+# ---------------------------------------------------------------------------
+
+from datetime import UTC, datetime, timedelta
+
+from .models import DelayedAction
+
+
+def schedule_delayed_actions(
+    db: Session, *, tenant_id: UUID, rule_id: UUID, actions: list[dict],
+    context: dict | None, delay_seconds: int
+) -> DelayedAction:
+    da = DelayedAction(
+        tenant_id=tenant_id,
+        rule_id=rule_id,
+        actions_json=json.dumps(actions),
+        context_json=json.dumps(context) if context else None,
+        delay_seconds=delay_seconds,
+        scheduled_for=datetime.now(UTC) + timedelta(seconds=delay_seconds),
+        status="pending",
+    )
+    db.add(da)
+    db.flush()
+    return da
+
+
+def list_pending_delayed_actions(db: Session) -> list:
+    now = datetime.now(UTC)
+    return list(
+        db.scalars(
+            select(DelayedAction).where(
+                DelayedAction.status == "pending",
+                DelayedAction.scheduled_for <= now,
+            ).order_by(DelayedAction.scheduled_for)
+        ).all()
+    )
+
+
+def execute_delayed_action(db: Session, delayed_action_id: UUID) -> bool:
+    da = db.get(DelayedAction, delayed_action_id)
+    if da is None or da.status != "pending":
+        return False
+
+    da.status = "executing"
+    db.flush()
+
+    try:
+        from .engine import execute_actions
+
+        actions = json.loads(da.actions_json)
+        context = json.loads(da.context_json) if da.context_json else {}
+        execute_actions(db, tenant_id=da.tenant_id, rule_id=da.rule_id, actions=actions, context=context)
+
+        da.status = "completed"
+        da.executed_at = datetime.now(UTC)
+        db.flush()
+        return True
+    except Exception as e:
+        da.status = "failed"
+        da.error_message = str(e)[:2000]
+        da.executed_at = datetime.now(UTC)
+        db.flush()
+        return False
+
+
+def list_delayed_actions(
+    db: Session, *, tenant_id: UUID, status: str | None = None, limit: int = 50
+) -> list:
+    q = select(DelayedAction).where(DelayedAction.tenant_id == tenant_id)
+    if status:
+        q = q.where(DelayedAction.status == status)
+    return list(db.scalars(q.order_by(DelayedAction.scheduled_for.desc()).limit(limit)).all())
+
+
+def cancel_delayed_action(db: Session, tenant_id: UUID, delayed_action_id: UUID) -> bool:
+    da = db.scalar(
+        select(DelayedAction).where(
+            DelayedAction.id == delayed_action_id,
+            DelayedAction.tenant_id == tenant_id,
+        )
+    )
+    if da is None or da.status != "pending":
+        return False
+    da.status = "failed"
+    da.error_message = "Cancelled by user"
+    db.flush()
+    return True

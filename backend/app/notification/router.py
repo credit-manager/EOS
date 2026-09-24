@@ -1,6 +1,21 @@
+"""
+Notification router — REST endpoints for in-app notifications.
+
+Endpoints:
+    GET  /api/v1/notifications              — list user notifications (paginated)
+    GET  /api/v1/notifications/alerts       — recent unread alerts/warnings
+    GET  /api/v1/notifications/stats        — user notification stats
+    POST /api/v1/notifications/read        — mark notifications as read
+    POST /api/v1/notifications/read-all    — mark all as read
+    DELETE /api/v1/notifications/{id}      — delete one notification
+    GET  /api/v1/notifications/preferences  — user notification preferences
+    PUT  /api/v1/notifications/preferences  — update user notification preferences
+"""
+
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth.security import Principal, require_principal
@@ -9,6 +24,24 @@ from ..tenant import require_tenant
 from . import schemas, service
 
 router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
+
+
+@router.get("/alerts", response_model=schemas.NotificationListResponse)
+def get_alerts(
+    principal: Principal = Depends(require_principal),
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+    limit: int = Query(20, ge=1, le=100),
+) -> schemas.NotificationListResponse:
+    """Return recent unread alerts and warnings for the current user."""
+    items, total, _unread = service.list_notifications(
+        db, tenant_id=tenant_id, user_id=principal.user_id,
+        limit=limit, offset=0, is_read=False,
+    )
+    return schemas.NotificationListResponse(
+        items=[schemas.NotificationResponse.model_validate(i) for i in items],
+        total=total, unread_count=total, limit=limit, offset=0,
+    )
 
 
 @router.get("", response_model=schemas.NotificationListResponse)
@@ -89,6 +122,5 @@ def delete_notification(
         db, tenant_id=tenant_id, user_id=principal.user_id, notification_id=notification_id
     )
     if not deleted:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="notification not found")
     return {"deleted": True}

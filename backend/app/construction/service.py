@@ -350,12 +350,11 @@ def get_boq(db: Session, *, tenant_id: UUID, boq_id: UUID) -> BOQ:
     return boq
 
 
-def list_boqs(db: Session, *, tenant_id: UUID, contract_id: UUID) -> list[BOQ]:
-    return db.scalars(
-        select(BOQ)
-        .where(BOQ.tenant_id == tenant_id, BOQ.contract_id == contract_id)
-        .order_by(BOQ.version)
-    ).all()
+def list_boqs(db: Session, *, tenant_id: UUID, contract_id: UUID | None = None) -> list[BOQ]:
+    query = select(BOQ).where(BOQ.tenant_id == tenant_id).order_by(BOQ.version)
+    if contract_id is not None:
+        query = query.where(BOQ.contract_id == contract_id)
+    return db.scalars(query).all()
 
 
 def update_boq_status(
@@ -391,6 +390,71 @@ def update_boq_status(
     )
     db.flush()
     return boq
+
+
+def update_boq(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    boq_id: UUID,
+    status: str | None = None,
+    request_id: str | None = None,
+) -> BOQ:
+    boq = get_boq(db, tenant_id=tenant_id, boq_id=boq_id)
+    if status is not None and status != boq.status:
+        valid_transitions = {
+            "draft": {"submitted"},
+            "submitted": {"approved"},
+        }
+        allowed = valid_transitions.get(boq.status, set())
+        if status not in allowed:
+            raise HTTPException(
+                status_code=409,
+                detail=f"cannot transition BOQ from '{boq.status}' to '{status}'",
+            )
+        boq.status = status
+        boq.updated_at = datetime.now(UTC)
+        audit_record(
+            db,
+            tenant_id=tenant_id,
+            actor_id=user_id,
+            action=f"construction.boq.{status}",
+            resource_type="boq",
+            resource_id=boq.id,
+            request_id=request_id,
+        )
+        db.flush()
+    return boq
+
+
+def delete_boq(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    boq_id: UUID,
+    request_id: str | None = None,
+) -> None:
+    boq = get_boq(db, tenant_id=tenant_id, boq_id=boq_id)
+    if boq.status != "draft":
+        raise HTTPException(status_code=409, detail="can only delete draft BOQs")
+    items = db.scalars(
+        select(BOQItem).where(BOQItem.tenant_id == tenant_id, BOQItem.boq_id == boq_id)
+    ).all()
+    for item in items:
+        db.delete(item)
+    audit_record(
+        db,
+        tenant_id=tenant_id,
+        actor_id=user_id,
+        action="construction.boq.deleted",
+        resource_type="boq",
+        resource_id=boq.id,
+        request_id=request_id,
+    )
+    db.delete(boq)
+    db.flush()
 
 
 def add_boq_item(
@@ -502,16 +566,16 @@ def get_progress_claim(db: Session, *, tenant_id: UUID, claim_id: UUID) -> Progr
 
 
 def list_progress_claims(
-    db: Session, *, tenant_id: UUID, contract_id: UUID
+    db: Session, *, tenant_id: UUID, contract_id: UUID | None = None
 ) -> list[ProgressClaim]:
-    return db.scalars(
+    query = (
         select(ProgressClaim)
-        .where(
-            ProgressClaim.tenant_id == tenant_id,
-            ProgressClaim.contract_id == contract_id,
-        )
+        .where(ProgressClaim.tenant_id == tenant_id)
         .order_by(ProgressClaim.created_at.desc())
-    ).all()
+    )
+    if contract_id is not None:
+        query = query.where(ProgressClaim.contract_id == contract_id)
+    return db.scalars(query).all()
 
 
 def update_claim_status(
@@ -548,6 +612,73 @@ def update_claim_status(
     )
     db.flush()
     return claim
+
+
+def update_progress_claim(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    claim_id: UUID,
+    status: str | None = None,
+    request_id: str | None = None,
+) -> ProgressClaim:
+    claim = get_progress_claim(db, tenant_id=tenant_id, claim_id=claim_id)
+    if status is not None and status != claim.status:
+        valid_transitions = {
+            "draft": {"submitted"},
+            "submitted": {"approved"},
+            "approved": {"paid"},
+        }
+        allowed = valid_transitions.get(claim.status, set())
+        if status not in allowed:
+            raise HTTPException(
+                status_code=409,
+                detail=f"cannot transition claim from '{claim.status}' to '{status}'",
+            )
+        claim.status = status
+        claim.updated_at = datetime.now(UTC)
+        audit_record(
+            db,
+            tenant_id=tenant_id,
+            actor_id=user_id,
+            action=f"construction.progress_claim.{status}",
+            resource_type="progress_claim",
+            resource_id=claim.id,
+            request_id=request_id,
+        )
+        db.flush()
+    return claim
+
+
+def delete_progress_claim(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    claim_id: UUID,
+    request_id: str | None = None,
+) -> None:
+    claim = get_progress_claim(db, tenant_id=tenant_id, claim_id=claim_id)
+    if claim.status != "draft":
+        raise HTTPException(status_code=409, detail="can only delete draft claims")
+    lines = db.scalars(
+        select(ProgressClaimLine)
+        .where(ProgressClaimLine.tenant_id == tenant_id, ProgressClaimLine.claim_id == claim_id)
+    ).all()
+    for line in lines:
+        db.delete(line)
+    audit_record(
+        db,
+        tenant_id=tenant_id,
+        actor_id=user_id,
+        action="construction.progress_claim.deleted",
+        resource_type="progress_claim",
+        resource_id=claim.id,
+        request_id=request_id,
+    )
+    db.delete(claim)
+    db.flush()
 
 
 def add_claim_line(
@@ -709,6 +840,87 @@ def update_procurement_status(
     )
     db.flush()
     return proc
+
+
+def update_procurement(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    procurement_id: UUID,
+    status: str | None = None,
+    priority: str | None = None,
+    title: str | None = None,
+    description: str | None = None,
+    request_id: str | None = None,
+) -> Procurement:
+    proc = get_procurement(db, tenant_id=tenant_id, procurement_id=procurement_id)
+    if status is not None and status != proc.status:
+        valid_transitions = {
+            "draft": {"pending_approval"},
+            "pending_approval": {"approved", "cancelled"},
+            "approved": {"ordered"},
+            "ordered": {"received"},
+        }
+        allowed = valid_transitions.get(proc.status, set())
+        if status not in allowed:
+            raise HTTPException(
+                status_code=409,
+                detail=f"cannot transition procurement from '{proc.status}' to '{status}'",
+            )
+        proc.status = status
+        audit_record(
+            db,
+            tenant_id=tenant_id,
+            actor_id=user_id,
+            action=f"construction.procurement.{status}",
+            resource_type="procurement",
+            resource_id=proc.id,
+            request_id=request_id,
+        )
+    if priority is not None and priority != proc.priority:
+        proc.priority = priority
+    if title is not None and title != proc.title:
+        proc.title = title
+    if description is not None and description != proc.description:
+        proc.description = description
+    if any(v is not None for v in (status, priority, title, description)):
+        proc.updated_at = datetime.now(UTC)
+        db.flush()
+    return proc
+
+
+def delete_procurement(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    procurement_id: UUID,
+    request_id: str | None = None,
+) -> None:
+    proc = get_procurement(db, tenant_id=tenant_id, procurement_id=procurement_id)
+    if proc.status != "draft":
+        raise HTTPException(status_code=409, detail="can only delete draft procurements")
+    lines = db.scalars(
+        select(ProcurementLine)
+        .where(
+            ProcurementLine.tenant_id == tenant_id,
+            ProcurementLine.procurement_id == procurement_id,
+        )
+    ).all()
+    for line in lines:
+        db.delete(line)
+    audit_record(
+        db,
+        tenant_id=tenant_id,
+        actor_id=user_id,
+        action="construction.procurement.deleted",
+        resource_type="procurement",
+        resource_id=proc.id,
+        request_id=request_id,
+    )
+    db.delete(proc)
+    db.flush()
 
 
 def add_procurement_line(

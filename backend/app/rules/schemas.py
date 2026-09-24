@@ -37,10 +37,33 @@ class AuditAction(BaseModel):
     message: str | None = Field(default=None, max_length=500)
 
 
+class UpdateFieldAction(BaseModel):
+    type: Literal["update_field"] = "update_field"
+    target_entity: str = Field(min_length=1, max_length=120)
+    target_id_field: str = Field(default="event.entity_id", max_length=200)
+    field: str = Field(min_length=1, max_length=200)
+    value: Any = None
+
+
+class CreateRecordAction(BaseModel):
+    type: Literal["create_record"] = "create_record"
+    entity_code: str = Field(min_length=1, max_length=120)
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class DelayAction(BaseModel):
+    type: Literal["delay"] = "delay"
+    seconds: int = Field(ge=1, le=86400)
+    then: list[Annotated[NotifyAction | PublishEventAction | AuditAction, Field(discriminator="type")]] = Field(default_factory=list)
+
+
 RuleAction = Annotated[
     Annotated[NotifyAction, Field(discriminator="type")]
     | Annotated[PublishEventAction, Field(discriminator="type")]
-    | Annotated[AuditAction, Field(discriminator="type")],
+    | Annotated[AuditAction, Field(discriminator="type")]
+    | Annotated[UpdateFieldAction, Field(discriminator="type")]
+    | Annotated[CreateRecordAction, Field(discriminator="type")]
+    | Annotated[DelayAction, Field(discriminator="type")],
     "RuleAction",
 ]
 
@@ -53,6 +76,7 @@ class RuleCreate(BaseModel):
     actions: list[RuleAction]
     priority: int = Field(default=100, ge=0, le=10000)
     enabled: bool = True
+    group: str | None = Field(default=None, max_length=100)
 
 
 class RuleUpdate(BaseModel):
@@ -63,6 +87,7 @@ class RuleUpdate(BaseModel):
     actions: list[RuleAction] | None = None
     priority: int | None = Field(default=None, ge=0, le=10000)
     enabled: bool | None = None
+    group: str | None = None
 
 
 class RuleResponse(BaseModel):
@@ -76,6 +101,7 @@ class RuleResponse(BaseModel):
     actions: list[RuleAction]
     priority: int
     enabled: bool
+    group: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -104,3 +130,16 @@ class ExecutionListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class RuleTestRequest(BaseModel):
+    event_type: str = Field(min_length=1, max_length=120)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    entity_type: str | None = None
+    entity_id: str | None = None
+
+
+class RuleTestResponse(BaseModel):
+    matched_rules: int
+    total_rules: int
+    results: list[dict]

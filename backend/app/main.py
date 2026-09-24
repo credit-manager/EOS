@@ -14,29 +14,46 @@ from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
 
+from .ai.router import router as ai_router
 from .api_version import APIVersionMiddleware
 from .audit.router import router as audit_router
 from .auth.router import router as auth_router
+from .billing.router import router as billing_router
+from .billing.payment_router import router as payment_router
+from .builder.router import router as builder_router
 from .cache import ResponseCacheMiddleware
 from .compression import ResponseCompressionMiddleware
 from .config import get_settings
 from .construction.router import router as construction_router
+from .construction.pack_router import router as construction_pack_router
 from .db import Base, engine
+from .documents.router import router as documents_router
 from .error_handlers import setup_error_handlers
 from .events.router import router as events_router
 from .export_router import router as export_router
 from .financial.router import router as financial_router
 from .graph.router import router as graph_router
+from .ai.governance.router import router as governance_router
+from .ai.governance.limits_router import router as limits_router
+from .globalization.router import router as globalization_router
+from .integrations.connector_routes import router as connector_router
+from .integrations.router import router as integrations_router
 from .health import router as health_router
-from .logging_config import setup_logging
+from .logging_config import setup_logging, setup_structured_logging
 from .lookup.router import router as lookup_router
+from .marketplace.router import router as marketplace_router
 from .metadata.router import router as metadata_router
 from .metrics import increment_error_count, increment_request_count
 from .metrics import router as metrics_router
+from .monitoring import router as monitoring_router
 from .notification.router import router as notification_router
 from .permissions_router import router as permissions_router
+from .policy.router import router as policy_router
+from .admin_router import router as admin_router
+from .feature_flags.router import router as feature_flags_router
 from .query_logger import setup_query_logging
 from .query_optimizer import setup_query_optimization
+from .rbac import RBACMiddleware
 from .rate_limiter import (
     AdvancedRateLimitMiddleware,
     RateLimitRule,
@@ -51,13 +68,19 @@ from .request_logger import RequestResponseLoggingMiddleware
 from .request_validator import RequestValidationMiddleware
 from .rules import engine as rules_engine
 from .rules.router import router as rules_router
+from .retail.router import router as retail_router
+from .manufacturing.router import router as manufacturing_router
+from .sdk.router import router as sdk_router
 from .security_headers import SecurityHeadersMiddleware
+from .tenant_isolation import TenantIsolationMiddleware
+from .settings.router import router as settings_router
+from .websocket import router as websocket_router
 from .workflow.router import router as workflow_router
 
 logger = logging.getLogger("2to-eos")
 
 settings = get_settings()
-setup_logging(settings.app_env if settings.app_env == "production" else "DEBUG")
+setup_structured_logging(settings.app_env)
 _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,100}$")
 _IS_VERCEL = bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV"))
 
@@ -76,26 +99,73 @@ def reset_rate_limit_state() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    from .monitoring.sentry import init_sentry
+    init_sentry()
+
     logger.info("Starting up %s v%s", settings.app_name, settings.app_version)
-    
+
     if settings.app_env != "production" and not _IS_VERCEL:
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created (dev mode)")
-    
+
     setup_query_logging(engine)
     logger.info("Query logging enabled")
-    
+
     setup_query_optimization(engine)
     logger.info("Query optimization enabled")
-    
+
+    try:
+        import backend.app.query_monitor  # noqa: F401
+        logger.info("Query performance monitor enabled")
+    except Exception as exc:
+        logger.warning("Query monitor setup skipped: %s", exc)
+
     try:
         get_redis()
         logger.info("Redis connection established")
     except Exception as exc:
         logger.warning("Redis connection failed: %s", exc)
-    
+
+    # Initialize Egypt Pack (Globalization Engine - first country pack)
+    try:
+        from .globalization.pack_registry import initialize_pack
+        from .db import SessionLocal
+        db_session = SessionLocal()
+        try:
+            eg_result = initialize_pack("EG", db_session)
+            logger.info(
+                "Egypt Pack initialized via registry: country=%s, currency=%s, pack=%s, tax_configs=%d",
+                eg_result["country"].code if eg_result.get("country") else None,
+                eg_result["currency"].code if eg_result.get("currency") else None,
+                eg_result["pack"].pack_version if eg_result.get("pack") else None,
+                len(eg_result.get("tax_configs", [])),
+            )
+        finally:
+            db_session.close()
+    except Exception as exc:
+        logger.warning("Egypt Pack initialization skipped: %s", exc)
+
+    # Initialize Saudi Arabia Pack (Globalization Engine - second country pack)
+    try:
+        from .globalization.pack_registry import initialize_pack
+        from .db import SessionLocal
+        db_session = SessionLocal()
+        try:
+            sa_result = initialize_pack("SA", db_session)
+            logger.info(
+                "KSA Pack initialized via registry: country=%s, currency=%s, pack=%s, tax_configs=%d",
+                sa_result["country"].code if sa_result.get("country") else None,
+                sa_result["currency"].code if sa_result.get("currency") else None,
+                sa_result["pack"].pack_version if sa_result.get("pack") else None,
+                len(sa_result.get("tax_configs", [])),
+            )
+        finally:
+            db_session.close()
+    except Exception as exc:
+        logger.warning("KSA Pack initialization skipped: %s", exc)
+
     yield
-    
+
     logger.info("Shutting down %s", settings.app_name)
     close_redis()
     logger.info("Redis connection closed")
@@ -259,7 +329,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             else str(uuid4())
         )
         request.state.request_id = request_id
-        
+
         origin = request.headers.get("origin")
         if origin and origin not in settings.cors_origin_list:
             if request.method in ("POST", "PUT", "PATCH", "DELETE"):
@@ -268,10 +338,10 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                     status_code=403,
                     content={"detail": "origin not allowed"},
                 )
-        
+
         start_time = time.monotonic()
         client_host = request.client.host if request.client else "unknown"
-        
+
         logger.info(
             "[%s] %s %s from %s",
             request_id[:8],
@@ -279,14 +349,14 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             request.url.path,
             client_host,
         )
-        
+
         response = await call_next(request)
-        
+
         increment_request_count()
-        
+
         if response.status_code >= 400:
             increment_error_count()
-        
+
         duration_ms = (time.monotonic() - start_time) * 1000
         logger.info(
             "[%s] %s %s -> %d (%.1fms)",
@@ -296,13 +366,9 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             response.status_code,
             duration_ms,
         )
-        
+
         response.headers["X-Request-ID"] = request_id
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = "camera=(), geolocation=(), microphone=()"
-        
+
         if request.url.path.startswith("/api/v1/"):
             if request.url.path in ("/api/v1/health", "/api/v1/version"):
                 response.headers["Cache-Control"] = "public, max-age=60"
@@ -310,10 +376,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 response.headers["Cache-Control"] = "private, no-cache, no-store, must-revalidate"
             else:
                 response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        
-        if settings.app_env == "production":
-            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        
+
         return response
 
 
@@ -378,13 +441,28 @@ app = FastAPI(
             "name": "system",
             "description": "System health and version information",
         },
+        {"name": "billing", "description": "Subscription plans, billing, and invoices"},
+        {"name": "monitoring", "description": "System health, metrics, and security audit"},
+        {"name": "builder", "description": "Business Object builder and customization"},
+        {"name": "ai", "description": "AI copilot, agents, and governance"},
+        {"name": "documents", "description": "Document intelligence, OCR, and classification"},
+        {"name": "integrations", "description": "External system connectors and webhooks"},
+        {"name": "globalization", "description": "Country packs, currencies, and compliance"},
+        {"name": "sdk", "description": "Developer SDK and API access"},
+        {"name": "marketplace", "description": "Apps, plugins, and extensions"},
+        {"name": "settings", "description": "Tenant settings and configuration"},
     ],
 )
 
 setup_error_handlers(app)
 
+from .api_docs import configure_api_docs
+configure_api_docs(app)
+
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(TenantIsolationMiddleware)
 app.add_middleware(APIVersionMiddleware)
+app.add_middleware(RBACMiddleware)
 app.add_middleware(RequestContextMiddleware)
 app.add_middleware(RequestResponseLoggingMiddleware)
 app.add_middleware(RequestValidationMiddleware)
@@ -415,17 +493,48 @@ app.include_router(auth_router)
 app.include_router(metadata_router)
 app.include_router(records_router)
 app.include_router(lookup_router)
+app.include_router(marketplace_router)
 app.include_router(audit_router)
 app.include_router(financial_router)
 app.include_router(workflow_router)
 app.include_router(construction_router)
+app.include_router(construction_pack_router)
 app.include_router(notification_router)
 app.include_router(events_router)
 app.include_router(rules_router)
+
+
+@app.get("/", include_in_schema=False)
+def root() -> dict[str, str]:
+    return {
+        "service": settings.app_name,
+        "version": settings.app_version,
+        "docs": "/docs",
+        "health": "/api/v1/health",
+        "demo": "http://localhost:5173",
+    }
 app.include_router(graph_router)
 app.include_router(analytics_router)
 app.include_router(export_router)
 app.include_router(reports_router)
 app.include_router(permissions_router)
+app.include_router(policy_router)
+app.include_router(admin_router)
+app.include_router(feature_flags_router)
+app.include_router(ai_router)
+app.include_router(governance_router)
+app.include_router(limits_router)
+app.include_router(documents_router)
+app.include_router(integrations_router)
+app.include_router(globalization_router)
+app.include_router(builder_router)
+app.include_router(retail_router)
+app.include_router(manufacturing_router)
+app.include_router(sdk_router)
+app.include_router(settings_router)
+app.include_router(websocket_router)
+app.include_router(monitoring_router)
+app.include_router(billing_router)
+app.include_router(payment_router)
 
 rules_engine.install_listener()

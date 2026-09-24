@@ -14,6 +14,19 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  async function ssoLogin(provider: string) {
+    try {
+      const res = await fetch(`${API}/auth/sso/auth-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, redirect_uri: `${window.location.origin}/auth/sso/callback` }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.auth_url) window.location.href = data.auth_url;
+    } catch { /* ignore */ }
+  }
+
   async function submit() {
     setBusy(true);
     setError(null);
@@ -81,6 +94,19 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
         >
           {busy ? 'Working…' : mode === 'login' ? 'Sign in' : 'Create workspace'}
         </button>
+        <div className="flex items-center gap-3 my-4">
+          <div className="flex-1 h-px bg-gray-200" />
+          <span className="text-xs text-gray-400">Or continue with</span>
+          <div className="flex-1 h-px bg-gray-200" />
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => void ssoLogin('google')} className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm hover:bg-gray-50 transition-colors">
+            Google
+          </button>
+          <button type="button" onClick={() => void ssoLogin('microsoft')} className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm hover:bg-gray-50 transition-colors">
+            Microsoft
+          </button>
+        </div>
         <button
           className="secondary"
           onClick={() => setMode(mode === 'login' ? 'register' : 'login')}

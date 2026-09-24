@@ -20,18 +20,15 @@ settings = get_settings()
 engine_kwargs: dict[str, object] = {
     "future": True,
     "pool_pre_ping": True,
-    "pool_size": 10,
-    "max_overflow": 20,
-    "pool_timeout": 30,
-    "pool_recycle": 1800,
 }
 
 if settings.database_url.startswith("sqlite"):
     engine_kwargs["connect_args"] = {"check_same_thread": False}
-    engine_kwargs.pop("pool_size", None)
-    engine_kwargs.pop("max_overflow", None)
-    engine_kwargs.pop("pool_timeout", None)
-    engine_kwargs.pop("pool_recycle", None)
+else:
+    engine_kwargs["pool_size"] = 20
+    engine_kwargs["max_overflow"] = 40
+    engine_kwargs["pool_recycle"] = 1800
+    engine_kwargs["pool_timeout"] = 30
 
 engine = create_engine(settings.database_url, **engine_kwargs)
 
@@ -73,10 +70,10 @@ def check_db_health() -> bool:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         connection_time = (time.monotonic() - start_time) * 1000
-        
+
         if connection_time > 1000:
             logger.warning("Slow database connection: %.2fms", connection_time)
-        
+
         return True
     except Exception as exc:
         logger.error("Database health check failed: %s", exc)
@@ -89,7 +86,7 @@ def get_db_health() -> DatabaseHealth:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         connection_time = (time.monotonic() - start_time) * 1000
-        
+
         pool_status = {}
         if hasattr(engine.pool, "status"):
             pool = engine.pool
@@ -99,7 +96,7 @@ def get_db_health() -> DatabaseHealth:
                 "checked_out": getattr(pool, "_checkedout", 0),
                 "overflow": getattr(pool, "_overflow", 0),
             }
-        
+
         return DatabaseHealth(
             is_healthy=True,
             connection_time_ms=round(connection_time, 2),
@@ -125,13 +122,13 @@ def get_pool_stats() -> dict:
             "overflow": getattr(pool, "_overflow", 0),
             "total_connections": getattr(pool, "_total", 0),
         }
-        
+
         if hasattr(pool, "_timeout"):
             stats["timeout"] = pool._timeout
-        
+
         if hasattr(pool, "_recycle"):
             stats["recycle"] = pool._recycle
-        
+
         return stats
     except Exception as exc:
         logger.error("Failed to get pool stats: %s", exc)
@@ -148,4 +145,3 @@ def log_pool_stats() -> None:
             stats.get("checked_out", 0),
             stats.get("overflow", 0),
         )
-

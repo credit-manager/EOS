@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     app_name: str = "2TO EOS"
     app_version: str = "0.3.0"
     app_env: str = "development"
+    app_start_time: float = Field(default_factory=lambda: __import__('time').time())
     database_url: str = "sqlite+pysqlite:///:memory:"
     cors_origins: str = "http://localhost:5173"
     jwt_secret: str = "development-only-secret"
@@ -17,6 +18,32 @@ class Settings(BaseSettings):
     rate_limit_auth_per_minute: int = Field(default=120, ge=1, le=10000)
     max_request_body_bytes: int = Field(default=1048576, ge=1024, le=104857600)
     redis_url: str = "redis://localhost:6379/0"
+
+    # LLM
+    llm_provider: str = "openai"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-4-20250514"
+
+    # SSO
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    microsoft_client_id: str = ""
+    microsoft_client_secret: str = ""
+    okta_client_id: str = ""
+    okta_client_secret: str = ""
+    okta_domain: str = ""
+
+    # Stripe
+    stripe_secret_key: str = ""
+    stripe_publishable_key: str = ""
+    stripe_webhook_secret: str = ""
+
+    # Email (SendGrid)
+    sendgrid_api_key: str = ""
+    email_from_address: str = "noreply@2to-eos.com"
+    email_from_name: str = "2TO EOS"
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 

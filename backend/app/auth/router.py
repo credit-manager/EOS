@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -21,6 +21,8 @@ from .schemas import (
     TokenRequest,
     TokenResponse,
 )
+from .password_policy import validate_password
+from .rate_limiting import check_auth_rate_limit, reset_rate_limit
 from .security import (
     Principal,
     create_access_token,
@@ -69,6 +71,9 @@ def _token_response(user_id: UUID, tenant_id: UUID, role: str, db: Session) -> T
 @router.post("/register", response_model=TokenResponse, status_code=201)
 def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenResponse:
     email = payload.email.strip().lower()
+    is_valid, errors = validate_password(payload.password)
+    if not is_valid:
+        raise HTTPException(status_code=422, detail="; ".join(errors))
     existing = db.scalar(select(User).where(User.email == email))
     if existing is not None:
         raise HTTPException(status_code=409, detail="email already registered")
@@ -106,6 +111,9 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenRe
 
 @router.post("/token", response_model=TokenResponse)
 def token(payload: TokenRequest, request: Request, db: Session = Depends(get_db)) -> TokenResponse:
+    rate_key = f"auth:token:{request.client.host if request.client else 'unknown'}"
+    if not check_auth_rate_limit(rate_key, max_attempts=10, window_seconds=60):
+        raise HTTPException(status_code=429, detail="too many login attempts, please try again later")
     email = payload.email.strip().lower()
     user = db.scalar(select(User).where(User.email == email))
     if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
@@ -143,6 +151,7 @@ def token(payload: TokenRequest, request: Request, db: Session = Depends(get_db)
     else:
         raise HTTPException(status_code=409, detail="tenant_id is required for multi-tenant users")
     response = _token_response(user.id, membership.tenant_id, membership.role, db)
+    reset_rate_limit(rate_key)
     audit_record(
         db,
         tenant_id=membership.tenant_id,
@@ -174,11 +183,11 @@ def refresh_token(payload: RefreshTokenRequest, request: Request, db: Session = 
     session.revoked_at = datetime.now(UTC)
     session.refresh_token_hash = None
     db.flush()
-    
+
     user = db.scalar(select(User).where(User.id == session.user_id, User.is_active.is_(True)))
     if user is None:
         raise HTTPException(status_code=401, detail="user not found or inactive")
-    
+
     membership = db.scalar(
         select(TenantMembership).where(
             TenantMembership.user_id == session.user_id,
@@ -187,9 +196,9 @@ def refresh_token(payload: RefreshTokenRequest, request: Request, db: Session = 
     )
     if membership is None:
         raise HTTPException(status_code=403, detail="tenant membership not found")
-    
+
     response = _token_response(session.user_id, session.tenant_id, membership.role, db)
-    
+
     audit_record(
         db,
         tenant_id=session.tenant_id,
@@ -345,3 +354,308 @@ def update_member_role(
     if user is None:
         raise HTTPException(status_code=404, detail="user not found")
     return MemberResponse(user_id=user.id, email=user.email, tenant_id=membership.tenant_id, role=membership.role)
+
+
+# ---------------------------------------------------------------------------
+# Enterprise Admin - SSO Configuration
+# ---------------------------------------------------------------------------
+
+from pydantic import BaseModel, Field
+
+
+class SSOConfigCreate(BaseModel):
+    provider: str = Field(min_length=1, max_length=50)
+    name: str = Field(min_length=1, max_length=200)
+    client_id: str | None = None
+    client_secret: str | None = None
+    metadata_url: str | None = None
+    redirect_url: str | None = None
+    domain: str | None = None
+
+
+class SSOConfigResponse(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    provider: str
+    name: str
+    client_id: str | None
+    metadata_url: str | None
+    redirect_url: str | None
+    domain: str | None
+    is_active: bool
+    created_at: datetime
+
+
+@router.get("/sso", response_model=list[SSOConfigResponse])
+def list_sso_configs(
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    from .models import SSOConfiguration
+    configs = db.scalars(
+        select(SSOConfiguration).where(SSOConfiguration.tenant_id == principal.tenant_id)
+    ).all()
+    return [SSOConfigResponse(
+        id=c.id, tenant_id=c.tenant_id, provider=c.provider, name=c.name,
+        client_id=c.client_id, metadata_url=c.metadata_url, redirect_url=c.redirect_url,
+        domain=c.domain, is_active=c.is_active, created_at=c.created_at,
+    ) for c in configs]
+
+
+@router.post("/sso", response_model=SSOConfigResponse, status_code=201)
+def create_sso_config(
+    payload: SSOConfigCreate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    if principal.role != "admin":
+        raise HTTPException(status_code=403, detail="admin role required")
+    from .models import SSOConfiguration
+    config = SSOConfiguration(
+        tenant_id=principal.tenant_id,
+        provider=payload.provider,
+        name=payload.name,
+        client_id=payload.client_id,
+        client_secret=payload.client_secret,
+        metadata_url=payload.metadata_url,
+        redirect_url=payload.redirect_url,
+        domain=payload.domain,
+    )
+    db.add(config)
+    audit_record(
+        db, tenant_id=principal.tenant_id, actor_id=principal.user_id,
+        action="auth.sso_config_created", resource_type="sso_config",
+        resource_id=config.id, metadata={"provider": payload.provider},
+        request_id=request.state.request_id,
+    )
+    db.commit()
+    db.refresh(config)
+    return SSOConfigResponse(
+        id=config.id, tenant_id=config.tenant_id, provider=config.provider,
+        name=config.name, client_id=config.client_id, metadata_url=config.metadata_url,
+        redirect_url=config.redirect_url, domain=config.domain,
+        is_active=config.is_active, created_at=config.created_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Enterprise Admin - Audit Trail
+# ---------------------------------------------------------------------------
+
+@router.get("/audit-trail")
+def get_audit_trail(
+    limit: int = Query(default=50, ge=1, le=200),
+    action: str | None = Query(None),
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    from ..audit.models import AuditEvent
+    q = select(AuditEvent).where(AuditEvent.tenant_id == principal.tenant_id)
+    if action:
+        q = q.where(AuditEvent.action == action)
+    events = db.scalars(q.order_by(AuditEvent.created_at.desc()).limit(limit)).all()
+    return [
+        {
+            "id": e.id,
+            "actor_id": e.actor_id,
+            "action": e.action,
+            "resource_type": e.resource_type,
+            "resource_id": e.resource_id,
+            "metadata": e.metadata_json,
+            "created_at": e.created_at,
+        }
+        for e in events
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Enterprise Admin - Role Permissions
+# ---------------------------------------------------------------------------
+
+class RolePermissionCreate(BaseModel):
+    role: str = Field(min_length=1, max_length=30)
+    resource: str = Field(min_length=1, max_length=100)
+    action: str = Field(min_length=1, max_length=50)
+    allowed: bool = True
+
+
+class RolePermissionResponse(BaseModel):
+    id: UUID
+    role: str
+    resource: str
+    action: str
+    allowed: bool
+
+
+@router.get("/permissions", response_model=list[RolePermissionResponse])
+def list_permissions(
+    role: str | None = Query(None),
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    from .models import RolePermission
+    q = select(RolePermission).where(RolePermission.tenant_id == principal.tenant_id)
+    if role:
+        q = q.where(RolePermission.role == role)
+    perms = db.scalars(q.order_by(RolePermission.role, RolePermission.resource)).all()
+    return [RolePermissionResponse(
+        id=p.id, role=p.role, resource=p.resource, action=p.action, allowed=p.allowed,
+    ) for p in perms]
+
+
+@router.post("/permissions", response_model=RolePermissionResponse, status_code=201)
+def create_permission(
+    payload: RolePermissionCreate,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    if principal.role != "admin":
+        raise HTTPException(status_code=403, detail="admin role required")
+    from .models import RolePermission
+    perm = RolePermission(
+        tenant_id=principal.tenant_id,
+        role=payload.role,
+        resource=payload.resource,
+        action=payload.action,
+        allowed=payload.allowed,
+    )
+    db.add(perm)
+    db.commit()
+    db.refresh(perm)
+    return RolePermissionResponse(
+        id=perm.id, role=perm.role, resource=perm.resource, action=perm.action, allowed=perm.allowed,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Password change
+# ---------------------------------------------------------------------------
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.post("/password")
+def change_password(
+    payload: ChangePasswordRequest,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Change the current user's password."""
+    from .password_policy import validate_password
+
+    user = db.query(User).filter(User.id == principal.user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    if not verify_password(payload.current_password, user.hashed_password):
+        raise HTTPException(400, "Current password is incorrect")
+
+    errors = validate_password(payload.new_password)
+    if errors:
+        raise HTTPException(422, detail={"errors": errors})
+
+    user.hashed_password = hash_password(payload.new_password)
+    db.commit()
+
+    return {"message": "Password changed successfully"}
+
+
+# ---------------------------------------------------------------------------
+# SSO / OAuth2 endpoints
+# ---------------------------------------------------------------------------
+
+from .sso import SSOService
+
+
+class SSOAuthURLRequest(BaseModel):
+    provider: str
+    redirect_uri: str
+
+
+class SSOCallbackRequest(BaseModel):
+    provider: str
+    code: str
+    state: str
+    redirect_uri: str
+
+
+@router.post("/sso/auth-url")
+def get_sso_auth_url(payload: SSOAuthURLRequest) -> dict:
+    """Get the SSO authorization URL for a provider."""
+    sso = SSOService(get_settings().model_dump())
+    result = sso.get_auth_url(payload.provider, payload.redirect_uri)
+    return result
+
+
+@router.post("/sso/callback")
+def sso_callback(
+    payload: SSOCallbackRequest,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    """Handle SSO callback — exchange code and create/find user."""
+    from ..config import get_settings as _gs
+    from .security import create_access_token, hash_password
+
+    sso = SSOService(_gs().model_dump())
+
+    if not sso.validate_state(payload.state):
+        raise HTTPException(400, "Invalid or expired SSO state")
+
+    tokens = sso.exchange_code(payload.provider, payload.code, payload.redirect_uri)
+    if "error" in tokens:
+        raise HTTPException(400, f"SSO token exchange failed: {tokens['error']}")
+
+    user_info = sso.get_user_info(payload.provider, tokens.get("access_token", ""))
+    if "error" in user_info:
+        raise HTTPException(400, f"SSO userinfo failed: {user_info['error']}")
+
+    email = user_info.get("email", "")
+    if not email:
+        raise HTTPException(400, "No email in SSO response")
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        tenant = Tenant(name=f"{email}'s Organization")
+        db.add(tenant)
+        db.flush()
+        user = User(
+            email=email,
+            display_name=user_info.get("name", email),
+            hashed_password=hash_password(secrets.token_urlsafe(32)),
+            tenant_id=tenant.id,
+            role="user",
+            is_active=True,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    access, refresh, session = create_access_token(
+        user_id=user.id, tenant_id=user.tenant_id, role=user.role,
+    )
+
+    from .security import hash_token
+    from .models import AuthSession
+    auth_session = AuthSession(
+        user_id=user.id,
+        tenant_id=user.tenant_id,
+        refresh_token_hash=hash_token(refresh),
+        user_agent="sso",
+        ip_address=None,
+        expires_at=session.expires_at,
+    )
+    db.add(auth_session)
+    db.commit()
+
+    return TokenResponse(
+        access_token=access,
+        refresh_token=refresh,
+        user_id=str(user.id),
+        tenant_id=str(user.tenant_id),
+        role=user.role,
+        expires_in=session.expires_in,
+        refresh_expires_in=session.refresh_expires_in,
+    )

@@ -1,7 +1,10 @@
+import csv
+import io
 import json
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -17,7 +20,7 @@ from .schemas import (
     ReportRunResponse,
     WorkspaceFeed,
 )
-from .service import home_feed, run_and_record
+from .service import execute_report, home_feed, run_and_record
 
 router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
 
@@ -203,3 +206,207 @@ def workspace_feed(
         role=request.state.role,
         user_id=request.state.user_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# CSV / PDF Export endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/reports/{code}/export/csv")
+def export_report_csv(
+    code: str,
+    principal: Principal = Depends(require_principal),
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    report = _get_report(db, tenant_id, code)
+    result = execute_report(db, tenant_id=tenant_id, role=principal.role, report=report)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header
+    if result.get("series"):
+        writer.writerow(["key", "value"])
+        for item in result["series"]:
+            writer.writerow([item["key"], item["value"]])
+    else:
+        writer.writerow(["metric", "value", "count"])
+        writer.writerow([result.get("metric", ""), result.get("value", ""), result.get("count", 0)])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={code}_report.csv"},
+    )
+
+
+@router.get("/reports/{code}/export/pdf")
+def export_report_pdf(
+    code: str,
+    principal: Principal = Depends(require_principal),
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    report = _get_report(db, tenant_id, code)
+    result = execute_report(db, tenant_id=tenant_id, role=principal.role, report=report)
+
+    # Generate a simple text-based PDF-like content
+    lines = [
+        f"Report: {result.get('report_name', code)}",
+        f"Entity: {result.get('entity_code', '')}",
+        f"Metric: {result.get('metric', '')}",
+        f"Value: {result.get('value', '')}",
+        f"Count: {result.get('count', 0)}",
+        "",
+        "Breakdown:",
+    ]
+    for item in result.get("series", []):
+        lines.append(f"  {item['key']}: {item['value']}")
+
+    content = "\n".join(lines)
+    output = io.BytesIO(content.encode("utf-8"))
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={code}_report.pdf"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Scheduled Reports
+# ---------------------------------------------------------------------------
+
+from pydantic import BaseModel, Field as PydanticField
+
+
+class ScheduledReportCreate(BaseModel):
+    report_code: str
+    name: str
+    frequency: str = PydanticField(pattern="^(daily|weekly|monthly)$")
+    day_of_week: int | None = PydanticField(default=None, ge=0, le=6)
+    day_of_month: int | None = PydanticField(default=None, ge=1, le=31)
+    hour: int = PydanticField(default=8, ge=0, le=23)
+    minute: int = PydanticField(default=0, ge=0, le=59)
+    export_format: str = PydanticField(default="csv", pattern="^(csv|pdf)$")
+    recipients: list[str] = PydanticField(default_factory=list)
+
+
+class ScheduledReportResponse(BaseModel):
+    id: UUID
+    report_code: str
+    name: str
+    frequency: str
+    export_format: str
+    is_active: bool
+    last_run_at: datetime | None
+    next_run_at: datetime | None
+    created_at: datetime
+
+
+@router.get("/scheduled", response_model=list[ScheduledReportResponse])
+def list_scheduled_reports(
+    principal: Principal = Depends(require_principal),
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    from .models import ScheduledReport, AnalyticsReport
+    from sqlalchemy import select
+
+    scheduled = db.scalars(
+        select(ScheduledReport).where(ScheduledReport.tenant_id == tenant_id)
+    ).all()
+
+    result = []
+    for s in scheduled:
+        report = db.get(AnalyticsReport, s.report_id)
+        result.append(ScheduledReportResponse(
+            id=s.id,
+            report_code=report.code if report else "",
+            name=s.name,
+            frequency=s.frequency,
+            export_format=s.export_format,
+            is_active=s.is_active,
+            last_run_at=s.last_run_at,
+            next_run_at=s.next_run_at,
+            created_at=s.created_at,
+        ))
+    return result
+
+
+@router.post("/scheduled", response_model=ScheduledReportResponse, status_code=201)
+def create_scheduled_report(
+    payload: ScheduledReportCreate,
+    principal: Principal = Depends(require_principal),
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    from .models import ScheduledReport, AnalyticsReport
+    from sqlalchemy import select
+    from datetime import timedelta
+
+    report = db.scalar(
+        select(AnalyticsReport).where(
+            AnalyticsReport.tenant_id == tenant_id,
+            AnalyticsReport.code == payload.report_code,
+        )
+    )
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    from datetime import UTC, datetime
+    now = datetime.now(UTC)
+    next_run = now + timedelta(days=1)
+
+    scheduled = ScheduledReport(
+        tenant_id=tenant_id,
+        report_id=report.id,
+        name=payload.name,
+        frequency=payload.frequency,
+        day_of_week=payload.day_of_week,
+        day_of_month=payload.day_of_month,
+        hour=payload.hour,
+        minute=payload.minute,
+        export_format=payload.export_format,
+        recipients_json=json.dumps(payload.recipients),
+        created_by=principal.user_id,
+        next_run_at=next_run,
+    )
+    db.add(scheduled)
+    db.commit()
+    db.refresh(scheduled)
+
+    return ScheduledReportResponse(
+        id=scheduled.id,
+        report_code=payload.report_code,
+        name=scheduled.name,
+        frequency=scheduled.frequency,
+        export_format=scheduled.export_format,
+        is_active=scheduled.is_active,
+        last_run_at=scheduled.last_run_at,
+        next_run_at=scheduled.next_run_at,
+        created_at=scheduled.created_at,
+    )
+
+
+@router.delete("/scheduled/{scheduled_id}", status_code=204)
+def delete_scheduled_report(
+    scheduled_id: UUID,
+    principal: Principal = Depends(require_principal),
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    from .models import ScheduledReport
+    from sqlalchemy import select
+
+    scheduled = db.scalar(
+        select(ScheduledReport).where(
+            ScheduledReport.id == scheduled_id,
+            ScheduledReport.tenant_id == tenant_id,
+        )
+    )
+    if not scheduled:
+        raise HTTPException(status_code=404, detail="Scheduled report not found")
+    db.delete(scheduled)
+    db.commit()

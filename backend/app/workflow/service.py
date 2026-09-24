@@ -13,9 +13,15 @@ from ..events.service import publish as publish_event
 from ..metadata.models import MetadataEntity
 from ..policy import evaluate_conditions
 from ..records.models import Record
-from .models import ApprovalTask, WorkflowDefinition, WorkflowInstance
+from .models import ApprovalTask, WorkflowDefinition, WorkflowInstance, WorkflowSLALog
 from .schemas import WorkflowDefinitionCreate
 
+logger = __import__("logging").getLogger("2to-eos.workflow")
+
+
+# ---------------------------------------------------------------------------
+# Context helpers
+# ---------------------------------------------------------------------------
 
 def build_workflow_context(
     instance: WorkflowInstance,
@@ -55,6 +61,10 @@ def _definition_graph(definition: WorkflowDefinition) -> list[dict]:
 def _is_terminal(definition: WorkflowDefinition, state: str) -> bool:
     return not any(item["from_state"] == state for item in _definition_graph(definition))
 
+
+# ---------------------------------------------------------------------------
+# Definition CRUD
+# ---------------------------------------------------------------------------
 
 def get_definition(db: Session, tenant_id: UUID, code: str) -> WorkflowDefinition:
     definition = db.scalar(
@@ -114,6 +124,10 @@ def create_definition(
     return definition
 
 
+# ---------------------------------------------------------------------------
+# Instance lifecycle
+# ---------------------------------------------------------------------------
+
 def start_instance(
     db: Session,
     *,
@@ -162,6 +176,10 @@ def start_instance(
     )
     return instance
 
+
+# ---------------------------------------------------------------------------
+# Transition actions
+# ---------------------------------------------------------------------------
 
 def _apply_transition_actions(
     db: Session,
@@ -226,6 +244,10 @@ def _apply_transition_actions(
             )
         )
 
+
+# ---------------------------------------------------------------------------
+# Transition request
+# ---------------------------------------------------------------------------
 
 def request_transition(
     db: Session,
@@ -368,6 +390,10 @@ def _publish_transition(
         )
 
 
+# ---------------------------------------------------------------------------
+# Approval decision
+# ---------------------------------------------------------------------------
+
 def decide_approval(
     db: Session,
     *,
@@ -459,9 +485,92 @@ def decide_approval(
     return task, instance
 
 
+# ---------------------------------------------------------------------------
+# Commit helper
+# ---------------------------------------------------------------------------
+
 def commit_workflow(db: Session) -> None:
     try:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail="workflow write conflicted with another transaction") from exc
+
+
+# ---------------------------------------------------------------------------
+# SLA / escalation
+# ---------------------------------------------------------------------------
+
+def check_sla_violations(db: Session, tenant_id: UUID) -> dict:
+    now = datetime.now(UTC)
+    pending = db.scalars(
+        select(ApprovalTask)
+        .where(
+            ApprovalTask.tenant_id == tenant_id,
+            ApprovalTask.status == "pending",
+        )
+        .order_by(ApprovalTask.due_at.asc())
+    ).all()
+
+    violated = [t for t in pending if t.due_at and t.due_at < now]
+    warning = [t for t in pending if t.due_at and t.due_at < now.replace(hour=now.hour + 2, minute=0, second=0, microsecond=0)]
+
+    for task in violated:
+        task.escalated_at = now
+        task.escalated_to = task.escalation_role or "admin"
+        db.add(
+            WorkflowSLALog(
+                tenant_id=tenant_id,
+                workflow_instance_id=task.workflow_instance_id,
+                event_type="violated",
+                sla_hours=task.timeout_hours,
+                message=f"Approval task {task.id} overdue",
+            )
+        )
+    for task in warning:
+        if task.reminder_sent_at is None or (now - task.reminder_sent_at).total_seconds() > 3600:
+            task.reminder_sent_at = now
+            db.add(
+                WorkflowSLALog(
+                    tenant_id=tenant_id,
+                    workflow_instance_id=task.workflow_instance_id,
+                    event_type="warning",
+                    sla_hours=task.timeout_hours,
+                    message=f"Approval task {task.id} due soon",
+                )
+            )
+
+    total = len(pending)
+    on_track = total - len(violated) - len(warning)
+    return {
+        "total_pending": total,
+        "violated": len(violated),
+        "warning": len(warning),
+        "on_track": max(0, on_track),
+    }
+
+
+def get_sla_summary(db: Session, tenant_id: UUID) -> dict:
+    rows = db.scalar(
+        select(func.count()).where(ApprovalTask.tenant_id == tenant_id, ApprovalTask.status == "pending")
+    ) or 0
+    return {"total_pending": rows}
+
+
+# ---------------------------------------------------------------------------
+# NEW: Pending approval tasks for my-tasks endpoint
+# ---------------------------------------------------------------------------
+
+def get_pending_approval_tasks(
+    db: Session,
+    tenant_id: UUID,
+    user_id: UUID,
+) -> list[ApprovalTask]:
+    """Return approval tasks pending action from the given user."""
+    return db.scalars(
+        select(ApprovalTask).where(
+            ApprovalTask.tenant_id == tenant_id,
+            ApprovalTask.status == "pending",
+            ApprovalTask.requested_by == user_id,
+        ).order_by(ApprovalTask.requested_at.desc())
+    ).all()

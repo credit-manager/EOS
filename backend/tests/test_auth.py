@@ -1,3 +1,4 @@
+import time
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -7,18 +8,28 @@ from backend.app.main import app
 
 client = TestClient(app)
 
+_counter = 0
 
-def _register(email: str, password: str = "Correct-Horse-Battery-42") -> dict:
+
+def _uid() -> str:
+    global _counter
+    _counter += 1
+    return f"{int(time.time() * 1000)}{_counter}"
+
+
+def _register(email: str | None = None, password: str = "Correct-Horse-Battery-42") -> dict:
+    if email is None:
+        email = f"test-{_uid()}@example.com"
     response = client.post(
         "/api/v1/auth/register",
         json={"email": email, "password": password, "tenant_name": f"Tenant {email}"},
     )
-    assert response.status_code == 201
+    assert response.status_code == 201, response.text
     return response.json()
 
 
 def test_register_login_and_current_identity() -> None:
-    email = "owner@example.com"
+    email = f"owner-{_uid()}@example.com"
     password = "Correct-Horse-Battery-42"
     token = _register(email, password)
     tenant_id = UUID(token["tenant_id"])
@@ -35,7 +46,7 @@ def test_register_login_and_current_identity() -> None:
 
 
 def test_logout_revokes_only_the_current_session() -> None:
-    email = "session@example.com"
+    email = f"session-{_uid()}@example.com"
     password = "Correct-Horse-Battery-42"
     registered = _register(email, password)
     second = client.post("/api/v1/auth/token", json={"email": email, "password": password})
@@ -56,7 +67,7 @@ def test_logout_revokes_only_the_current_session() -> None:
 
 
 def test_refresh_rotates_session_and_rejects_reuse() -> None:
-    registered = _register("refresh@example.com")
+    registered = _register(f"refresh-{_uid()}@example.com")
 
     refreshed = client.post(
         "/api/v1/auth/refresh",
@@ -88,8 +99,8 @@ def test_refresh_rotates_session_and_rejects_reuse() -> None:
 
 
 def test_refresh_unique_session_lookup_does_not_match_other_sessions() -> None:
-    first = _register("refresh-first@example.com")
-    second = _register("refresh-second@example.com")
+    first = _register(f"refresh-first-{_uid()}@example.com")
+    second = _register(f"refresh-second-{_uid()}@example.com")
 
     with_first = client.post("/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
     assert with_first.status_code == 200
@@ -110,7 +121,7 @@ def test_expired_refresh_token_is_rejected() -> None:
     from backend.app.auth.security import hash_token
     from backend.app.db import SessionLocal
 
-    registered = _register("refresh-expired@example.com")
+    registered = _register(f"refresh-expired-{_uid()}@example.com")
     session = SessionLocal()
     try:
         row = session.scalar(
@@ -133,13 +144,15 @@ def test_expired_refresh_token_is_rejected() -> None:
 
 
 def test_refresh_keeps_tenant_binding_without_escalation() -> None:
-    owner_a = _register("refresh-tenant-a@example.com")
-    owner_b = _register("refresh-tenant-b@example.com")
+    uid = _uid()
+    owner_a = _register(f"refresh-tenant-a-{uid}@example.com")
+    owner_b_email = f"refresh-tenant-b-{uid}@example.com"
+    owner_b = _register(owner_b_email)
 
     admin_headers = {"Authorization": f"Bearer {owner_a['access_token']}"}
     added = client.post(
         "/api/v1/auth/members",
-        json={"email": "refresh-tenant-b@example.com", "role": "member"},
+        json={"email": owner_b_email, "role": "member"},
         headers=admin_headers,
     )
     assert added.status_code == 201
@@ -147,7 +160,7 @@ def test_refresh_keeps_tenant_binding_without_escalation() -> None:
     login_b_in_a = client.post(
         "/api/v1/auth/token",
         json={
-            "email": "refresh-tenant-b@example.com",
+            "email": owner_b_email,
             "password": "Correct-Horse-Battery-42",
             "tenant_id": owner_a["tenant_id"],
         },
@@ -183,22 +196,25 @@ def test_invalid_or_missing_access_token_is_rejected() -> None:
 
 
 def test_registration_enforces_strong_password_and_unique_email() -> None:
-    payload = {"email": "duplicate@example.com", "password": "Correct-Horse-Battery-42", "tenant_name": "One"}
+    uid = _uid()
+    email = f"duplicate-{uid}@example.com"
+    payload = {"email": email, "password": "Correct-Horse-Battery-42", "tenant_name": "One"}
     assert client.post("/api/v1/auth/register", json=payload).status_code == 201
     assert client.post("/api/v1/auth/register", json=payload).status_code == 409
 
-    weak = {"email": "weak@example.com", "password": "short", "tenant_name": "Weak"}
+    weak = {"email": f"weak-{uid}@example.com", "password": "short", "tenant_name": "Weak"}
     assert client.post("/api/v1/auth/register", json=weak).status_code == 422
 
 
 def test_admin_can_add_member_and_protect_last_admin() -> None:
-    admin = _register("admin@example.com")
-    member = _register("member@example.com")
+    uid = _uid()
+    admin = _register(f"admin-{uid}@example.com")
+    member = _register(f"member-{uid}@example.com")
     admin_headers = {"Authorization": f"Bearer {admin['access_token']}"}
 
     added = client.post(
         "/api/v1/auth/members",
-        json={"email": "member@example.com", "role": "member"},
+        json={"email": f"member-{uid}@example.com", "role": "member"},
         headers=admin_headers,
     )
     assert added.status_code == 201
@@ -207,7 +223,7 @@ def test_admin_can_add_member_and_protect_last_admin() -> None:
     member_login = client.post(
         "/api/v1/auth/token",
         json={
-            "email": "member@example.com",
+            "email": f"member-{uid}@example.com",
             "password": "Correct-Horse-Battery-42",
             "tenant_id": admin["tenant_id"],
         },

@@ -106,6 +106,8 @@ class ApprovalDecisionRequest(BaseModel):
 
 
 class ApprovalTaskResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     workflow_instance_id: UUID
     action: str
@@ -114,3 +116,9 @@ class ApprovalTaskResponse(BaseModel):
     status: str
     requested_by: UUID
     decided_by: UUID | None
+
+
+class TaskListResponse(BaseModel):
+    items: list[ApprovalTaskResponse]
+    total: int
+    pending: int

@@ -211,7 +211,7 @@ def create_boq(
 
 @router.get("/boqs", response_model=list[schemas.BOQResponse])
 def list_boqs(
-    contract_id: UUID,
+    contract_id: UUID | None = None,
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ):
@@ -281,6 +281,43 @@ def update_boq_status(
     return boq
 
 
+@router.patch("/boqs/{boq_id}", response_model=schemas.BOQResponse)
+def update_boq(
+    boq_id: UUID,
+    payload: schemas.BOQUpdate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    boq = service.update_boq(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        boq_id=boq_id,
+        status=payload.status,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return boq
+
+
+@router.delete("/boqs/{boq_id}", status_code=204)
+def delete_boq(
+    boq_id: UUID,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    service.delete_boq(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        boq_id=boq_id,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+
+
 # ---------------------------------------------------------------------------
 # Progress Claims
 # ---------------------------------------------------------------------------
@@ -309,7 +346,7 @@ def create_progress_claim(
 
 @router.get("/claims", response_model=list[schemas.ProgressClaimResponse])
 def list_progress_claims(
-    contract_id: UUID,
+    contract_id: UUID | None = None,
     tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ):
@@ -375,6 +412,43 @@ def update_claim_status(
     )
     db.commit()
     return claim
+
+
+@router.patch("/claims/{claim_id}", response_model=schemas.ProgressClaimResponse)
+def update_progress_claim(
+    claim_id: UUID,
+    payload: schemas.ProgressClaimUpdate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    claim = service.update_progress_claim(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        claim_id=claim_id,
+        status=payload.status,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return claim
+
+
+@router.delete("/claims/{claim_id}", status_code=204)
+def delete_progress_claim(
+    claim_id: UUID,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    service.delete_progress_claim(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        claim_id=claim_id,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -474,6 +548,46 @@ def update_procurement_status(
     )
     db.commit()
     return proc
+
+
+@router.patch("/procurements/{procurement_id}", response_model=schemas.ProcurementResponse)
+def update_procurement(
+    procurement_id: UUID,
+    payload: schemas.ProcurementUpdate,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    proc = service.update_procurement(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        procurement_id=procurement_id,
+        status=payload.status,
+        priority=payload.priority,
+        title=payload.title,
+        description=payload.description,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    return proc
+
+
+@router.delete("/procurements/{procurement_id}", status_code=204)
+def delete_procurement(
+    procurement_id: UUID,
+    request: Request,
+    principal: Principal = Depends(require_principal),
+    db: Session = Depends(get_db),
+):
+    service.delete_procurement(
+        db,
+        tenant_id=principal.tenant_id,
+        user_id=principal.user_id,
+        procurement_id=procurement_id,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
 
 
 # ---------------------------------------------------------------------------

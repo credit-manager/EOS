@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TranslationKeys } from '../i18n';
+import { useI18n } from '../i18n';
 import DataTable from './DataTable';
 import Modal from './Modal';
 import ConfirmDialog from './ConfirmDialog';
@@ -7,41 +7,44 @@ import ConfirmDialog from './ConfirmDialog';
 interface BOQ {
   id: string;
   contract_id: string;
-  contract_name: string;
+  version: number;
   status: string;
-  items_count: number;
-  total_amount: string;
 }
 
 interface BOQPageProps {
-  t: TranslationKeys;
   token: string;
 }
 
-export default function BOQPage({ t: _t, token }: BOQPageProps) {
+export default function BOQPage({ token }: BOQPageProps) {
+  const { t } = useI18n();
   const [boqs, setBoqs] = useState<BOQ[]>([]);
   const [contracts, setContracts] = useState<
-    { id: string; number: string; project_name: string }[]
+    { id: string; contract_number: string; title: string }[]
   >([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingBOQ, setEditingBOQ] = useState<BOQ | null>(null);
   const [formData, setFormData] = useState({
     contract_id: '',
+    version: 1,
     status: 'draft',
   });
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const contractName = (id: string) => {
+    const c = contracts.find((x) => x.id === id);
+    return c ? `${c.contract_number} - ${c.title}` : id;
+  };
+
   const columns = [
-    { key: 'contract_name', header: 'Contract' },
-    { key: 'status', header: 'Status', render: (row: BOQ) => <StatusBadge status={row.status} /> },
-    { key: 'items_count', header: 'Items', className: 'text-right' },
     {
-      key: 'total_amount',
-      header: 'Total',
-      render: (row: BOQ) => <span className="font-mono">{formatCurrency(row.total_amount)}</span>,
+      key: 'id',
+      header: t.boqPage.contract,
+      render: (row: BOQ) => <span>{contractName(row.contract_id)}</span>,
     },
+    { key: 'version', header: t.boqPage.version, className: 'text-right' },
+    { key: 'status', header: t.boqPage.status, render: (row: BOQ) => <StatusBadge status={row.status} /> },
   ];
 
   useEffect(() => {
@@ -57,7 +60,15 @@ export default function BOQPage({ t: _t, token }: BOQPageProps) {
       });
       if (response.ok) {
         const data = await response.json();
-        setBoqs(data.items || data);
+        const items = data.items || data;
+        setBoqs(
+          (Array.isArray(items) ? items : []).map((b: Record<string, unknown>) => ({
+            id: String(b.id ?? ''),
+            contract_id: String(b.contract_id ?? ''),
+            version: Number(b.version ?? 1),
+            status: String(b.status ?? 'draft'),
+          }))
+        );
       }
     } catch {
       setError('Failed to load BOQs');
@@ -73,7 +84,14 @@ export default function BOQPage({ t: _t, token }: BOQPageProps) {
       });
       if (response.ok) {
         const data = await response.json();
-        setContracts(data.items || data);
+        const items = data.items || data;
+        setContracts(
+          (Array.isArray(items) ? items : []).map((c: Record<string, unknown>) => ({
+            id: String(c.id ?? ''),
+            contract_number: String(c.contract_number ?? ''),
+            title: String(c.title ?? ''),
+          }))
+        );
       }
     } catch {
       // ignore
@@ -82,13 +100,13 @@ export default function BOQPage({ t: _t, token }: BOQPageProps) {
 
   const handleCreate = () => {
     setEditingBOQ(null);
-    setFormData({ contract_id: '', status: 'draft' });
+    setFormData({ contract_id: '', version: 1, status: 'draft' });
     setShowModal(true);
   };
 
   const handleEdit = (boq: BOQ) => {
     setEditingBOQ(boq);
-    setFormData({ contract_id: boq.contract_id, status: boq.status });
+    setFormData({ contract_id: boq.contract_id, version: boq.version, status: boq.status });
     setShowModal(true);
   };
 
@@ -99,12 +117,15 @@ export default function BOQPage({ t: _t, token }: BOQPageProps) {
       const url = editingBOQ
         ? `/api/v1/construction/boqs/${editingBOQ.id}`
         : '/api/v1/construction/boqs';
-      const method = editingBOQ ? 'PUT' : 'POST';
+      const method = editingBOQ ? 'PATCH' : 'POST';
+      const body = editingBOQ
+        ? { status: formData.status }
+        : { contract_id: formData.contract_id, version: formData.version };
 
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(body),
       });
 
       if (response.ok) {
@@ -120,19 +141,6 @@ export default function BOQPage({ t: _t, token }: BOQPageProps) {
   };
 
   const handleDelete = (id: string) => setDeleteConfirm(id);
-
-  const _confirmDelete = async () => {
-    if (!deleteConfirm) return;
-    try {
-      const response = await fetch(`/api/v1/construction/boqs/${deleteConfirm}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.ok) fetchBOQs();
-    } finally {
-      setDeleteConfirm(null);
-    }
-  };
 
   if (loading) return <div className="flex items-center justify-center h-64">Loading...</div>;
 
@@ -162,22 +170,36 @@ export default function BOQPage({ t: _t, token }: BOQPageProps) {
         title={editingBOQ ? 'Edit BOQ' : 'Create BOQ'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Contract *</label>
-            <select
-              value={formData.contract_id}
-              onChange={(e) => setFormData({ ...formData, contract_id: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              required
-            >
-              <option value="">Select Contract</option>
-              {contracts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.number} - {c.project_name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {!editingBOQ && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Contract *</label>
+                <select
+                  value={formData.contract_id}
+                  onChange={(e) => setFormData({ ...formData, contract_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">Select Contract</option>
+                  {contracts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.contract_number} - {c.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Version</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={formData.version}
+                  onChange={(e) => setFormData({ ...formData, version: Number(e.target.value) })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
             <select
@@ -185,9 +207,15 @@ export default function BOQPage({ t: _t, token }: BOQPageProps) {
               onChange={(e) => setFormData({ ...formData, status: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
-              <option value="draft">Draft</option>
-              <option value="submitted">Submitted</option>
-              <option value="approved">Approved</option>
+              {editingBOQ ? (
+                <>
+                  <option value="draft">Draft</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="approved">Approved</option>
+                </>
+              ) : (
+                <option value="draft">Draft</option>
+              )}
             </select>
           </div>
           <div className="flex justify-end gap-3 pt-4">
@@ -230,10 +258,4 @@ function StatusBadge({ status }: { status: string }) {
   };
   const s = statusMap[status] || { label: status, class: 'bg-gray-100 text-gray-800' };
   return <span className={`px-2 py-1 text-xs font-medium rounded-full ${s.class}`}>{s.label}</span>;
-}
-
-function formatCurrency(value: string): string {
-  const num = parseFloat(value);
-  if (isNaN(num)) return value;
-  return new Intl.NumberFormat('ar-SA', { style: 'currency', currency: 'SAR' }).format(num);
 }

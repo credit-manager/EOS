@@ -2,6 +2,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from ..audit.service import record as audit_record
@@ -155,3 +156,97 @@ def delete_rule(
         request_id=request.state.request_id,
     )
     db.commit()
+
+
+@router.post("/test", response_model=schemas.RuleTestResponse)
+def test_rules(
+    payload: schemas.RuleTestRequest,
+    principal: Principal = Depends(require_principal),
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+) -> schemas.RuleTestResponse:
+    """Test rules against a simulated event without executing actions."""
+    from .models import Rule
+    from ..policy import evaluate_conditions, resolve_path
+
+    rules = db.scalars(
+        select(Rule).where(
+            Rule.tenant_id == tenant_id,
+            Rule.event_type == payload.event_type,
+            Rule.enabled.is_(True),
+        ).order_by(Rule.priority, Rule.created_at)
+    ).all()
+
+    results = []
+    matched_count = 0
+
+    for rule in rules:
+        ctx = {
+            "payload": payload.payload,
+            "event": {
+                "event_type": payload.event_type,
+                "entity_type": payload.entity_type or "",
+                "entity_id": payload.entity_id or "",
+            },
+        }
+        conditions = json.loads(rule.conditions_json) if rule.conditions_json else []
+        matched = evaluate_conditions(ctx, conditions) if conditions else True
+        if matched:
+            matched_count += 1
+        actions = json.loads(rule.actions_json) if rule.actions_json else []
+        results.append({
+            "rule_id": str(rule.id),
+            "rule_name": rule.name,
+            "matched": matched,
+            "conditions_count": len(conditions),
+            "actions_count": len(actions),
+        })
+
+    return schemas.RuleTestResponse(
+        matched_rules=matched_count,
+        total_rules=len(rules),
+        results=results,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Async / Delayed Actions endpoints
+# ---------------------------------------------------------------------------
+
+class DelayedActionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    tenant_id: UUID
+    rule_id: UUID
+    actions_json: str
+    context_json: str | None
+    delay_seconds: int
+    scheduled_for: datetime
+    status: str
+    error_message: str | None
+    created_at: datetime
+    executed_at: datetime | None
+
+
+@router.get("/delayed-actions", response_model=list[DelayedActionResponse])
+def list_delayed(
+    status: str | None = Query(None),
+    principal: Principal = Depends(require_principal),
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    return service.list_delayed_actions(db, tenant_id=tenant_id, status=status)
+
+
+@router.post("/delayed-actions/{da_id}/cancel")
+def cancel_delayed(
+    da_id: UUID,
+    principal: Principal = Depends(require_principal),
+    tenant_id: UUID = Depends(require_tenant),
+    db: Session = Depends(get_db),
+):
+    ok = service.cancel_delayed_action(db, tenant_id, da_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="delayed action not found or not cancellable")
+    db.commit()
+    return {"status": "cancelled"}

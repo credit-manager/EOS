@@ -1,23 +1,20 @@
+import os
+
+# Force SQLite for tests regardless of .env
+os.environ["DATABASE_URL"] = "sqlite+pysqlite:///./eos_test.db"
+
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.pool import StaticPool
 
 from backend.app import db as db_module
-from backend.app.db import Base
+from backend.app.db import Base, get_db
+
+TEST_PASSWORD = "TestPass12345!"
 
 
 @pytest.fixture(autouse=True, scope="session")
 def _create_all_tables():
-    try:
-        from backend.app.redis_client import get_redis
-
-        r = get_redis()
-        for key in r.scan_iter(match="rate_limit:*"):
-            r.delete(key)
-        for key in r.scan_iter(match="cache:*"):
-            r.delete(key)
-    except Exception:
-        pass
     if "sqlite" in db_module.engine.url.drivername:
         new_engine = create_engine(
             db_module.engine.url,
@@ -29,32 +26,64 @@ def _create_all_tables():
         db_module.engine.dispose()
         db_module.engine = new_engine
         db_module.SessionLocal.configure(bind=new_engine)
+    Base.metadata.drop_all(bind=db_module.engine)
     Base.metadata.create_all(bind=db_module.engine)
     yield
-    Base.metadata.drop_all(bind=db_module.engine)
 
 
-@pytest.fixture(autouse=True)
-def _clear_rate_limit_state():
-    """Reset rate-limit buckets between tests so no test inherits another
-    test's sliding-window state. In-memory buckets (AdvancedRateLimit,
-    TenantRateLimit) and Redis-backed auth buckets all accumulate across
-    tests; on a fast runner (CI) that tripped 429s on unrelated tests."""
-    from backend.app.rate_limiter import reset_rate_limiters
+@pytest.fixture(autouse=True, scope="session")
+def _seed_user():
+    from backend.app.auth.security import hash_password
+    from backend.app.auth.models import User, Tenant, TenantMembership
 
-    reset_rate_limiters()
-    _clear_redis_prefix("rate_limit:*")
-    yield
-    reset_rate_limiters()
-    _clear_redis_prefix("rate_limit:*")
+    with db_module.engine.begin() as conn:
+        existing = conn.execute(
+            text("SELECT id FROM users WHERE email = 'test@2to-eos.local' LIMIT 1")
+        ).fetchone()
+        if existing is not None:
+            return
+
+    with Session(bind=db_module.engine) as session:
+        tenant = Tenant(name="Test Tenant")
+        session.add(tenant)
+        session.flush()
+        user = User(
+            email="test@2to-eos.local",
+            password_hash=hash_password(TEST_PASSWORD),
+            is_active=True,
+        )
+        session.add(user)
+        session.flush()
+        session.add(TenantMembership(tenant_id=tenant.id, user_id=user.id, role="admin"))
+        session.commit()
 
 
-def _clear_redis_prefix(pattern: str) -> None:
-    try:
-        from backend.app.redis_client import get_redis
+from sqlalchemy.orm import Session as Session
 
-        r = get_redis()
-        for key in r.scan_iter(match=pattern):
-            r.delete(key)
-    except Exception:
-        pass
+
+@pytest.fixture(scope="session")
+def _base_url():
+    return "http://testserver"
+
+
+@pytest.fixture
+def client(_seed_user):
+    from fastapi.testclient import TestClient
+    from backend.app.main import app
+
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def _get_token(client) -> str:
+    resp = client.post(
+        "/api/v1/auth/token",
+        json={"email": "test@2to-eos.local", "password": TEST_PASSWORD},
+    )
+    assert resp.status_code == 200, f"Token request failed: {resp.status_code} {resp.text}"
+    return resp.json()["access_token"]
+
+
+@pytest.fixture
+def auth_headers(client):
+    token = _get_token(client)
+    return {"Authorization": "Bearer " + token}

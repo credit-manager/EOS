@@ -48,28 +48,48 @@ The rebuild follows one production runtime and explicit boundaries:
 
 ## Current status
 
-**Foundation** for the Business Operating Platform. The existing modules (Construction Pack, financial core, workflow, audit, notifications, rate limiting, metadata) act as *reference implementations* for the platform.
+**22 modules delivered** as the Business Operating Platform foundation:
 
-Not yet delivered: AI Workforce, Business Graph, Globalization, Integration Hub, Developer Platform, Enterprise administration.
+- **Platform Substrate (15 modules):** Metadata Engine V2, Policy Engine, Rules Engine, Event Bus (persistent + delayed), Workflow V2 (SLA + escalation), Business Graph (auto-discovery), Document Intelligence, Integration Hub, Reporting/Analytics (CSV/PDF export), AI Tool Registry + Governance (policies, limits, escalation, audit), Globalization Engine (pluggable country packs: Egypt, Saudi Arabia), EOS Builder, Developer SDK, Marketplace (industry pack registry + install).
 
-## Next phase: EOS Operating Platform V1
+- **Industry Packs (22 domain modules):** Construction (full: 18 models, 40+ endpoints, KPIs, dashboards, rules, financial integration), Financial Core (45+ routes, multi-currency, double-entry journal), Workflow, Audit, Notifications, Rate Limiting, Security Headers, Request Logging, Caching, API Versioning, GZip Compression.
 
-Ranked in dependency order — the first four are the platform substrate every later pillar consumes:
+- **AI Governance Layer:** 17 built-in policies (finance, procurement, project, executive, general), policy evaluation engine (permit/deny/escalate), rate limits, human escalation, full audit trail.
 
-1. **Metadata Engine V2** — the Foundation's metadata layer as the universal schema source.
-2. **Policy Engine** — mandatory/optional policies attaching to objects and flows.
-3. **Rules Engine** — `WHEN event IF condition THEN action(s)`.
-4. **Event Bus** — durable business events (`invoice.posted`, `budget.threshold_exceeded`, ...) that drive workflow, automation, notifications, AI, analytics, integration, audit.
-5. **Workflow V2** — state machine with timeout, escalation, delegation, conditions, compensation.
-6. **Business Graph** — entity story API (Customer → Opportunities → Contracts → Projects → Invoices → Payments).
-7. **Document Intelligence** — OCR, classification, extraction, matching, validation (supplier invoices = first ROI).
-8. **Integration Hub** — REST/webhooks/OAuth/queues/retries/dead-letter + connectors.
-9. **Reporting/Analytics Engine** — financial + operational + executive KPIs, every KPI drillable to source.
-10. **AI Tool Registry** — tools registered as capabilities with policies and audit.
-11. **AI Workforce** — governed agents (finance, procurement, sales, HR, project, executive); each agent has tools, permissions, policies, limits, approval requirements, audit.
-12. **Globalization Engine** — country packs (tax, e-invoice, statutory reports, currency, fiscal calendar, compliance).
-13. **EOS Builder** — create objects, fields, relations, rules, workflows, views, reports, automations without touching core.
-14. **Developer SDK** — extension surface for partners and marketplace apps.
-15. **Marketplace foundation** — install/distribute packs and apps.
+- **Pluggable Pack Architecture:** Country Pack Registry (EG, SA) + Industry Pack Registry (Construction, Retail, Manufacturing) with dynamic registration and one-click install.
+
+- **Frontend:** React 19 + Vite 7 + Tailwind — 25+ pages (Workspace, Projects, Contracts, BOQs, Procurement, Financial, AI Governance, etc.).
+
+- **Data:** 391+ API endpoints, 108+ data models, 22 domain modules, SQLite demo database with seeded data.
+
+Not yet delivered: Document Intelligence (OCR/classification), Integration Hub (webhooks/OAuth/queues), Developer SDK (API key auth + extensions), Industry Packs (Retail/Manufacturing full implementations).
+
+## Delivered modules (EOS Operating Platform V1)
+
+| # | Module | Status |
+|---|--------|--------|
+| 1 | Metadata Engine V2 | ✅ Delivered |
+| 2 | Policy Engine | ✅ Delivered |
+| 3 | Rules Engine | ✅ Delivered |
+| 4 | Event Bus (persistent + delayed) | ✅ Delivered |
+| 5 | Workflow V2 (SLA + escalation) | ✅ Delivered |
+| 6 | Business Graph (auto-discovery) | ✅ Delivered |
+| 7 | Document Intelligence | 🔲 Pending |
+| 8 | Integration Hub | 🔲 Pending |
+| 9 | Reporting/Analytics (CSV/PDF) | ✅ Delivered |
+| 10 | AI Tool Registry + Governance | ✅ Delivered |
+| 11 | AI Workforce (governed agents) | ✅ Delivered |
+| 12 | Globalization Engine (pluggable packs) | ✅ Delivered |
+| 13 | EOS Builder | ✅ Delivered |
+| 14 | Developer SDK | ✅ Delivered |
+| 15 | Marketplace (industry pack registry) | ✅ Delivered |
+
+## Remaining work
+
+1. Document Intelligence — OCR, classification, extraction, matching, validation.
+2. Integration Hub — REST/webhooks/OAuth/queues/retries/dead-letter + connectors.
+3. Industry Packs — full Retail and Manufacturing implementations.
+4. Developer SDK — API key auth + extension surface for partners.
+5. Enterprise admin — SSO, multi-tenant management.
 
 Every phase ships with executable behavior evidence (tests), not just green lint results.

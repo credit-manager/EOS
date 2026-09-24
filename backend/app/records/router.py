@@ -53,6 +53,51 @@ def _require_permission(request: Request, metadata: MetadataEntity, action: str)
         raise HTTPException(status_code=403, detail=f"{action} permission denied")
 
 
+def _check_field_permissions(
+    request: Request,
+    metadata: MetadataEntity,
+    field_codes: set[str],
+    action: str,
+) -> set[str]:
+    """
+    Check field-level permissions and return set of allowed field codes.
+    Metadata Engine V2 - Field-level permissions support.
+    """
+    role = getattr(request.state, "role", "member")
+    fields = metadata.definition.get("fields", [])
+
+    allowed_fields = set()
+    for field in fields:
+        field_code = field.get("code", "")
+        if field_code not in field_codes:
+            continue
+
+        permissions = field.get("permissions")
+        if not permissions:
+            # No field-level permissions, use entity-level
+            allowed_fields.add(field_code)
+            continue
+
+        # Check field-level permissions
+        if action == "read":
+            allowed_roles = permissions.get("read", ["admin", "member"])
+            if role in allowed_roles or role == "admin":
+                allowed_fields.add(field_code)
+        elif action == "write":
+            allowed_roles = permissions.get("write", ["admin"])
+            if role in allowed_roles or role == "admin":
+                allowed_fields.add(field_code)
+        elif action == "hidden":
+            hidden_roles = permissions.get("hidden", [])
+            if role not in hidden_roles and role != "admin":
+                allowed_fields.add(field_code)
+        else:
+            # For other actions, use entity-level permissions
+            allowed_fields.add(field_code)
+
+    return allowed_fields
+
+
 def _validate_value(db: Session, tenant_id: UUID, code: str, value: object, field: dict) -> None:
     if value is None:
         if not field.get("nullable", False):
@@ -128,7 +173,7 @@ def _validate_field_rules(code: str, value: object, field: dict) -> None:
             raise HTTPException(status_code=422, detail={"invalid_fields": [f"{code}: above maximum"]})
 
 
-def _prepare(payload: dict, metadata: MetadataEntity, db: Session, tenant_id: UUID) -> dict:
+def _prepare(payload: dict, metadata: MetadataEntity, db: Session, tenant_id: UUID, request: Request | None = None) -> dict:
     fields = {field["code"]: field for field in metadata.definition["fields"]}
     computed = {code for code, field in fields.items() if field.get("computed")}
     readonly = {code for code, field in fields.items() if field.get("readonly")}
@@ -139,6 +184,13 @@ def _prepare(payload: dict, metadata: MetadataEntity, db: Session, tenant_id: UU
     rejected = set(payload) & (computed | readonly)
     if rejected:
         raise HTTPException(status_code=422, detail={"readonly_fields": sorted(rejected)})
+
+    # Metadata Engine V2 - Field-level permission check
+    if request is not None and payload:
+        writable_fields = _check_field_permissions(request, metadata, set(payload.keys()), "write")
+        non_writable = set(payload.keys()) - writable_fields
+        if non_writable:
+            raise HTTPException(status_code=403, detail={"field_permission_denied": sorted(non_writable)})
 
     missing = {
         code
@@ -212,12 +264,39 @@ def _filter_expression(metadata: MetadataEntity, field_code: str, raw_value: str
         raise HTTPException(status_code=422, detail=f"invalid filter value for {field_code}") from exc
 
 
-def _response(row: Record) -> RecordResponse:
+def _response(row: Record, metadata: MetadataEntity | None = None, request: Request | None = None) -> RecordResponse:
+    """Return record response, filtering hidden fields if metadata and request provided."""
+    data = row.data
+
+    # Metadata Engine V2 - Filter hidden fields
+    if metadata is not None and request is not None:
+        role = getattr(request.state, "role", "member")
+        fields = metadata.definition.get("fields", [])
+        filtered_data = {}
+
+        for field in fields:
+            field_code = field.get("code", "")
+            if field_code not in data:
+                continue
+
+            permissions = field.get("permissions")
+            if not permissions:
+                # No field-level permissions, include field
+                filtered_data[field_code] = data[field_code]
+                continue
+
+            # Check if field is hidden for this role
+            hidden_roles = permissions.get("hidden", [])
+            if role not in hidden_roles or role == "admin":
+                filtered_data[field_code] = data[field_code]
+
+        data = filtered_data
+
     return RecordResponse(
         id=row.id,
         tenant_id=row.tenant_id,
         entity_code=row.entity_code,
-        data=row.data,
+        data=data,
         version=row.version,
         workflow_instance_id=row.workflow_instance_id,
     )
@@ -265,7 +344,7 @@ def create_record(
 ) -> RecordResponse:
     metadata = _get_published(db, tenant_id, entity_code)
     _require_permission(request, metadata, "create")
-    data = _prepare(payload.data, metadata, db, tenant_id)
+    data = _prepare(payload.data, metadata, db, tenant_id, request)
     data = _apply_computed(data, metadata)
     row = Record(tenant_id=tenant_id, entity_code=entity_code, data=data)
     db.add(row)
@@ -305,7 +384,7 @@ def create_record(
     )
     db.commit()
     db.refresh(row)
-    return _response(row)
+    return _response(row, metadata, request)
 
 
 @router.get("", response_model=list[RecordResponse])
@@ -328,7 +407,7 @@ def list_records(
     if filter_field is not None and filter_value is not None:
         query = query.where(_filter_expression(metadata, filter_field, filter_value))
     rows = db.scalars(query.order_by(Record.created_at.desc()).offset(offset).limit(limit)).all()
-    return [_response(row) for row in rows]
+    return [_response(row, metadata, request) for row in rows]
 
 
 @router.get("/{record_id}", response_model=RecordResponse)
@@ -350,7 +429,7 @@ def get_record(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="record not found")
-    return _response(row)
+    return _response(row, metadata, request)
 
 
 @router.patch("/{record_id}", response_model=RecordResponse)
@@ -364,7 +443,7 @@ def update_record(
 ) -> RecordResponse:
     metadata = _get_published(db, tenant_id, entity_code)
     _require_permission(request, metadata, "update")
-    new_data = _prepare(payload.data, metadata, db, tenant_id)
+    new_data = _prepare(payload.data, metadata, db, tenant_id, request)
     new_data = _apply_computed(new_data, metadata)
     row = db.scalar(
         select(Record).where(
@@ -407,7 +486,7 @@ def update_record(
     )
     db.commit()
     db.refresh(row)
-    return _response(row)
+    return _response(row, metadata, request)
 
 
 @router.delete("/{record_id}", status_code=204)

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Uuid, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -43,6 +43,12 @@ class WorkflowInstance(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    # SLA tracking
+    sla_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sla_status: Mapped[str] = mapped_column(String(20), nullable=False, default="on_track")
+    escalated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    escalated_to: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
 
 class ApprovalTask(Base):
     __tablename__ = "workflow_approval_tasks"
@@ -64,3 +70,25 @@ class ApprovalTask(Base):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Timeout & escalation
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    timeout_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    escalation_role: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    escalation_user_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class WorkflowSLALog(Base):
+    """Track SLA violations and escalations."""
+    __tablename__ = "workflow_sla_logs"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, nullable=False, index=True)
+    workflow_instance_id: Mapped[UUID] = mapped_column(Uuid, nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)  # warning, violated, escalated, resolved
+    sla_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    actual_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

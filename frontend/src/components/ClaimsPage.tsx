@@ -9,7 +9,10 @@ interface Claim {
   claim_number: string;
   contract_id: string;
   contract_name: string;
-  amount: string;
+  claim_date: string;
+  period_start: string;
+  period_end: string;
+  total_amount: string;
   status: string;
 }
 
@@ -21,7 +24,7 @@ interface ClaimsPageProps {
 export default function ClaimsPage({ t, token }: ClaimsPageProps) {
   const [claims, setClaims] = useState<Claim[]>([]);
   const [contracts, setContracts] = useState<
-    { id: string; number: string; project_name: string }[]
+    { id: string; contract_number: string; title: string }[]
   >([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -29,19 +32,32 @@ export default function ClaimsPage({ t, token }: ClaimsPageProps) {
   const [formData, setFormData] = useState({
     claim_number: '',
     contract_id: '',
-    amount: '',
-    status: 'pending',
+    claim_date: '',
+    period_start: '',
+    period_end: '',
+    status: 'draft',
   });
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const contractName = (id: string) => {
+    const c = contracts.find((x) => x.id === id);
+    return c ? `${c.contract_number} - ${c.title}` : id;
+  };
+
   const columns = [
     { key: 'claim_number', header: t.claims.claimNumber },
-    { key: 'contract_name', header: t.contracts.projectName },
     {
-      key: 'amount',
+      key: 'contract_name',
+      header: t.contracts.projectName,
+      render: (row: Claim) => <span>{contractName(row.contract_id)}</span>,
+    },
+    { key: 'claim_date', header: t.claims.date },
+    { key: 'period_start', header: t.claims.period },
+    {
+      key: 'total_amount',
       header: t.claims.amount,
-      render: (row: Claim) => <span className="font-mono">{formatCurrency(row.amount)}</span>,
+      render: (row: Claim) => <span className="font-mono">{formatCurrency(row.total_amount)}</span>,
     },
     {
       key: 'status',
@@ -63,7 +79,20 @@ export default function ClaimsPage({ t, token }: ClaimsPageProps) {
       });
       if (response.ok) {
         const data = await response.json();
-        setClaims(data.items || data);
+        const items = data.items || data;
+        setClaims(
+          (Array.isArray(items) ? items : []).map((c: Record<string, unknown>) => ({
+            id: String(c.id ?? ''),
+            claim_number: String(c.claim_number ?? ''),
+            contract_id: String(c.contract_id ?? ''),
+            claim_date: String(c.claim_date ?? ''),
+            period_start: String(c.period_start ?? ''),
+            period_end: String(c.period_end ?? ''),
+            total_amount: String(c.total_amount ?? '0'),
+            status: String(c.status ?? 'draft'),
+            contract_name: '',
+          }))
+        );
       }
     } catch {
       setError(t.common.error);
@@ -79,7 +108,14 @@ export default function ClaimsPage({ t, token }: ClaimsPageProps) {
       });
       if (response.ok) {
         const data = await response.json();
-        setContracts(data.items || data);
+        const items = data.items || data;
+        setContracts(
+          (Array.isArray(items) ? items : []).map((c: Record<string, unknown>) => ({
+            id: String(c.id ?? ''),
+            contract_number: String(c.contract_number ?? ''),
+            title: String(c.title ?? ''),
+          }))
+        );
       }
     } catch {
       // ignore
@@ -88,13 +124,27 @@ export default function ClaimsPage({ t, token }: ClaimsPageProps) {
 
   const handleCreate = () => {
     setEditingClaim(null);
-    setFormData({ claim_number: '', contract_id: '', amount: '', status: 'pending' });
+    setFormData({
+      claim_number: '',
+      contract_id: '',
+      claim_date: '',
+      period_start: '',
+      period_end: '',
+      status: 'draft',
+    });
     setShowModal(true);
   };
 
   const handleEdit = (claim: Claim) => {
     setEditingClaim(claim);
-    setFormData({ ...claim });
+    setFormData({
+      claim_number: claim.claim_number,
+      contract_id: claim.contract_id,
+      claim_date: claim.claim_date,
+      period_start: claim.period_start,
+      period_end: claim.period_end,
+      status: claim.status,
+    });
     setShowModal(true);
   };
 
@@ -105,12 +155,21 @@ export default function ClaimsPage({ t, token }: ClaimsPageProps) {
       const url = editingClaim
         ? `/api/v1/construction/claims/${editingClaim.id}`
         : '/api/v1/construction/claims';
-      const method = editingClaim ? 'PUT' : 'POST';
+      const method = editingClaim ? 'PATCH' : 'POST';
+      const body = editingClaim
+        ? { status: formData.status }
+        : {
+            contract_id: formData.contract_id,
+            claim_number: formData.claim_number,
+            claim_date: formData.claim_date,
+            period_start: formData.period_start,
+            period_end: formData.period_end,
+          };
 
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(body),
       });
 
       if (response.ok) {
@@ -168,43 +227,78 @@ export default function ClaimsPage({ t, token }: ClaimsPageProps) {
         title={editingClaim ? 'Edit Claim' : 'Create Claim'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Claim Number *</label>
-            <input
-              type="text"
-              value={formData.claim_number}
-              onChange={(e) => setFormData({ ...formData, claim_number: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Contract *</label>
-            <select
-              value={formData.contract_id}
-              onChange={(e) => setFormData({ ...formData, contract_id: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              required
-            >
-              <option value="">Select Contract</option>
-              {contracts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.number} - {c.project_name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Amount *</label>
-            <input
-              type="number"
-              step="0.01"
-              value={formData.amount}
-              onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
+          {!editingClaim && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Claim Number *
+                </label>
+                <input
+                  type="text"
+                  value={formData.claim_number}
+                  onChange={(e) => setFormData({ ...formData, claim_number: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Contract *</label>
+                <select
+                  value={formData.contract_id}
+                  onChange={(e) => setFormData({ ...formData, contract_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">Select Contract</option>
+                  {contracts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.contract_number} - {c.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Claim Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.claim_date}
+                    onChange={(e) => setFormData({ ...formData, claim_date: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Period Start *
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.period_start}
+                    onChange={(e) => setFormData({ ...formData, period_start: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Period End *
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.period_end}
+                    onChange={(e) => setFormData({ ...formData, period_end: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+              </div>
+            </>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
             <select
@@ -212,10 +306,16 @@ export default function ClaimsPage({ t, token }: ClaimsPageProps) {
               onChange={(e) => setFormData({ ...formData, status: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
-              <option value="pending">{t.claims.pending}</option>
-              <option value="approved">{t.claims.approved}</option>
-              <option value="rejected">{t.claims.rejected}</option>
-              <option value="paid">{t.claims.paid}</option>
+              {editingClaim ? (
+                <>
+                  <option value="draft">{t.claims.draft}</option>
+                  <option value="submitted">{t.claims.submitted}</option>
+                  <option value="approved">{t.claims.approved}</option>
+                  <option value="paid">{t.claims.paid}</option>
+                </>
+              ) : (
+                <option value="draft">{t.claims.draft}</option>
+              )}
             </select>
           </div>
           <div className="flex justify-end gap-3 pt-4">
@@ -242,6 +342,8 @@ export default function ClaimsPage({ t, token }: ClaimsPageProps) {
 
 function StatusBadge({ status, t }: { status: string; t: TranslationKeys }) {
   const statusMap: Record<string, { label: string; class: string }> = {
+    draft: { label: t.claims.draft, class: 'bg-gray-100 text-gray-800' },
+    submitted: { label: t.claims.submitted, class: 'bg-yellow-100 text-yellow-800' },
     pending: { label: t.claims.pending, class: 'bg-yellow-100 text-yellow-800' },
     approved: { label: t.claims.approved, class: 'bg-green-100 text-green-800' },
     rejected: { label: t.claims.rejected, class: 'bg-red-100 text-red-800' },

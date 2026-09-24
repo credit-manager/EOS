@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { TranslationKeys } from '../i18n';
 import DataTable from './DataTable';
 import Modal from './Modal';
-import ConfirmDialog from './ConfirmDialog';
 
 interface User {
   id: string;
@@ -24,7 +23,6 @@ export default function UsersPage({ t, token }: UsersPageProps) {
     email: '',
     role: 'member',
   });
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,12 +32,19 @@ export default function UsersPage({ t, token }: UsersPageProps) {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch('/api/v1/permissions/users', {
+      const response = await fetch('/api/v1/auth/members', {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.ok) {
         const data = await response.json();
-        setUsers(data.users || []);
+        const rows = (Array.isArray(data) ? data : data.items || []).map(
+          (u: Record<string, unknown>) => ({
+            id: String(u.user_id ?? u.id ?? ''),
+            email: String(u.email ?? ''),
+            role: String(u.role ?? 'member'),
+          })
+        );
+        setUsers(rows);
       }
     } catch {
       setError(t.common.error);
@@ -64,15 +69,13 @@ export default function UsersPage({ t, token }: UsersPageProps) {
     e.preventDefault();
     setError(null);
     try {
-      const url = editingUser
-        ? `/api/v1/permissions/users/${editingUser.id}/role`
-        : '/api/v1/permissions/users';
-      const method = editingUser ? 'PUT' : 'POST';
+      const url = editingUser ? `/api/v1/auth/members/${editingUser.id}` : '/api/v1/auth/members';
+      const method = editingUser ? 'PATCH' : 'POST';
 
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ email: formData.email, role: formData.role }),
       });
 
       if (response.ok) {
@@ -84,21 +87,6 @@ export default function UsersPage({ t, token }: UsersPageProps) {
       }
     } catch {
       setError(t.common.error);
-    }
-  };
-
-  const handleDelete = (id: string) => setDeleteConfirm(id);
-
-  const _confirmDelete = async () => {
-    if (!deleteConfirm) return;
-    try {
-      const response = await fetch(`/api/v1/permissions/users/${deleteConfirm}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.ok) fetchUsers();
-    } finally {
-      setDeleteConfirm(null);
     }
   };
 
@@ -127,7 +115,7 @@ export default function UsersPage({ t, token }: UsersPageProps) {
           },
         ]}
         onEdit={handleEdit}
-        onDelete={handleDelete}
+        onDelete={undefined}
         t={t}
       />
 
@@ -156,9 +144,7 @@ export default function UsersPage({ t, token }: UsersPageProps) {
               required
             >
               <option value="admin">{t.users.admin}</option>
-              <option value="manager">{t.users.manager}</option>
               <option value="member">{t.users.member}</option>
-              <option value="viewer">{t.users.viewer}</option>
             </select>
           </div>
           <div className="flex justify-end gap-3 pt-4">
@@ -171,24 +157,6 @@ export default function UsersPage({ t, token }: UsersPageProps) {
           </div>
         </form>
       </Modal>
-
-      <ConfirmDialog
-        isOpen={!!deleteConfirm}
-        onClose={() => setDeleteConfirm(null)}
-        onConfirm={() => {
-          if (deleteConfirm) {
-            fetch(`/api/v1/permissions/users/${deleteConfirm}`, {
-              method: 'DELETE',
-              headers: { Authorization: `Bearer ${token}` },
-            }).then((r) => {
-              if (r.ok) fetchUsers();
-            });
-            setDeleteConfirm(null);
-          }
-        }}
-        title={t.common.confirm}
-        message={t.common.confirm}
-      />
     </div>
   );
 }

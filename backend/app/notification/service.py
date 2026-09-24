@@ -81,21 +81,23 @@ def list_notifications(
         Notification.tenant_id == tenant_id,
         Notification.user_id == user_id,
     )
-    
+
     if is_read is not None:
         query = query.where(Notification.is_read == is_read)
     if category:
         query = query.where(Notification.category == category)
     if notification_type:
         query = query.where(Notification.notification_type == notification_type)
-    
-    total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
-    
+
+    total = db.scalar(
+        select(func.count()).select_from(query.subquery())
+    ) or 0
+
     query = query.order_by(Notification.created_at.desc())
     query = query.offset(offset).limit(limit)
-    
+
     items = list(db.scalars(query).all())
-    
+
     unread_count = db.scalar(
         select(func.count()).where(
             Notification.tenant_id == tenant_id,
@@ -103,11 +105,13 @@ def list_notifications(
             not Notification.is_read,
         )
     ) or 0
-    
+
     return items, total, unread_count
 
 
-def mark_as_read(db: Session, *, tenant_id: UUID, user_id: UUID, notification_ids: list[UUID]) -> int:
+def mark_as_read(
+    db: Session, *, tenant_id: UUID, user_id: UUID, notification_ids: list[UUID]
+) -> int:
     now = datetime.now(UTC)
     result = db.execute(
         update(Notification)
@@ -145,7 +149,7 @@ def get_notification_stats(db: Session, *, tenant_id: UUID, user_id: UUID) -> di
             Notification.user_id == user_id,
         )
     ) or 0
-    
+
     unread = db.scalar(
         select(func.count()).where(
             Notification.tenant_id == tenant_id,
@@ -153,21 +157,21 @@ def get_notification_stats(db: Session, *, tenant_id: UUID, user_id: UUID) -> di
             not Notification.is_read,
         )
     ) or 0
-    
+
     type_rows = db.execute(
         select(Notification.notification_type, func.count())
         .where(Notification.tenant_id == tenant_id, Notification.user_id == user_id)
         .group_by(Notification.notification_type)
     ).all()
     by_type = {row[0]: row[1] for row in type_rows}
-    
+
     cat_rows = db.execute(
         select(Notification.category, func.count())
         .where(Notification.tenant_id == tenant_id, Notification.user_id == user_id)
         .group_by(Notification.category)
     ).all()
     by_category = {row[0]: row[1] for row in cat_rows}
-    
+
     return {
         "total": total,
         "unread": unread,
@@ -176,9 +180,11 @@ def get_notification_stats(db: Session, *, tenant_id: UUID, user_id: UUID) -> di
     }
 
 
-def delete_notification(db: Session, *, tenant_id: UUID, user_id: UUID, notification_id: UUID) -> bool:
+def delete_notification(
+    db: Session, *, tenant_id: UUID, user_id: UUID, notification_id: UUID
+) -> bool:
     from .models import Notification as N
-    
+
     n = db.get(N, notification_id)
     if n and n.tenant_id == tenant_id and n.user_id == user_id:
         db.delete(n)

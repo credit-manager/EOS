@@ -180,6 +180,54 @@ def _execute_action(
             },
             request_id=getattr(event, "request_id", None),
         )
+    elif action_type == "delay":
+        delay_seconds = action.get("seconds", 60)
+        then_actions = action.get("then", [])
+        if then_actions:
+            from .service import schedule_delayed_actions
+
+            schedule_delayed_actions(
+                db,
+                tenant_id=event.tenant_id,
+                rule_id=rule.id,
+                actions=then_actions,
+                context={"event_id": str(event.id), "event_type": event.event_type, "tenant_id": str(event.tenant_id)},
+                delay_seconds=delay_seconds,
+            )
+
+
+def execute_actions(
+    db: Session, *, tenant_id: UUID, rule_id: UUID, actions: list[dict], context: dict
+) -> None:
+    """Execute a list of actions (used by delayed action executor)."""
+    from .models import Rule as RuleModel
+
+    rule = db.get(RuleModel, rule_id)
+    if rule is None:
+        return
+
+    class FakeEvent:
+        def __init__(self):
+            self.id = UUID(context.get("event_id", "00000000-0000-0000-0000-000000000000"))
+            self.tenant_id = tenant_id
+            self.event_type = context.get("event_type", "")
+            self.actor_id = context.get("actor_id")
+            self.entity_type = context.get("entity_type")
+            self.entity_id = context.get("entity_id")
+            self.payload = context.get("payload")
+            self.request_id = context.get("request_id")
+
+    event = FakeEvent()
+    ctx = {
+        "payload": context.get("payload") or {},
+        "event": {
+            "id": str(event.id),
+            "event_type": event.event_type,
+            "tenant_id": str(tenant_id),
+        },
+    }
+    for action in actions:
+        _execute_action(db, rule, event, ctx, action)
 
 
 def _evaluate(db: Session, rule: Rule, event) -> tuple[bool, str | None]:

@@ -22,3 +22,17 @@ htmlcov/
 *.egg-info/
 build/
 frontend/tsconfig.tsbuildinfo
+
+# Runtime / local database artifacts
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite-shm
+*.sqlite-wal
+server.out
+server.err
+uvicorn*.out
+uvicorn*.err
+vite*.out
+vite*.err
+tmp/
