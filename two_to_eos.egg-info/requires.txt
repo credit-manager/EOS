@@ -1,0 +1,15 @@
+fastapi<1,>=0.116
+uvicorn[standard]<1,>=0.35
+pydantic-settings<3,>=2.10
+sqlalchemy<3,>=2.0.43
+psycopg[binary]<4,>=3.2
+alembic<2,>=1.16
+redis<6,>=5.0
+openpyxl<4,>=3.1
+reportlab<5,>=4.0
+
+[test]
+pytest<10,>=9.0.3
+httpx<1,>=0.28
+ruff<1,>=0.12
+pip-audit<4,>=2.7
