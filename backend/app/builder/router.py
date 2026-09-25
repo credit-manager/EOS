@@ -1,15 +1,12 @@
 """EOS Builder router."""
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..audit.service import record as audit_record
 from ..db import get_db
-from ..metadata.models import MetadataEntity
-from ..tenant import require_admin, require_tenant
+from ..tenant import require_tenant
 from .schemas import (
     BuilderAutomationCreate,
     BuilderAutomationResponse,
@@ -84,7 +81,7 @@ def update_object(
     return BuilderObjectResponse.model_validate(obj)
 
 
-@router.delete("/objects/{object_id}", status_code=204)
+@router.delete("/objects/{object_id}", status_code=204, response_class=Response, response_model=None)
 def delete_object(
     object_id: str,
     tenant_id: UUID = Depends(require_tenant),
@@ -310,170 +307,189 @@ class DeployResponse(BaseModel):
     metadata_entities: list[dict]
 
 
-_BUILDER_TO_METADATA_FIELD_TYPE = {
+# Builder field types that map directly onto Metadata Engine FieldType values.
+_BUILDER_TYPE_MAP = {
     "text": "text",
+    "long_text": "rich_text",
+    "textarea": "rich_text",
     "number": "decimal",
+    "integer": "integer",
+    "decimal": "decimal",
+    "currency": "currency",
+    "percent": "percentage",
     "boolean": "boolean",
+    "checkbox": "boolean",
     "date": "date",
+    "datetime": "date",
     "email": "email",
     "phone": "phone",
     "url": "url",
     "select": "select",
+    "dropdown": "select",
     "multiselect": "multi_select",
+    "multi_select": "multi_select",
     "json": "json",
+    "file": "file",
+    "rating": "rating",
+    "location": "location",
     "relation": "relation",
 }
 
 
-def _builder_field_to_metadata(field, target_entity: str | None = None) -> dict:
-    metadata_type = _BUILDER_TO_METADATA_FIELD_TYPE.get(field.field_type, "text")
-    result = {
-        "code": field.code,
-        "type": metadata_type,
-        "required": field.is_required,
-        "nullable": not field.is_required,
-        "label": field.name,
-        "default": field.default_value,
-        "validation": field.validation_rules,
+def _safe_field_code(raw: str) -> str | None:
+    """Normalize a builder field code into the metadata pattern ^[a-z][a-z0-9_]*$."""
+    import re
+
+    code = (raw or "").strip().lower()
+    code = re.sub(r"[^a-z0-9_]", "_", code)
+    if not code:
+        return None
+    if not code[0].isalpha():
+        code = f"f_{code}"
+    return code[:100]
+
+
+def _builder_definition(svc: BuilderService, obj, relations, tenant_id: str) -> dict:
+    """Convert one Builder object (fields + relations + workflow) into a
+    runtime-consumable Metadata definition payload."""
+    fields = svc.list_fields(obj.id, tenant_id)
+    used_codes: set[str] = set()
+    def_fields: list[dict] = []
+
+    for field in fields:
+        code = _safe_field_code(field.code)
+        if not code or code in used_codes:
+            continue
+        raw_type = (field.field_type or "text").strip().lower()
+        ftype = _BUILDER_TYPE_MAP.get(raw_type, "text")
+        field_def: dict = {
+            "code": code,
+            "type": ftype,
+            "required": bool(field.is_required),
+            "nullable": not bool(field.is_required),
+            "label": field.name,
+        }
+        if field.default_value is not None and ftype not in ("file", "rich_text"):
+            field_def["default"] = field.default_value
+        if field.validation_rules:
+            vr = field.validation_rules
+            validation = {}
+            for key in ("min", "max", "pattern", "min_length", "max_length"):
+                if isinstance(vr, dict) and vr.get(key) is not None:
+                    validation[key] = vr[key]
+            if validation:
+                field_def["validation"] = validation
+        if ftype in ("select", "multi_select"):
+            options = field.options or []
+            select_options = []
+            for opt in options:
+                if isinstance(opt, dict) and opt.get("value"):
+                    select_options.append({"value": str(opt["value"]), "label": str(opt.get("label", opt["value"]))})
+                elif isinstance(opt, str) and opt:
+                    select_options.append({"value": opt, "label": opt})
+            if not select_options:
+                # select without options would fail metadata validation; degrade to text.
+                field_def["type"] = "text"
+            else:
+                field_def["select_options"] = select_options
+        def_fields.append(field_def)
+        used_codes.add(code)
+
+    # Relations become relation fields on the source entity.
+    for rel in relations:
+        if rel.source_object_id != obj.id or not rel.is_active:
+            continue
+        target_obj = svc.get_object(rel.target_object_id, tenant_id)
+        if target_obj is None:
+            continue
+        rel_code = _safe_field_code(f"{rel.code}_id")
+        target_code = _safe_field_code(target_obj.code)
+        if not rel_code or rel_code in used_codes or not target_code:
+            continue
+        def_fields.append({
+            "code": rel_code,
+            "type": "relation",
+            "required": bool(rel.is_required),
+            "nullable": not bool(rel.is_required),
+            "label": rel.name,
+            "target_entity": target_code,
+        })
+        used_codes.add(rel_code)
+
+    if not def_fields:
+        def_fields.append({"code": "name", "type": "text", "required": True, "nullable": False, "label": "Name"})
+
+    definition: dict = {
+        "code": _safe_field_code(obj.code) or "entity",
+        "name": obj.name[:200],
+        "fields": def_fields,
+        "permissions": {
+            "admin": ["create", "read", "update", "delete"],
+            "member": ["create", "read", "update"],
+        },
     }
 
-    if metadata_type == "relation" and target_entity:
-        result["target_entity"] = target_entity
-
-    if metadata_type in {"select", "multi_select"}:
-        raw_options = field.options or {}
-        options = raw_options.get("options", raw_options if isinstance(raw_options, list) else [])
-        if isinstance(options, list):
-            result["select_options"] = [
-                option if isinstance(option, dict) and "value" in option and "label" in option
-                else {"value": str(option), "label": str(option)}
-                for option in options
-            ]
-
-    return result
-
-
-def _build_metadata_definition(svc: BuilderService, obj, tenant_id: str) -> tuple[dict, int]:
-    fields = svc.list_fields(obj.id, tenant_id)
-    metadata_fields = []
-
-    relations = svc.list_relations(tenant_id)
-    for field in fields:
-        target_entity = None
-        if field.field_type == "relation":
-            for relation in relations:
-                if relation.source_object_id == obj.id and relation.source_field == field.code:
-                    target = svc.get_object(relation.target_object_id, tenant_id)
-                    if target:
-                        target_entity = target.code
-                        break
-        metadata_fields.append(_builder_field_to_metadata(field, target_entity))
-
-    permissions = {"admin": ["create", "read", "update", "delete"], "member": ["create", "read", "update"]}
-    if isinstance(obj.config, dict):
-        configured = obj.config.get("permissions")
-        if isinstance(configured, dict):
-            permissions = {
-                "admin": list(configured.get("admin", permissions["admin"])),
-                "member": list(configured.get("member", permissions["member"])),
+    workflows = [w for w in svc.list_workflows(tenant_id) if w.object_id == obj.id and w.is_active]
+    if workflows:
+        wf_code = _safe_field_code(workflows[0].code)
+        if wf_code:
+            definition["workflow"] = {
+                "code": wf_code,
+                "reference_type": definition["code"],
+                "auto_start_on_create": True,
             }
 
-    definition = {
-        "code": obj.code,
-        "name": obj.name,
-        "fields": metadata_fields,
-        "permissions": permissions,
-    }
-
-    workflows = [w for w in svc.list_workflows(tenant_id) if w.object_id == obj.id]
-    if workflows:
-        workflow = workflows[0]
-        definition["workflow"] = {
-            "code": workflow.code,
-            "reference_type": workflow.code,
-            "auto_start_on_create": workflow.trigger_type in {"on_create", "create"},
-        }
-
-    return definition, len(fields)
+    return definition
 
 
 @router.post("/deploy", response_model=DeployResponse)
 def deploy_objects(
     request: Request,
-    tenant_id: UUID = Depends(require_admin),
+    tenant_id: UUID = Depends(require_tenant),
     db: Session = Depends(get_db),
 ) -> DeployResponse:
-    """Materialize Builder objects into draft Metadata Engine versions."""
+    """Deploy builder objects to the metadata engine as versioned Draft entities.
+
+    Versioning/publish semantics are owned by the Metadata Engine service
+    (backend/app/metadata/service.py); the Builder only produces definitions.
+    """
+    from ..metadata.service import deploy_definition
+
     svc = BuilderService(db)
     objects = svc.list_objects(str(tenant_id))
+    relations = svc.list_relations(str(tenant_id))
 
     deployed_objects = 0
     deployed_fields = 0
     metadata_entities = []
 
     for obj in objects:
-        definition, field_count = _build_metadata_definition(svc, obj, str(tenant_id))
-        latest = db.scalar(
-            select(MetadataEntity)
-            .where(
-                MetadataEntity.tenant_id == tenant_id,
-                MetadataEntity.code == obj.code,
-            )
-            .order_by(MetadataEntity.version.desc())
-        )
-
-        if latest is not None and latest.published_at is None:
-            row = latest
-            row.name = obj.name
-            row.definition = definition
-        else:
-            next_version = latest.version + 1 if latest is not None else 1
-            row = MetadataEntity(
-                tenant_id=tenant_id,
-                code=obj.code,
-                name=obj.name,
-                version=next_version,
-                definition=definition,
-            )
-            db.add(row)
-
-        db.flush()
-
-        audit_record(
+        definition = _builder_definition(svc, obj, relations, str(tenant_id))
+        row = deploy_definition(
             db,
             tenant_id=tenant_id,
-            actor_id=request.state.user_id,
-            action="metadata.deployed",
-            resource_type=obj.code,
-            resource_id=row.id,
-            metadata={
-                "builder_object_id": obj.id,
-                "version": row.version,
-                "field_count": field_count,
-            },
-            request_id=request.state.request_id,
+            actor_id=getattr(request.state, "user_id", None),
+            code=definition["code"],
+            name=definition["name"],
+            definition=definition,
+            request_id=getattr(request.state, "request_id", None),
         )
-
-        metadata_entities.append(
-            {
-                "id": str(row.id),
-                "code": row.code,
-                "name": row.name,
-                "version": row.version,
-                "published": row.published_at is not None,
-                "fields_count": field_count,
-            }
-        )
+        metadata_entities.append({
+            "code": row.code,
+            "name": row.name,
+            "version": row.version,
+            "published": row.published_at is not None,
+            "fields_count": len(definition["fields"]),
+        })
         deployed_objects += 1
-        deployed_fields += field_count
-
-    db.commit()
+        deployed_fields += len(definition["fields"])
 
     return DeployResponse(
         deployed_objects=deployed_objects,
         deployed_fields=deployed_fields,
         metadata_entities=metadata_entities,
     )
+
 
 # ---------------------------------------------------------------------------
 # Dynamic CRUD endpoints — work with any Builder-defined object
@@ -573,7 +589,7 @@ def update_record(
     return result
 
 
-@router.delete("/objects/{object_id}/records/{record_id}", status_code=204)
+@router.delete("/objects/{object_id}/records/{record_id}", status_code=204, response_class=Response, response_model=None)
 def delete_record(
     object_id: str,
     record_id: str,

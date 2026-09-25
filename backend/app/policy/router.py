@@ -205,7 +205,7 @@ def update_policy(
     return _response(row)
 
 
-@router.delete("/{policy_id}", status_code=204)
+@router.delete("/{policy_id}", status_code=204, response_model=None)
 def delete_policy(
     policy_id: UUID,
     request: Request,

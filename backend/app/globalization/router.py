@@ -1,4 +1,5 @@
 """Globalization Engine router."""
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -521,15 +522,15 @@ class TaxCalculationRequest(BaseModel):
     tax_region: str | None = None
 
 
+class TaxCalculationItem(BaseModel):
+    tax_type: str = Field(min_length=1, max_length=50)
+    amount: int = Field(ge=0)
+
+
 class TaxCalculationBatchRequest(BaseModel):
     country_code: str = Field(min_length=2, max_length=2)
     tax_region: str | None = None
     items: list[TaxCalculationItem] = Field(min_length=1)
-
-
-class TaxCalculationItem(BaseModel):
-    tax_type: str = Field(min_length=1, max_length=50)
-    amount: int = Field(ge=0)
 
 
 @router.post("/tax-configs/calculate")
@@ -547,49 +548,6 @@ def calculate_tax(
     if not result:
         raise HTTPException(status_code=404, detail="No tax config found")
     return result
-
-
-def get_quarters_in_year(self, fiscal_year: int) -> list[dict]:
-    """Get Saudi Arabia fiscal quarters for a year"""
-    return [
-        {"quarter": 1, "name": "Q1", "start": f"{fiscal_year}-01-01", "end": f"{fiscal_year}-03-31"},
-        {"quarter": 2, "name": "Q2", "start": f"{fiscal_year}-04-01", "end": f"{fiscal_year}-06-30"},
-        {"quarter": 3, "name": "Q3", "start": f"{fiscal_year}-07-01", "end": f"{fiscal_year}-09-30"},
-        {"quarter": 4, "name": "Q4", "start": f"{fiscal_year}-10-01", "end": f"{fiscal_year}-12-31"},
-    ]
-
-
-def get_current_fiscal_quarter(self, date: datetime | None = None) -> dict:
-    """Get current Saudi Arabia fiscal quarter"""
-    now = date or datetime.now()
-    month = now.month
-
-    if month <= 3:
-        return {"quarter": 1, "name": "Q1", "start": f"{now.year}-01-01", "end": f"{now.year}-03-31"}
-    elif month <= 6:
-        return {"quarter": 2, "name": "Q2", "start": f"{now.year}-04-01", "end": f"{now.year}-06-30"}
-    elif month <= 9:
-        return {"quarter": 3, "name": "Q3", "start": f"{now.year}-07-01", "end": f"{now.year}-09-30"}
-    else:
-        return {"quarter": 4, "name": "Q4", "start": f"{now.year}-10-01", "end": f"{now.year}-12-31"}
-
-
-def get_saudi_numbering_pattern(self, entity_type: str) -> dict:
-    """Get Saudi-standard numbering pattern for entity type"""
-    patterns = {
-        "invoice": {"prefix": "FATOORA", "padding": 8, "suffix": ""},
-        "contract": {"prefix": "MUAWA", "padding": 6, "suffix": ""},
-        "purchase_order": {"prefix": "PO", "padding": 6, "suffix": ""},
-        "quotation": {"prefix": "Q", "padding": 6, "suffix": ""},
-        "payment": {"prefix": "PAY", "padding": 6, "suffix": ""},
-        "employee": {"prefix": "EMP", "padding": 4, "suffix": ""},
-        "asset": {"prefix": "AST", "padding": 6, "suffix": ""},
-        "proposal": {"prefix": "PROP", "padding": 6, "suffix": ""},
-    }
-    return patterns.get(
-        entity_type,
-        {"prefix": entity_type[:4].upper(), "padding": 6, "suffix": ""}
-    )
 
 
 @router.post("/tax-configs/calculate-batch")

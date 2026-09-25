@@ -120,7 +120,7 @@ class DynamicCRUDService:
 
         return {"id": record_id, **data}
 
-    def list(self, object_id: str, tenant_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
+    def list(self, object_id: str, tenant_id: str, limit: int = 50, offset: int = 0):
         """List records for a Builder object."""
         obj = self.db.query(BuilderObject).filter(
             BuilderObject.id == object_id, BuilderObject.tenant_id == tenant_id
@@ -190,7 +190,7 @@ class DynamicCRUDService:
         self.db.commit()
         return True
 
-    def _get_fields(self, object_id: str) -> list[BuilderField]:
+    def _get_fields(self, object_id: str):
         return (
             self.db.query(BuilderField)
             .filter(BuilderField.object_id == object_id, BuilderField.is_active)

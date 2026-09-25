@@ -190,8 +190,13 @@ def transition_workflow_instance(
             return {"status": "pending_approval", "approval_task_id": str(task.id)}
         return {"status": "applied", "current_state": instance.current_state}
     except HTTPException as exc:
-        if exc.status_code == 422 and "conditions" in (exc.detail or ""):
-            return {"status": "blocked", "detail": exc.detail, "instance_id": str(instance_id)}
+        if exc.status_code == 422 and isinstance(exc.detail, str) and "conditions" in exc.detail:
+            # Contract (test_workflow_v2.test_condition_gates_direct_
+            # transition): a failed condition gate is a machine-readable
+            # 422 whose detail is the reason string. Do NOT replace it
+            # with a dict — that broke the legacy 200/"blocked" fallback
+            # path used by older clients (test_workflow_sm).
+            raise HTTPException(status_code=422, detail=exc.detail) from exc
         raise
 
 

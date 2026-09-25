@@ -86,7 +86,7 @@ def update_product(
     return obj
 
 
-@router.delete("/products/{product_id}", status_code=204)
+@router.delete("/products/{product_id}", status_code=204, response_model=None)
 def delete_product(
     product_id: int,
     tenant_id: str = Depends(require_tenant),

@@ -173,7 +173,7 @@ def update_account(
     return account
 
 
-@router.delete("/accounts/{account_id}", status_code=204)
+@router.delete("/accounts/{account_id}", status_code=204, response_model=None)
 def delete_account(
     account_id: UUID,
     tenant_id: UUID = Depends(require_admin),

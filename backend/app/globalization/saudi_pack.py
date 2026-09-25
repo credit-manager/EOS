@@ -599,3 +599,52 @@ class KSAPackService:
             "zakat_rate": self.ZAKAT_RATE,
             "zakat_due": zakat_due,
         }
+
+    # ---------------------------------------------------------------
+    # Saudi Numbering Sequences
+    # ---------------------------------------------------------------
+
+    def get_saudi_numbering_pattern(self, entity_type: str) -> dict:
+        """Get Saudi-standard numbering pattern for entity type"""
+        patterns = {
+            "invoice": {"prefix": "INV", "padding": 6, "suffix": ""},
+            "contract": {"prefix": "CON", "padding": 6, "suffix": ""},
+            "purchase_order": {"prefix": "PO", "padding": 6, "suffix": ""},
+            "quotation": {"prefix": "QUO", "padding": 6, "suffix": ""},
+            "payment": {"prefix": "PAY", "padding": 6, "suffix": ""},
+            "employee": {"prefix": "EMP", "padding": 4, "suffix": ""},
+            "asset": {"prefix": "AST", "padding": 6, "suffix": ""},
+            "proposal": {"prefix": "PRP", "padding": 6, "suffix": ""},
+        }
+        return patterns.get(entity_type, {"prefix": entity_type[:3].upper(), "padding": 6, "suffix": ""})
+
+    # ---------------------------------------------------------------
+    # Fiscal Calendar Helpers
+    # ---------------------------------------------------------------
+
+    def get_fiscal_year_for_date(self, date: datetime) -> int:
+        """Get Saudi fiscal year for a date (calendar year, Jan-Dec)"""
+        return date.year
+
+    def get_quarters_in_year(self, fiscal_year: int) -> list[dict]:
+        """Get Saudi fiscal quarters for a year (Jan-Dec fiscal calendar)"""
+        return [
+            {"quarter": 1, "name": "Q1", "start": f"{fiscal_year}-01-01", "end": f"{fiscal_year}-03-31"},
+            {"quarter": 2, "name": "Q2", "start": f"{fiscal_year}-04-01", "end": f"{fiscal_year}-06-30"},
+            {"quarter": 3, "name": "Q3", "start": f"{fiscal_year}-07-01", "end": f"{fiscal_year}-09-30"},
+            {"quarter": 4, "name": "Q4", "start": f"{fiscal_year}-10-01", "end": f"{fiscal_year}-12-31"},
+        ]
+
+    def get_current_fiscal_quarter(self, date: datetime | None = None) -> dict:
+        """Get current Saudi fiscal quarter"""
+        now = date or datetime.now()
+        month = now.month
+
+        if month <= 3:
+            return {"quarter": 1, "name": "Q1", "start": f"{now.year}-01-01", "end": f"{now.year}-03-31"}
+        elif month <= 6:
+            return {"quarter": 2, "name": "Q2", "start": f"{now.year}-04-01", "end": f"{now.year}-06-30"}
+        elif month <= 9:
+            return {"quarter": 3, "name": "Q3", "start": f"{now.year}-07-01", "end": f"{now.year}-09-30"}
+        else:
+            return {"quarter": 4, "name": "Q4", "start": f"{now.year}-10-01", "end": f"{now.year}-12-31"}

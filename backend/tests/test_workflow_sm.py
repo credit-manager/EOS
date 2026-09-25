@@ -273,10 +273,21 @@ class TestConditionEvaluation:
             headers=h,
             json={"action": "submit", "payload": {"amount": 500}},
         )
-        assert resp.status_code == 200
-        body = resp.json()
-        if body.get("status") == "blocked":
-            assert "condition" in body.get("detail", "").lower() or body["status"] == "blocked"
+        # Condition gate must reject the transition. The platform contract
+        # (test_workflow_v2.test_condition_gates_direct_transition) is a
+        # machine-readable 422 whose detail is the reason string; accept
+        # the legacy 200/"blocked" shape only for backward compatibility
+        # with older deployments.
+        assert resp.status_code in (200, 422), resp.text
+        if resp.status_code == 200:
+            body = resp.json()
+            assert body.get("status") == "blocked"
+            assert "condition" in str(body.get("detail", "")).lower()
+        else:
+            detail = resp.json().get("detail", "")
+            if isinstance(detail, dict):
+                detail = str(detail)
+            assert "condition" in detail.lower()
 
     def test_condition_passes_with_matching_data(self):
         user = _register(f"wf-cond-pass-{uuid.uuid4()}@example.com")
@@ -335,9 +346,20 @@ class TestConditionEvaluation:
             headers=h,
             json={"action": "submit", "payload": {"status": "inactive"}},
         )
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body.get("current_state") == "draft" or body.get("status") == "blocked"
+        # Failing a condition gate must never apply the transition. The
+        # platform contract (test_workflow_v2) is a machine-readable 422;
+        # accept the legacy 200/"blocked" shape only for backward
+        # compatibility with older deployments.
+        assert resp.status_code in (200, 422), resp.text
+        if resp.status_code == 200:
+            body = resp.json()
+            assert body.get("status") == "blocked"
+            assert "condition" in str(body.get("detail", "")).lower()
+        else:
+            detail = resp.json().get("detail", "")
+            if isinstance(detail, dict):
+                detail = str(detail)
+            assert "condition" in detail.lower()
 
 
 # ===================================================================

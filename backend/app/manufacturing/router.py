@@ -78,7 +78,7 @@ def update_bom(
     return obj
 
 
-@router.delete("/boms/{bom_id}", status_code=204)
+@router.delete("/boms/{bom_id}", status_code=204, response_model=None)
 def delete_bom(
     bom_id: int,
     tenant_id: str = Depends(require_tenant),

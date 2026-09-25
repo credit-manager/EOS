@@ -1,4 +1,3 @@
-from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -13,6 +12,7 @@ from ..tenant import require_admin, require_tenant
 from .business_object import BusinessObjectConfig
 from .business_object_registry import PREBUILT_OBJECTS, BusinessObjectRegistry
 from .models import MetadataEntity, MetadataTemplate
+from .service import deploy_definition, publish_latest
 from .schemas import (
     MetadataDefinition,
     MetadataPermissions,
@@ -62,31 +62,15 @@ def create_entity(
     tenant_id: UUID = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> MetadataResponse:
-    latest = db.scalar(
-        select(MetadataEntity)
-        .where(MetadataEntity.tenant_id == tenant_id, MetadataEntity.code == payload.code)
-        .order_by(MetadataEntity.version.desc())
-    )
-    version = (latest.version + 1) if latest else 1
-    row = MetadataEntity(
-        tenant_id=tenant_id,
-        code=payload.code,
-        name=payload.name,
-        version=version,
-        definition=payload.model_dump(mode="json"),
-    )
-    db.add(row)
-    audit_record(
+    row = deploy_definition(
         db,
         tenant_id=tenant_id,
         actor_id=request.state.user_id,
-        action="metadata.created",
-        resource_type=payload.code,
-        metadata={"version": version, "permissions": payload.permissions.model_dump(mode="json")},
+        code=payload.code,
+        name=payload.name,
+        definition=payload.model_dump(mode="json"),
         request_id=request.state.request_id,
     )
-    db.commit()
-    db.refresh(row)
     return _response(row)
 
 
@@ -97,27 +81,13 @@ def publish_entity(
     tenant_id: UUID = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> MetadataResponse:
-    row = db.scalar(
-        select(MetadataEntity)
-        .where(MetadataEntity.tenant_id == tenant_id, MetadataEntity.code == code)
-        .order_by(MetadataEntity.version.desc())
+    row = publish_latest(
+        db,
+        tenant_id,
+        code,
+        actor_id=request.state.user_id,
+        request_id=request.state.request_id,
     )
-    if row is None:
-        raise HTTPException(status_code=404, detail="metadata entity not found")
-    if row.published_at is None:
-        row.published_at = datetime.now(UTC)
-        audit_record(
-            db,
-            tenant_id=tenant_id,
-            actor_id=request.state.user_id,
-            action="metadata.published",
-            resource_type=code,
-            resource_id=row.id,
-            metadata={"version": row.version},
-            request_id=request.state.request_id,
-        )
-        db.commit()
-        db.refresh(row)
     return _response(row)
 
 
@@ -300,7 +270,7 @@ def create_template(
     )
 
 
-@router.delete("/templates/{code}", status_code=204)
+@router.delete("/templates/{code}", status_code=204, response_model=None)
 def delete_template(
     code: str,
     request: Request,
