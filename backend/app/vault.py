@@ -1,46 +1,103 @@
-"""Encrypted vault for API keys and secrets."""
+"""Encrypted vault for API keys and secrets.
+
+Security contract:
+- AES-256-GCM authenticated encryption.
+- Random 96-bit nonce per encryption.
+- Tampering or key mismatch fails authentication.
+- Production fails closed unless EOS_VAULT_KEY is a valid 32-byte base64 key.
+- Plaintext is never logged or returned by list_secrets().
+"""
 import base64
-import hashlib
 import logging
 import os
-from typing import Any
+
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 logger = logging.getLogger("2to-eos.vault")
+
+NONCE_SIZE = 12
+KEY_SIZE = 32
 
 _vault_key: bytes | None = None
 
 
+def _is_production() -> bool:
+    return os.getenv("APP_ENV", "development").lower() == "production"
+
+
 def _get_vault_key() -> bytes:
-    """Get or generate the vault encryption key."""
+    """Resolve the vault key and fail closed in production."""
     global _vault_key
+
     if _vault_key:
         return _vault_key
 
     key_env = os.getenv("EOS_VAULT_KEY")
     if key_env:
-        _vault_key = base64.b64decode(key_env)
-    else:
-        seed = os.getenv("EOS_VAULT_SEED", "eos-default-dev-key-change-in-production")
-        _vault_key = hashlib.sha256(seed.encode()).digest()
-        logger.warning("Using derived vault key — set EOS_VAULT_KEY in production")
+        try:
+            key = base64.b64decode(key_env, validate=True)
+        except Exception as exc:
+            raise RuntimeError(
+                "EOS_VAULT_KEY is not valid base64; refusing to start crypto operations"
+            ) from exc
 
+        if len(key) != KEY_SIZE:
+            raise RuntimeError(
+                f"EOS_VAULT_KEY must decode to exactly {KEY_SIZE} bytes (AES-256); "
+                f"got {len(key)}"
+            )
+
+        _vault_key = key
+        return _vault_key
+
+    if _is_production():
+        raise RuntimeError(
+            "SECURITY: EOS_VAULT_KEY is required when APP_ENV=production. "
+            "Generate one with: python -c \"import os,base64;print("
+            "base64.b64encode(os.urandom(32)).decode())\""
+        )
+
+    seed = os.getenv("EOS_VAULT_SEED", "eos-development-only-vault-seed")
+    logger.warning(
+        "Using development-derived vault key (non-production only). "
+        "Set EOS_VAULT_KEY before deploying."
+    )
+
+    import hashlib
+
+    _vault_key = hashlib.sha256(seed.encode()).digest()
     return _vault_key
 
 
 def encrypt_value(plaintext: str) -> str:
-    """Encrypt a string value using XOR cipher with the vault key."""
+    """Encrypt a string using AES-256-GCM."""
     key = _get_vault_key()
-    data = plaintext.encode("utf-8")
-    encrypted = bytes(b ^ key[i % len(key)] for i, b in enumerate(data))
-    return base64.b64encode(encrypted).decode("ascii")
+    nonce = os.urandom(NONCE_SIZE)
+    ciphertext = AESGCM(key).encrypt(nonce, plaintext.encode("utf-8"), None)
+    return base64.b64encode(nonce + ciphertext).decode("ascii")
 
 
 def decrypt_value(ciphertext: str) -> str:
-    """Decrypt a vault-encrypted string value."""
+    """Decrypt AES-256-GCM output; raise ValueError on corruption/tampering."""
     key = _get_vault_key()
-    data = base64.b64decode(ciphertext)
-    decrypted = bytes(b ^ key[i % len(key)] for i, b in enumerate(data))
-    return decrypted.decode("utf-8")
+
+    try:
+        raw = base64.b64decode(ciphertext, validate=True)
+    except Exception as exc:
+        raise ValueError("Ciphertext is not valid base64") from exc
+
+    if len(raw) <= NONCE_SIZE:
+        raise ValueError("Ciphertext too short — corrupt or legacy format")
+
+    nonce, encrypted = raw[:NONCE_SIZE], raw[NONCE_SIZE:]
+
+    try:
+        return AESGCM(key).decrypt(nonce, encrypted, None).decode("utf-8")
+    except InvalidTag as exc:
+        raise ValueError(
+            "Vault authentication failed: ciphertext tampered or key mismatch"
+        ) from exc
 
 
 class SecretVault:
@@ -51,27 +108,23 @@ class SecretVault:
         self._store: dict[str, str] = {}
 
     def set_secret(self, name: str, value: str) -> None:
-        """Store an encrypted secret."""
         self._store[name] = encrypt_value(value)
 
     def get_secret(self, name: str) -> str | None:
-        """Retrieve and decrypt a secret."""
         encrypted = self._store.get(name)
         if not encrypted:
             return None
         try:
             return decrypt_value(encrypted)
-        except Exception as e:
-            logger.error("Failed to decrypt secret '%s': %s", name, e)
+        except ValueError as exc:
+            logger.error("Failed to decrypt secret '%s': %s", name, exc)
             return None
 
     def delete_secret(self, name: str) -> bool:
-        """Delete a secret."""
         if name in self._store:
             del self._store[name]
             return True
         return False
 
     def list_secrets(self) -> list[str]:
-        """List secret names (not values)."""
         return list(self._store.keys())
