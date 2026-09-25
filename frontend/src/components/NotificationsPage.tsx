@@ -66,7 +66,7 @@ export default function NotificationsPage({ token }: { token: string }) {
       }
     } catch { setError(t.notificationsPage.errorLoading); }
     finally { setLoading(false); }
-  }, [filter, token, t]);
+  }, [filter, token]);
 
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
 

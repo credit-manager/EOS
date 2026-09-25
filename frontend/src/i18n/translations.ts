@@ -282,85 +282,6 @@ export interface TranslationKeys {
     learnMore: string;
     tools: string[];
     footerRights: string;
-    trustedBy: string;
-    featuresTitle: string;
-    featuresSubtitle: string;
-    featureConnectTitle: string;
-    featureConnectDesc: string;
-    featureUnderstandTitle: string;
-    featureUnderstandDesc: string;
-    featureOrchestrateTitle: string;
-    featureOrchestrateDesc: string;
-    featureExecuteTitle: string;
-    featureExecuteDesc: string;
-    featureAnalyzeTitle: string;
-    featureAnalyzeDesc: string;
-    featureGovernTitle: string;
-    featureGovernDesc: string;
-    howItWorksTitle: string;
-    howItWorksSubtitle: string;
-    step1Title: string;
-    step1Desc: string;
-    step2Title: string;
-    step2Desc: string;
-    step3Title: string;
-    step3Desc: string;
-    step4Title: string;
-    step4Desc: string;
-    statUptime: string;
-    statResponse: string;
-    statIntegrations: string;
-    statBusinesses: string;
-    showcaseTitle: string;
-    showcaseSubtitle: string;
-    seeInAction: string;
-    pricingTitle: string;
-    pricingSubtitle: string;
-    starterPlan: string;
-    professionalPlan: string;
-    enterprisePlan: string;
-    mostPopular: string;
-    perMonth: string;
-    contactSales: string;
-    starterFeature1: string;
-    starterFeature2: string;
-    starterFeature3: string;
-    starterFeature4: string;
-    proFeature1: string;
-    proFeature2: string;
-    proFeature3: string;
-    proFeature4: string;
-    entFeature1: string;
-    entFeature2: string;
-    entFeature3: string;
-    entFeature4: string;
-    finalCtaTitle: string;
-    finalCtaSubtitle: string;
-    footerProduct: string;
-    footerCompany: string;
-    footerResources: string;
-    footerLegal: string;
-    footerLinkPlatform: string;
-    footerLinkFeatures: string;
-    footerLinkPricing: string;
-    footerLinkSecurity: string;
-    footerLinkAbout: string;
-    footerLinkBlog: string;
-    footerLinkCareers: string;
-    footerLinkContact: string;
-    footerLinkDocs: string;
-    footerLinkApi: string;
-    footerLinkStatus: string;
-    footerLinkSupport: string;
-    footerLinkPrivacy: string;
-    footerLinkTerms: string;
-    footerLinkCookies: string;
-    footerLinkCompliance: string;
-    soc2: string;
-    gdpr: string;
-    uptime: string;
-    companies: string;
-    solutions: string;
   };
   login: {
     backToHome: string;
@@ -372,20 +293,6 @@ export interface TranslationKeys {
     signingIn: string;
     noAccount: string;
     createWorkspace: string;
-  };
-  authPage: {
-    eyebrow: string;
-    signInTitle: string;
-    createWorkspaceTitle: string;
-    subtitle: string;
-    workspaceName: string;
-    working: string;
-    signInBtn: string;
-    createWorkspaceBtn: string;
-    orContinueWith: string;
-    createNewWorkspace: string;
-    alreadyHaveAccount: string;
-    authFailed: string;
   };
   onboard: {
     welcomeTitle: string;
@@ -1365,17 +1272,6 @@ export interface TranslationKeys {
     analysisInitializing: string;
     aiEngineConnecting: string;
     createFailed: string;
-    loadFailed: string;
-    loadingMetadata: string;
-    published: string;
-    entities: string;
-    signOut: string;
-    createRecord: string;
-    refresh: string;
-    noRecordsYet: string;
-    id: string;
-    createRecordFailed: string;
-    deleteRecordFailed: string;
   };
   workspacePage: {
     askEos: string;
@@ -2041,9 +1937,6 @@ export interface TranslationKeys {
     generateKey: string;
     noAppsRegistered: string;
     loading: string;
-    eventsDashboardDesc: string;
-    keyCreated: string;
-    keyCreatedHint: string;
   };
   catalogPage: {
     eyebrow: string;
@@ -2057,7 +1950,6 @@ export interface TranslationKeys {
     loading: string;
     noEntities: string;
     fields: string;
-    loadError: string;
   };
   marketplacePage: {
     title: string;
@@ -2072,71 +1964,11 @@ export interface TranslationKeys {
     featured: string;
     noDescription: string;
     noAppsFound: string;
-tryAdjusting: string;
+    tryAdjusting: string;
     free: string;
     freemium: string;
     loading: string;
-    by: string;
-  };
-  globalizationPage: {
-    title: string;
-      loading: string;
-      tabCountries: string;
-      tabCurrencies: string;
-      tabPacks: string;
-      tabRates: string;
-      code: string;
-      name: string;
-      currency: string;
-      language: string;
-      timezone: string;
-      symbol: string;
-      decimals: string;
-      active: string;
-      inactive: string;
-      noPacksInstalled: string;
-      rate: string;
-      from: string;
-      to: string;
-      date: string;
-    };
-  integrationsPage: {
-    title: string;
-    loading: string;
-    newIntegration: string;
-    tabIntegrations: string;
-    tabLogs: string;
-    provider: string;
-    timeout: string;
-    retries: string;
-    na: string;
-  };
-  metadataStudio: {
-    title: string;
-    subtitle: string;
-    entityCode: string;
-    displayName: string;
-    newEntity: string;
-    defaultFieldLabel: string;
-    fieldCode: string;
-    fieldType: string;
-    fieldLabel: string;
-    targetEntity: string;
-    relationTarget: string;
-    text: string;
-    integer: string;
-    decimal: string;
-    boolean: string;
-    date: string;
-    uuid: string;
-    relation: string;
-    required: string;
-    remove: string;
-    addField: string;
-    field: string;
-    publishEntity: string;
-    published: string;
-    unableToPublish: string;
+    globalizationPage: string;
   };
 }
 
@@ -2424,85 +2256,6 @@ export const en: TranslationKeys = {
     learnMore: 'Learn More',
     tools: ['Accounting', 'Excel', 'WhatsApp', 'CRM', 'HR', 'Inventory', 'Email', 'Banking', 'Documents', 'Projects', 'BI', 'Portals'],
     footerRights: '© 2026 2TO. All rights reserved.',
-    trustedBy: 'Trusted by leading companies worldwide',
-    featuresTitle: 'Everything you need to run your business',
-    featuresSubtitle: 'One platform that connects your systems, understands your data, and executes work intelligently.',
-    featureConnectTitle: 'Connect',
-    featureConnectDesc: 'Integrate ERP, CRM, banking, and 500+ systems into one unified platform.',
-    featureUnderstandTitle: 'Understand',
-    featureUnderstandDesc: 'Build a living business graph that maps every entity, relationship, and process.',
-    featureOrchestrateTitle: 'Orchestrate',
-    featureOrchestrateDesc: 'Design workflows, approvals, and automations with visual tools.',
-    featureExecuteTitle: 'Execute',
-    featureExecuteDesc: 'Deploy AI agents that plan, act, and verify within your policies.',
-    featureAnalyzeTitle: 'Analyze',
-    featureAnalyzeDesc: 'Real-time dashboards and AI insights drilled down to source data.',
-    featureGovernTitle: 'Govern',
-    featureGovernDesc: 'Enterprise-grade security, audit trails, and compliance built-in.',
-    howItWorksTitle: 'How EOS Works',
-    howItWorksSubtitle: 'From fragmented systems to intelligent operations in four steps.',
-    step1Title: 'Connect Your Systems',
-    step1Desc: 'Link existing ERP, CRM, banking, and custom applications through our integration hub.',
-    step2Title: 'Model Your Business',
-    step2Desc: 'Define entities, relationships, rules, and workflows using EOS Builder.',
-    step3Title: 'Automate Processes',
-    step3Desc: 'Set up approvals, notifications, and event-driven automations.',
-    step4Title: 'Let AI Operate',
-    step4Desc: 'Deploy governed AI agents that understand context and execute safely.',
-    statUptime: 'Uptime',
-    statResponse: 'Avg Response',
-    statIntegrations: 'Integrations',
-    statBusinesses: 'Businesses',
-    showcaseTitle: 'See EOS in Action',
-    showcaseSubtitle: 'Experience the platform that is transforming how businesses operate.',
-    seeInAction: 'Explore the Platform',
-    pricingTitle: 'Simple, transparent pricing',
-    pricingSubtitle: 'Start free. Scale as you grow. No hidden fees.',
-    starterPlan: 'Starter',
-    professionalPlan: 'Professional',
-    enterprisePlan: 'Enterprise',
-    mostPopular: 'Most Popular',
-    perMonth: '/month',
-    contactSales: 'Contact Sales',
-    starterFeature1: 'Up to 10 users',
-    starterFeature2: 'Basic workflow automation',
-    starterFeature3: 'Standard reporting',
-    starterFeature4: 'Email support',
-    proFeature1: 'Up to 100 users',
-    proFeature2: 'Advanced AI agents',
-    proFeature3: 'Custom dashboards',
-    proFeature4: 'Priority support',
-    entFeature1: 'Unlimited users',
-    entFeature2: 'Full AI workforce',
-    entFeature3: 'Custom integrations',
-    entFeature4: 'Dedicated success manager',
-    finalCtaTitle: 'Ready to transform your business?',
-    finalCtaSubtitle: 'Join hundreds of companies already running on 2TO EOS.',
-    footerProduct: 'Product',
-    footerCompany: 'Company',
-    footerResources: 'Resources',
-    footerLegal: 'Legal',
-    footerLinkPlatform: 'Platform',
-    footerLinkFeatures: 'Features',
-    footerLinkPricing: 'Pricing',
-    footerLinkSecurity: 'Security',
-    footerLinkAbout: 'About',
-    footerLinkBlog: 'Blog',
-    footerLinkCareers: 'Careers',
-    footerLinkContact: 'Contact',
-    footerLinkDocs: 'Documentation',
-    footerLinkApi: 'API Reference',
-    footerLinkStatus: 'Status',
-    footerLinkSupport: 'Support',
-    footerLinkPrivacy: 'Privacy Policy',
-    footerLinkTerms: 'Terms of Service',
-    footerLinkCookies: 'Cookie Policy',
-    footerLinkCompliance: 'Compliance',
-    soc2: 'SOC 2 Compliant',
-    gdpr: 'GDPR Ready',
-    uptime: '99.9% Uptime',
-    companies: 'companies',
-    solutions: 'Solutions',
   },
   login: {
     backToHome: 'Back to Home',
@@ -2514,20 +2267,6 @@ export const en: TranslationKeys = {
     signingIn: 'Signing in...',
     noAccount: "Don't have an account?",
     createWorkspace: 'Create a new workspace',
-  },
-  authPage: {
-    eyebrow: '2TO / EOS',
-    signInTitle: 'Sign in',
-    createWorkspaceTitle: 'Create your workspace',
-    subtitle: 'Your workspace and permissions come from the signed access token.',
-    workspaceName: 'Workspace name',
-    working: 'Working…',
-    signInBtn: 'Sign in',
-    createWorkspaceBtn: 'Create workspace',
-    orContinueWith: 'Or continue with',
-    createNewWorkspace: 'Create a new workspace',
-    alreadyHaveAccount: 'I already have an account',
-    authFailed: 'Authentication failed',
   },
   onboard: {
     welcomeTitle: 'Welcome to EOS',
@@ -3507,17 +3246,6 @@ export const en: TranslationKeys = {
     analysisInitializing: 'Analysis feature is being initialized.',
     aiEngineConnecting: 'AI engine connecting...',
     createFailed: 'Create failed',
-    loadFailed: 'Unable to load entity',
-    loadingMetadata: 'Loading metadata',
-    published: 'Published',
-    entities: 'Entities',
-    signOut: 'Sign out',
-    createRecord: 'Create record',
-    refresh: 'Refresh',
-    noRecordsYet: 'No records yet.',
-    id: 'ID',
-    createRecordFailed: 'Unable to create record',
-    deleteRecordFailed: 'Unable to delete record',
   },
   workspacePage: {
     askEos: 'Ask EOS',
@@ -4118,167 +3846,8 @@ export const en: TranslationKeys = {
     approved: 'Approved',
     confirm: 'Confirm',
     areYouSure: 'Are you sure?',
-failedToLoad: 'Failed to load BOQs',
+    failedToLoad: 'Failed to load BOQs',
     failedToSave: 'Failed to save',
-  },
-  claimsPage: {
-    editClaim: 'Edit Claim',
-    createClaim: 'Create Claim',
-    claimNumber: 'Claim Number',
-    contract: 'Contract',
-    selectContract: 'Select Contract',
-    claimDate: 'Claim Date',
-    periodStart: 'Period Start',
-    periodEnd: 'Period End',
-  },
-  reportsPage: {
-    reportType: 'Report Type',
-    exportFormat: 'Export Format',
-    generateReport: 'Generate Report',
-    exportCsv: 'Export CSV',
-    exportExcel: 'Export Excel',
-    exportPdf: 'Export PDF',
-    financialSummary: 'Financial Summary',
-    profitLoss: 'Profit & Loss',
-    trialBalance: 'Trial Balance',
-    accountBalances: 'Account Balances',
-    projects: 'Projects',
-    claims: 'Claims',
-  },
-  sdkPage: {
-    title: 'Developer SDK',
-    subtitle: 'Build apps and integrations for EOS',
-    newApp: 'New App',
-    apiKey: 'API Key',
-    totalEvents: 'Total Events',
-    pending: 'Pending',
-    processed: 'Processed',
-    failed: 'Failed',
-    apps: 'Apps',
-    apiKeys: 'API Keys',
-    webhooks: 'Webhooks',
-    events: 'Events',
-    name: 'Name',
-    keyPrefix: 'Key Prefix',
-    uses: 'Uses',
-    status: 'Status',
-    active: 'Active',
-    revoked: 'Revoked',
-    noApiKeys: 'No API keys',
-    event: 'Event',
-    url: 'URL',
-    triggers: 'Triggers',
-    noWebhooks: 'No webhooks',
-    eventsDashboard: 'Events Dashboard',
-    newSdkApp: 'New SDK App',
-    code: 'Code',
-    plugin: 'Plugin',
-    connector: 'Connector',
-    widget: 'Widget',
-    automation: 'Automation',
-    cancel: 'Cancel',
-    create: 'Create',
-    generateApiKey: 'Generate API Key',
-    keyName: 'Key Name',
-    generateKey: 'Generate Key',
-    noAppsRegistered: 'No apps registered',
-    loading: 'Loading...',
-    eventsDashboardDesc: 'View real-time event stream',
-    keyCreated: 'API Key created',
-    keyCreatedHint: "Save this key - it won't be shown again!",
-  },
-  catalogPage: {
-    eyebrow: 'Entity Workspace',
-    title: 'Entity Catalog',
-    subtitle: 'Browse and manage your business entities',
-    signOut: 'Sign Out',
-    publishedEntities: 'Published Entities',
-    available: 'Available',
-    newEntity: 'New Entity',
-    refresh: 'Refresh',
-    loading: 'Loading catalog...',
-    noEntities: 'No published entities exist yet.',
-    fields: 'Fields',
-    loadError: 'Unable to load entity catalog',
-  },
-  marketplacePage: {
-    title: 'Marketplace',
-    subtitle: 'Discover apps, plugins, and integrations for EOS',
-    loading: 'Loading marketplace...',
-    allCategories: 'All Categories',
-    apps: 'Apps',
-    categories: 'Categories',
-    installs: 'Installs',
-    reviews: 'Reviews',
-    searchPlaceholder: 'Search apps and integrations...',
-    search: 'Search',
-    featured: 'Featured',
-    noDescription: 'No description available',
-    noAppsFound: 'No apps found',
-    tryAdjusting: 'Try adjusting your search or filters',
-    free: 'Free',
-    freemium: 'Freemium',
-    by: 'by',
-  },
-  globalizationPage: {
-    title: 'Globalization Engine',
-    loading: 'Loading globalization...',
-    tabCountries: 'Countries',
-    tabCurrencies: 'Currencies',
-    tabPacks: 'Country Packs',
-    tabRates: 'Exchange Rates',
-    code: 'Code',
-    name: 'Name',
-    currency: 'Currency',
-    language: 'Language',
-    timezone: 'Timezone',
-    symbol: 'Symbol',
-    decimals: 'Decimals',
-    active: 'Active',
-    inactive: 'Inactive',
-    noPacksInstalled: 'No country packs installed',
-    rate: 'Rate',
-    from: 'From',
-    to: 'To',
-    date: 'Date',
-  },
-  integrationsPage: {
-    title: 'Integration Hub',
-    loading: 'Loading integrations...',
-    newIntegration: 'New Integration',
-    tabIntegrations: 'Integrations',
-    tabLogs: 'Logs',
-    provider: 'Provider',
-    timeout: 'Timeout',
-    retries: 'Retries',
-    na: 'N/A',
-  },
-  metadataStudio: {
-    title: 'Metadata Studio',
-    subtitle: 'Define an entity',
-    entityCode: 'Entity code',
-    displayName: 'Display name',
-    newEntity: 'New Entity',
-    defaultFieldLabel: 'Name',
-    fieldCode: 'Field code',
-    fieldType: 'Field type',
-    fieldLabel: 'Field label',
-    targetEntity: 'Target entity',
-    relationTarget: 'Relation target',
-    text: 'Text',
-    integer: 'Integer',
-    decimal: 'Decimal',
-    boolean: 'Boolean',
-    date: 'Date',
-    uuid: 'UUID',
-    relation: 'Relation',
-    required: 'Required',
-    remove: 'Remove',
-    addField: 'Add field',
-    field: 'Field',
-    publishEntity: 'Publish entity',
-    published: 'Published',
-    unableToPublish: 'Unable to publish metadata',
   },
 };
 
@@ -4566,85 +4135,6 @@ export const ar: TranslationKeys = {
     learnMore: 'اعرف المزيد',
     tools: ['المحاسبة', 'Excel', 'واتساب', 'إدارة العملاء', 'الموارد البشرية', 'المخزون', 'البريد', 'البنوك', 'المستندات', 'المشاريع', 'ذكاء الأعمال', 'البوابات'],
     footerRights: '© 2026 2TO. جميع الحقوق محفوظة.',
-    trustedBy: 'موثوق من الشركات الرائدة حول العالم',
-    featuresTitle: 'كل ما تحتاجه لإدارة أعمالك',
-    featuresSubtitle: 'منصة واحدة تربط أنظمتك وتفهم بياناتك وتنفذ العمل بذكاء.',
-    featureConnectTitle: 'اربط',
-    featureConnectDesc: 'ادمج ERP و CRM والبنوك وأكثر من 500 نظام في منصة موحدة.',
-    featureUnderstandTitle: 'افهم',
-    featureUnderstandDesc: 'ابنِ رسمًا تجاريًا حيًا يوضح كل كيان وعلاقة وعملية.',
-    featureOrchestrateTitle: 'نسّق',
-    featureOrchestrateDesc: 'صمم سير العمل والموافقات والأتمتة بأدوات بصرية.',
-    featureExecuteTitle: 'نفّذ',
-    featureExecuteDesc: 'انشر وكلاء ذكاء اصطناعي يخططون وينفذون ضمن سياساتك.',
-    featureAnalyzeTitle: 'حلّل',
-    featureAnalyzeDesc: 'لوحات معلومات فورية ورؤى ذكاء اصطناعي قابلة للتعمق.',
-    featureGovernTitle: 'حَكِم',
-    featureGovernDesc: 'أمان مؤسسي وسجلات تدقيق وامتثال مدمجة.',
-    howItWorksTitle: 'كيف يعمل EOS',
-    howItWorksSubtitle: 'من أنظمة متفرقة إلى عمليات ذكية في أربع خطوات.',
-    step1Title: 'اربط أنظمتك',
-    step1Desc: 'صل أنظمة ERP و CRM والبنوك والتطبيقات المخصصة عبر مركز التكامل.',
-    step2Title: 'نمذجة أعمالك',
-    step2Desc: 'حدد الكيانات والعلاقات والقواعد وسير العمل باستخدام EOS Builder.',
-    step3Title: 'أتمتة العمليات',
-    step3Desc: 'إعداد الموافقات والإشعارات والأتمتة القائمة على الأحداث.',
-    step4Title: 'دع الذكاء الاصطناعي يدير',
-    step4Desc: 'انشر وكلاء ذكاء محكومين يفهمون السياق وينفذون بأمان.',
-    statUptime: 'وقت التشغيل',
-    statResponse: 'متوسط الاستجابة',
-    statIntegrations: 'التكاملات',
-    statBusinesses: 'الشركات',
-    showcaseTitle: 'شاهد EOS بالفعل',
-    showcaseSubtitle: 'تجربة المنصة التي تغير طريقة عمل الشركات.',
-    seeInAction: 'استكشف المنصة',
-    pricingTitle: 'تسعير بسيط وشفاف',
-    pricingSubtitle: 'ابدأ مجانًا. قم بالتوسع مع نموك. بدون رسوم خفية.',
-    starterPlan: 'الأساسي',
-    professionalPlan: 'الاحترافي',
-    enterprisePlan: 'المؤسسي',
-    mostPopular: 'الأكثر شيوعًا',
-    perMonth: '/شهريًا',
-    contactSales: 'تواصل مع المبيعات',
-    starterFeature1: 'حتى 10 مستخدمين',
-    starterFeature2: 'أتمتة سير عمل أساسية',
-    starterFeature3: 'تقارير قياسية',
-    starterFeature4: 'دعم بالبريد الإلكتروني',
-    proFeature1: 'حتى 100 مستخدم',
-    proFeature2: 'وكلاء ذكاء اصطناعي متقدمون',
-    proFeature3: 'لوحات معلومات مخصصة',
-    proFeature4: 'دعم ذو أولوية',
-    entFeature1: 'مستخدمون غير محدودين',
-    entFeature2: 'قوة عمل AI كاملة',
-    entFeature3: 'تكاملات مخصصة',
-    entFeature4: 'مدير نجاح مخصص',
-    finalCtaTitle: 'مستعد لتحويل أعمالك؟',
-    finalCtaSubtitle: 'انضم إلى مئات الشركات التي تعمل بالفعل على 2TO EOS.',
-    footerProduct: 'المنتج',
-    footerCompany: 'الشركة',
-    footerResources: 'الموارد',
-    footerLegal: 'قانوني',
-    footerLinkPlatform: 'المنصة',
-    footerLinkFeatures: 'المزايا',
-    footerLinkPricing: 'التسعير',
-    footerLinkSecurity: 'الأمان',
-    footerLinkAbout: 'من نحن',
-    footerLinkBlog: 'المدونة',
-    footerLinkCareers: 'الوظائف',
-    footerLinkContact: 'اتصل بنا',
-    footerLinkDocs: 'التوثيق',
-    footerLinkApi: 'مرجع API',
-    footerLinkStatus: 'الحالة',
-    footerLinkSupport: 'الدعم',
-    footerLinkPrivacy: 'سياسة الخصوصية',
-    footerLinkTerms: 'شروط الخدمة',
-    footerLinkCookies: 'سياسة ملفات تعريف الارتباط',
-    footerLinkCompliance: 'الامتثال',
-    soc2: 'متوافق مع SOC 2',
-    gdpr: 'جاهز لـ GDPR',
-    uptime: 'وقت تشغيل 99.9%',
-    companies: 'شركة',
-    solutions: 'الحلول',
   },
   login: {
     backToHome: 'العودة للرئيسية',
@@ -4656,20 +4146,6 @@ export const ar: TranslationKeys = {
     signingIn: 'جاري تسجيل الدخول...',
     noAccount: 'ليس لديك حساب؟',
     createWorkspace: 'إنشاء مساحة عمل جديدة',
-  },
-  authPage: {
-    eyebrow: '2TO / EOS',
-    signInTitle: 'تسجيل الدخول',
-    createWorkspaceTitle: 'أنشئ مساحة عملك',
-    subtitle: 'تأتي مساحة عملك والصلاحيات من رمز الوصول الموقّع.',
-    workspaceName: 'اسم مساحة العمل',
-    working: 'جارٍ العمل…',
-    signInBtn: 'تسجيل الدخول',
-    createWorkspaceBtn: 'إنشاء مساحة عمل',
-    orContinueWith: 'أو المتابعة عبر',
-    createNewWorkspace: 'إنشاء مساحة عمل جديدة',
-    alreadyHaveAccount: 'لدي حساب بالفعل',
-    authFailed: 'فشل المصادقة',
   },
   onboard: {
     welcomeTitle: 'مرحباً بك في EOS',
@@ -5649,17 +5125,6 @@ export const ar: TranslationKeys = {
     analysisInitializing: 'ميزة التحليل قيد التهيئة.',
     aiEngineConnecting: 'محرك الذكاء الاصطناعي يتصل...',
     createFailed: 'فشل الإنشاء',
-    loadFailed: 'تعذّر تحميل الكيان',
-    loadingMetadata: 'جارٍ تحميل البيانات الوصفية',
-    published: 'منشور',
-    entities: 'الكيانات',
-    signOut: 'تسجيل الخروج',
-    createRecord: 'إنشاء سجل',
-    refresh: 'تحديث',
-    noRecordsYet: 'لا توجد سجلات بعد.',
-    id: 'المعرف',
-    createRecordFailed: 'تعذّر إنشاء السجل',
-    deleteRecordFailed: 'تعذّر حذف السجل',
   },
   workspacePage: {
     askEos: 'اسأل EOS',
@@ -6260,166 +5725,7 @@ export const ar: TranslationKeys = {
     approved: 'موافق عليه',
     confirm: 'تأكيد',
     areYouSure: 'هل أنت متأكد؟',
-failedToLoad: 'فشل في تحميل جداول الكميات',
+    failedToLoad: 'فشل في تحميل جداول الكميات',
     failedToSave: 'فشل في الحفظ',
-  },
-  claimsPage: {
-    editClaim: 'تعديل المطالبة',
-    createClaim: 'إنشاء مطالبة',
-    claimNumber: 'رقم المطالبة',
-    contract: 'العقد',
-    selectContract: 'اختر العقد',
-    claimDate: 'تاريخ المطالبة',
-    periodStart: 'بداية الفترة',
-    periodEnd: 'نهاية الفترة',
-  },
-  reportsPage: {
-    reportType: 'نوع التقرير',
-    exportFormat: 'صيغة التصدير',
-    generateReport: 'إنشاء تقرير',
-    exportCsv: 'تصدير CSV',
-    exportExcel: 'تصدير Excel',
-    exportPdf: 'تصدير PDF',
-    financialSummary: 'الملخص المالي',
-    profitLoss: 'الأرباح والخسائر',
-    trialBalance: 'ميزان المراجعة',
-    accountBalances: 'أرصدة الحسابات',
-    projects: 'المشاريع',
-    claims: 'المطالبات',
-  },
-  sdkPage: {
-    title: 'SDK المطورين',
-    subtitle: 'بناء تطبيقات وتكاملات لنظام EOS',
-    newApp: 'تطبيق جديد',
-    apiKey: 'مفتاح API',
-    totalEvents: 'إجمالي الأحداث',
-    pending: 'قيد الانتظار',
-    processed: 'تمت المعالجة',
-    failed: 'فشل',
-    apps: 'التطبيقات',
-    apiKeys: 'مفاتيح API',
-    webhooks: 'Webhooks',
-    events: 'الأحداث',
-    name: 'الاسم',
-    keyPrefix: 'بادئة المفتاح',
-    uses: 'الاستخدامات',
-    status: 'الحالة',
-    active: 'نشط',
-    revoked: 'ملغى',
-    noApiKeys: 'لا توجد مفاتيح API',
-    event: 'الحدث',
-    url: 'الرابط',
-    triggers: 'المشغّلات',
-    noWebhooks: 'لا توجد Webhooks',
-    eventsDashboard: 'لوحة أحداث الأحداث',
-    newSdkApp: 'تطبيق SDK جديد',
-    code: 'الكود',
-    plugin: 'إضافة',
-    connector: 'موصل',
-    widget: 'أداة',
-    automation: 'أتمتة',
-    cancel: 'إلغاء',
-    create: 'إنشاء',
-    generateApiKey: 'توليد مفتاح API',
-    keyName: 'اسم المفتاح',
-    generateKey: 'توليد المفتاح',
-    noAppsRegistered: 'لا توجد تطبيقات مسجلة',
-    loading: 'جارٍ التحميل...',
-    eventsDashboardDesc: 'عرض تدفق الأحداث في الوقت الفعلي',
-    keyCreated: 'تم إنشاء مفتاح API',
-    keyCreatedHint: 'احفظ هذا المفتاح - لن يظهر مرة أخرى!',
-  },
-  catalogPage: {
-    eyebrow: 'مساحة عمل الكيانات',
-    title: 'كتالوج الكيانات',
-    subtitle: 'تصفح وإدارة كيانات عملك',
-    signOut: 'تسجيل الخروج',
-    publishedEntities: 'الكيانات المنشورة',
-    available: 'متاح',
-    newEntity: 'كيان جديد',
-    refresh: 'تحديث',
-    loading: 'جارٍ تحميل الكتالوج...',
-    noEntities: 'لا توجد كيانات منشورة بعد.',
-    fields: 'الحقول',
-    loadError: 'تعذر تحميل كتالوج الكيانات',
-  },
-  marketplacePage: {
-    title: 'سوق التطبيقات',
-    subtitle: 'اكتشف التطبيقات والإضافات والتكاملات لنظام EOS',
-    loading: 'جارٍ تحميل السوق...',
-    allCategories: 'جميع الفئات',
-    apps: 'التطبيقات',
-    categories: 'الفئات',
-    installs: 'التنصيبات',
-    reviews: 'التقييمات',
-    searchPlaceholder: 'البحث عن التطبيقات والتكاملات...',
-    search: 'بحث',
-    featured: 'مميز',
-    noDescription: 'لا يوجد وصف متاح',
-    noAppsFound: 'لم يتم العثور على تطبيقات',
-    tryAdjusting: 'جرّب تعديل البحث أو الفلاتر',
-    free: 'مجاني',
-    freemium: 'مدفوع',
-    by: 'بواسطة',
-  },
-  globalizationPage: {
-    title: 'محرك العولمة',
-    loading: 'جارٍ تحميل بيانات العولمة...',
-    tabCountries: 'الدول',
-    tabCurrencies: 'العملات',
-    tabPacks: 'الحزم الوطنية',
-    tabRates: 'أسعار الصرف',
-    code: 'الكود',
-    name: 'الاسم',
-    currency: 'العملة',
-    language: 'اللغة',
-    timezone: 'المنطقة الزمنية',
-    symbol: 'الرمز',
-    decimals: 'الكسور العشرية',
-    active: 'نشط',
-    inactive: 'غير نشط',
-    noPacksInstalled: 'لا توجد حزم دول مثبتة',
-    rate: 'السعر',
-    from: 'من',
-    to: 'إلى',
-    date: 'التاريخ',
-  },
-  integrationsPage: {
-    title: 'مركز التكامل',
-    loading: 'جارٍ تحميل التكاملات...',
-    newIntegration: 'تكامل جديد',
-    tabIntegrations: 'التكاملات',
-    tabLogs: 'السجلات',
-    provider: 'المزود',
-    timeout: 'مهلة الانتظار',
-    retries: 'المحاولات',
-    na: 'غير متوفر',
-  },
-  metadataStudio: {
-    title: 'استوديو البيانات الوصفية',
-    subtitle: 'تعريف كيان',
-    entityCode: 'رمز الكيان',
-    displayName: 'الاسم المعروض',
-    newEntity: 'كيان جديد',
-    defaultFieldLabel: 'الاسم',
-    fieldCode: 'رمز الحقل',
-    fieldType: 'نوع الحقل',
-    fieldLabel: 'اسم الحقل',
-    targetEntity: 'الكيان الهدف',
-    relationTarget: 'هدف العلاقة',
-    text: 'نص',
-    integer: 'عدد صحيح',
-    decimal: 'عشري',
-    boolean: 'منطقي',
-    date: 'تاريخ',
-    uuid: 'UUID',
-    relation: 'علاقة',
-    required: 'مطلوب',
-    remove: 'إزالة',
-    addField: 'إضافة حقل',
-    field: 'حقل',
-    publishEntity: 'نشر الكيان',
-    published: 'تم نشر',
-    unableToPublish: 'تعذر نشر البيانات الوصفية',
   },
 };

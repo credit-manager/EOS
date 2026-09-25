@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { API, TOKEN_KEY, REFRESH_TOKEN_KEY } from '../api';
-import { useI18n } from '../i18n';
 import type { Session } from '../types';
 
 interface AuthScreenProps {
@@ -8,7 +7,6 @@ interface AuthScreenProps {
 }
 
 export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
-  const { t } = useI18n();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -49,7 +47,7 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
       }
       onAuthenticated(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t.authPage.authFailed);
+      setError(err instanceof Error ? err.message : 'Authentication failed');
     } finally {
       setBusy(false);
     }
@@ -58,20 +56,20 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
   return (
     <main className="shell auth-shell">
       <section className="card auth-card">
-        <p className="eyebrow">{t.authPage.eyebrow}</p>
-        <h1>{mode === 'login' ? t.authPage.signInTitle : t.authPage.createWorkspaceTitle}</h1>
-        <p className="muted">{t.authPage.subtitle}</p>
+        <p className="eyebrow">2TO / EOS</p>
+        <h1>{mode === 'login' ? 'Sign in' : 'Create your workspace'}</h1>
+        <p className="muted">Your workspace and permissions come from the signed access token.</p>
         {error && (
           <div className="error" role="alert">
             {error}
           </div>
         )}
         <label>
-          <span>{t.auth.email}</span>
+          <span>Email</span>
           <input value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
         </label>
         <label>
-          <span>{t.auth.password}</span>
+          <span>Password</span>
           <input
             type="password"
             value={password}
@@ -81,7 +79,7 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
         </label>
         {mode === 'register' && (
           <label>
-            <span>{t.authPage.workspaceName}</span>
+            <span>Workspace name</span>
             <input value={tenantName} onChange={(e) => setTenantName(e.target.value)} />
           </label>
         )}
@@ -94,15 +92,11 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
           }
           onClick={() => void submit()}
         >
-          {busy
-            ? t.authPage.working
-            : mode === 'login'
-              ? t.authPage.signInBtn
-              : t.authPage.createWorkspaceBtn}
+          {busy ? 'Working…' : mode === 'login' ? 'Sign in' : 'Create workspace'}
         </button>
         <div className="flex items-center gap-3 my-4">
           <div className="flex-1 h-px bg-gray-200" />
-          <span className="text-xs text-gray-400">{t.authPage.orContinueWith}</span>
+          <span className="text-xs text-gray-400">Or continue with</span>
           <div className="flex-1 h-px bg-gray-200" />
         </div>
         <div className="flex gap-2">
@@ -117,7 +111,7 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
           className="secondary"
           onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
         >
-          {mode === 'login' ? t.authPage.createNewWorkspace : t.authPage.alreadyHaveAccount}
+          {mode === 'login' ? 'Create a new workspace' : 'I already have an account'}
         </button>
       </section>
     </main>

@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useI18n } from '../i18n';
 
 interface MarketplaceApp { id: string; code: string; name: string; short_description?: string; app_type: string; category: string; author: string; version: string; pricing_model: string; price?: number; rating?: number; rating_count: number; install_count: number; is_featured: boolean; tags?: string[]; }
 interface MarketplaceCategory { id: string; code: string; name: string; description?: string; icon?: string; }
 interface MarketplaceStats { total_apps: number; total_categories: number; total_installs: number; total_reviews: number; }
 
 export default function MarketplacePage({ token }: { token: string }) {
-  const { t } = useI18n();
   const [apps, setApps] = useState<MarketplaceApp[]>([]);
   const [categories, setCategories] = useState<MarketplaceCategory[]>([]);
   const [stats, setStats] = useState<MarketplaceStats | null>(null);
@@ -34,30 +32,30 @@ export default function MarketplacePage({ token }: { token: string }) {
   };
 
   const pricingBadge = (m: string, p?: number) => {
-    if (m === 'free') return <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">{t.marketplacePage.free}</span>;
+    if (m === 'free') return <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">Free</span>;
     if (m === 'paid') return <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">${p}</span>;
-    if (m === 'freemium') return <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-medium">{t.marketplacePage.freemium}</span>;
+    if (m === 'freemium') return <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-medium">Freemium</span>;
     return <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">{m}</span>;
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64"><p className="text-gray-500">{t.marketplacePage.loading}</p></div>;
+  if (loading) return <div className="flex items-center justify-center h-64"><p className="text-gray-500">Loading marketplace...</p></div>;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">{t.marketplacePage.title}</h2>
-          <p className="text-sm text-gray-500">{t.marketplacePage.subtitle}</p>
+          <h2 className="text-2xl font-bold text-gray-900">Marketplace</h2>
+          <p className="text-sm text-gray-500">Discover apps, plugins, and integrations for EOS</p>
         </div>
       </div>
 
       {stats && (
         <div className="grid grid-cols-4 gap-4">
           {[
-            { label: t.marketplacePage.apps, value: stats.total_apps, icon: '📦' },
-            { label: t.marketplacePage.categories, value: stats.total_categories, icon: '📂' },
-            { label: t.marketplacePage.installs, value: stats.total_installs, icon: '⬇' },
-            { label: t.marketplacePage.reviews, value: stats.total_reviews, icon: '⭐' },
+            { label: 'Apps', value: stats.total_apps, icon: '📦' },
+            { label: 'Categories', value: stats.total_categories, icon: '📂' },
+            { label: 'Installs', value: stats.total_installs, icon: '⬇' },
+            { label: 'Reviews', value: stats.total_reviews, icon: '⭐' },
           ].map(s => (
             <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
               <span className="text-2xl">{s.icon}</span>
@@ -73,17 +71,17 @@ export default function MarketplacePage({ token }: { token: string }) {
       <div className="flex gap-3">
         <input
           type="text"
-          placeholder={t.marketplacePage.searchPlaceholder}
+          placeholder="Search apps..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSearch()}
           className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
         />
         <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg">
-          <option value="">{t.marketplacePage.allCategories}</option>
+          <option value="">All Categories</option>
           {categories.map(c => <option key={c.id} value={c.code}>{c.name}</option>)}
         </select>
-        <button onClick={handleSearch} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">{t.marketplacePage.search}</button>
+        <button onClick={handleSearch} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Search</button>
       </div>
 
       {categories.length > 0 && (
@@ -106,12 +104,12 @@ export default function MarketplacePage({ token }: { token: string }) {
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900">{app.name}</h3>
-                  <p className="text-xs text-gray-500">{t.marketplacePage.by} {app.author}</p>
+                  <p className="text-xs text-gray-500">by {app.author}</p>
                 </div>
               </div>
-              {app.is_featured && <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-xs font-medium">{t.marketplacePage.featured}</span>}
+              {app.is_featured && <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-xs font-medium">Featured</span>}
             </div>
-            <p className="text-sm text-gray-600 mb-3 line-clamp-2">{app.short_description || t.marketplacePage.noDescription}</p>
+            <p className="text-sm text-gray-600 mb-3 line-clamp-2">{app.short_description || 'No description'}</p>
             <div className="flex items-center justify-between">
               <div className="flex gap-2 text-xs">
                 <span className="px-2 py-0.5 bg-gray-100 rounded">{app.category}</span>
@@ -133,8 +131,8 @@ export default function MarketplacePage({ token }: { token: string }) {
         ))}
         {apps.length === 0 && (
           <div className="col-span-3 text-center py-12">
-            <p className="text-gray-400 text-lg">{t.marketplacePage.noAppsFound}</p>
-            <p className="text-gray-400 text-sm mt-1">{t.marketplacePage.tryAdjusting}</p>
+            <p className="text-gray-400 text-lg">No apps found</p>
+            <p className="text-gray-400 text-sm mt-1">Try adjusting your search or browse categories</p>
           </div>
         )}
       </div>
