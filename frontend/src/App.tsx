@@ -31,6 +31,7 @@ import SettingsPage from './components/SettingsPage';
 
 import OnboardingWizard from './components/OnboardingWizard';
 import LandingPage from './components/LandingPage';
+import DemoPage from './components/DemoPage';
 import AdminLayout from './components/AdminLayout';
 import MasterDashboard from './pages/MasterDashboard';
 import TenantManagement from './pages/TenantManagement';
@@ -192,6 +193,7 @@ export default function App() {
   const [hydrating, setHydrating] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const demoMode = new URLSearchParams(window.location.search).get('demo') === '1';
 
   useEffect(() => {
     document.documentElement.dir = isRTL ? 'rtl' : 'ltr';
@@ -271,6 +273,10 @@ export default function App() {
     setCurrentPage(page);
     if (page !== 'entity') setSelectedEntity(null);
   };
+
+  if (demoMode) {
+    return <DemoPage onExit={() => { window.history.replaceState({}, '', window.location.pathname); window.location.reload(); }} />;
+  }
 
   if (hydrating) {
     return (
