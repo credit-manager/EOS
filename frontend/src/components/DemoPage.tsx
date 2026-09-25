@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 
 type Mode = 'business' | 'owner';
 type Page =
@@ -148,6 +148,7 @@ export default function DemoPage({onExit}:{onExit:()=>void}) {
             {mode==='business' && page==='graph' && <GraphWorkspace/>}
             {mode==='business' && page==='documents' && <DocumentsWorkspace/>}
             {mode==='owner' && page==='owner-overview' && <OwnerOverview/>}
+            {mode==='owner' && page==='ai' && <OwnerAIWorkspace/>}
             {mode==='owner' && page==='organizations' && <OwnerTable title="Organizations" subtitle="Tenant lifecycle and platform usage" rows={[['Nile Horizon Group','Enterprise','84 users','Healthy'],['Delta Infrastructure','Business','37 users','Healthy'],['Atlas Holdings','Enterprise','126 users','Review'],['Cairo Operations','Business','22 users','Healthy']]}/>}
             {mode==='owner' && page==='users' && <OwnerTable title="Users & Access" subtitle="Identity, roles and organization access" rows={[['Amr Hassan','Nile Horizon Group','Owner','Active'],['Mona Ali','Nile Horizon Group','Finance','Active'],['Omar Saleh','Delta Infrastructure','Admin','Active'],['Sara Nabil','Atlas Holdings','Manager','Review']]}/>}
             {mode==='owner' && page==='subscriptions' && <OwnerTable title="Subscriptions & Billing" subtitle="Commercial status across organizations" rows={[['Nile Horizon Group','Enterprise','Active','$4,800 / mo'],['Delta Infrastructure','Business','Active','$1,900 / mo'],['Atlas Holdings','Enterprise','Trial','$0 / mo'],['Cairo Operations','Business','Active','$1,200 / mo']]}/>}
@@ -160,7 +161,7 @@ export default function DemoPage({onExit}:{onExit:()=>void}) {
   );
 }
 
-function Section({eyebrow,title,children}:{eyebrow?:string;title:string;children:React.ReactNode}) {
+function Section({eyebrow,title,children}:{eyebrow?:string;title:string;children:ReactNode}) {
   return <section className="space-y-4"><div><div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{eyebrow}</div><h2 className="mt-1 text-lg font-bold tracking-tight">{title}</h2></div>{children}</section>;
 }
 
@@ -194,3 +195,4 @@ function DataTable({title,subtitle,cols,rows}:{title:string;subtitle:string;cols
 function OwnerOverview(){return <div className="space-y-8"><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[['Organizations','48','+6 this month'],['Active Users','2,841','98.2% active'],['AI Usage','18.4K','tasks this month'],['Platform Health','99.98%','All core services']].map(x=><div key={x[0]} className="rounded-2xl border border-slate-200 bg-white p-5"><div className="text-xs text-slate-500">{x[0]}</div><div className="mt-2 text-2xl font-bold">{x[1]}</div><div className="mt-2 text-[11px] font-semibold text-emerald-600">{x[2]}</div></div>)}</div><Section eyebrow="Platform" title="Control plane"><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{['Tenant lifecycle','Subscriptions & billing','AI governance','Security & audit','System health','Platform usage'].map(x=><div key={x} className="rounded-2xl border border-slate-200 bg-white p-5"><h3 className="font-bold">{x}</h3><p className="mt-2 text-xs leading-5 text-slate-500">Manage and monitor this platform capability from the control plane.</p><div className="mt-5 text-[11px] font-bold">Open →</div></div>)}</div></Section></div>}
 function OwnerTable({title,subtitle,rows}:{title:string;subtitle:string;rows:string[][]}){return <DataTable title={title} subtitle={subtitle} cols={['Resource','Context','Status','Detail']} rows={rows}/>}
 
+\nfunction OwnerAIWorkspace(){return <Section eyebrow="Platform intelligence" title="AI Control Center"><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{[['AI agents','7','Active workforce'],['Tasks executed','18.4K','This month'],['Governance events','312','Reviewed'],['Model usage','74%','Within policy'],['Escalations','18','Require review'],['AI availability','99.91%','Operational']].map(x=><div key={x[0]} className="rounded-2xl border border-slate-200 bg-white p-5"><div className="text-xs text-slate-500">{x[0]}</div><div className="mt-2 text-2xl font-bold">{x[1]}</div><div className="mt-2 text-[11px] font-semibold text-emerald-600">{x[2]}</div></div>)}</div></Section>}\n
