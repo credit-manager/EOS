@@ -1,0 +1,576 @@
+from copy import deepcopy
+from datetime import UTC, datetime
+from typing import Any
+from uuid import UUID
+
+from fastapi import HTTPException
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from ..audit.models import AuditEvent
+from ..events.service import publish as publish_event
+from ..metadata.models import MetadataEntity
+from ..policy import evaluate_conditions
+from ..records.models import Record
+from .models import ApprovalTask, WorkflowDefinition, WorkflowInstance, WorkflowSLALog
+from .schemas import WorkflowDefinitionCreate
+
+logger = __import__("logging").getLogger("2to-eos.workflow")
+
+
+# ---------------------------------------------------------------------------
+# Context helpers
+# ---------------------------------------------------------------------------
+
+def build_workflow_context(
+    instance: WorkflowInstance,
+    definition: WorkflowDefinition,
+    *,
+    user_id: UUID,
+    role: str,
+    payload: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return {
+        "workflow": {
+            "instance_id": str(instance.id),
+            "workflow_code": definition.code,
+            "current_state": instance.current_state,
+            "reference_type": instance.reference_type,
+            "reference_id": str(instance.reference_id),
+            "status": instance.status,
+        },
+        "actor": {"user_id": str(user_id), "role": role},
+        "payload": payload or {},
+    }
+
+
+def _transition_ref_payload(instance: WorkflowInstance, definition: WorkflowDefinition) -> dict[str, Any]:
+    return {
+        "workflow_code": definition.code,
+        "workflow_version": definition.version,
+        "reference_type": instance.reference_type,
+        "reference_id": str(instance.reference_id),
+    }
+
+
+def _definition_graph(definition: WorkflowDefinition) -> list[dict]:
+    return definition.definition["transitions"]
+
+
+def _is_terminal(definition: WorkflowDefinition, state: str) -> bool:
+    return not any(item["from_state"] == state for item in _definition_graph(definition))
+
+
+# ---------------------------------------------------------------------------
+# Definition CRUD
+# ---------------------------------------------------------------------------
+
+def get_definition(db: Session, tenant_id: UUID, code: str) -> WorkflowDefinition:
+    definition = db.scalar(
+        select(WorkflowDefinition)
+        .where(
+            WorkflowDefinition.tenant_id == tenant_id,
+            WorkflowDefinition.code == code,
+            WorkflowDefinition.is_active.is_(True),
+        )
+        .order_by(WorkflowDefinition.version.desc())
+    )
+    if definition is None:
+        raise HTTPException(status_code=404, detail="workflow definition not found")
+    return definition
+
+
+def create_definition(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    payload: WorkflowDefinitionCreate,
+    request_id: str | None,
+) -> WorkflowDefinition:
+    current = db.scalar(
+        select(func.max(WorkflowDefinition.version)).where(
+            WorkflowDefinition.tenant_id == tenant_id,
+            WorkflowDefinition.code == payload.code,
+        )
+    )
+    definition = WorkflowDefinition(
+        tenant_id=tenant_id,
+        code=payload.code,
+        name=payload.name,
+        version=(current or 0) + 1,
+        initial_state=payload.initial_state,
+        definition={
+            "states": payload.states,
+            "transitions": [item.model_dump(mode="json") for item in payload.transitions],
+        },
+        is_active=payload.is_active,
+        created_by=user_id,
+    )
+    db.add(definition)
+    db.flush()
+    db.add(
+        AuditEvent(
+            tenant_id=tenant_id,
+            actor_id=user_id,
+            action="workflow.definition.created",
+            resource_type="workflow_definition",
+            resource_id=definition.id,
+            request_id=request_id,
+            details={"code": definition.code, "version": definition.version},
+        )
+    )
+    return definition
+
+
+# ---------------------------------------------------------------------------
+# Instance lifecycle
+# ---------------------------------------------------------------------------
+
+def start_instance(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    workflow_code: str,
+    reference_type: str,
+    reference_id: UUID,
+    request_id: str | None,
+) -> WorkflowInstance:
+    definition = get_definition(db, tenant_id, workflow_code)
+    instance = WorkflowInstance(
+        tenant_id=tenant_id,
+        workflow_definition_id=definition.id,
+        reference_type=reference_type,
+        reference_id=reference_id,
+        current_state=definition.initial_state,
+        status="completed" if _is_terminal(definition, definition.initial_state) else "active",
+        created_by=user_id,
+    )
+    db.add(instance)
+    db.flush()
+    db.add(
+        AuditEvent(
+            tenant_id=tenant_id,
+            actor_id=user_id,
+            action="workflow.instance.started",
+            resource_type="workflow_instance",
+            resource_id=instance.id,
+            request_id=request_id,
+            details={"workflow_code": workflow_code, "state": instance.current_state},
+        )
+    )
+    publish_event(
+        db,
+        tenant_id=tenant_id,
+        event_type="workflow.instance.started",
+        entity_type=reference_type,
+        entity_id=str(reference_id),
+        actor_id=str(user_id),
+        payload={
+            **_transition_ref_payload(instance, definition),
+            "state": instance.current_state,
+        },
+        request_id=request_id,
+    )
+    return instance
+
+
+# ---------------------------------------------------------------------------
+# Transition actions
+# ---------------------------------------------------------------------------
+
+def _apply_transition_actions(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    instance: WorkflowInstance,
+    actions: list[dict],
+    request_id: str | None,
+) -> None:
+    for action in actions:
+        action_type = action.get("type")
+        if action_type != "set_record_field":
+            raise HTTPException(status_code=422, detail=f"unsupported workflow action: {action_type}")
+
+        if not instance.reference_type:
+            raise HTTPException(status_code=409, detail="workflow action requires a record reference")
+
+        record = db.scalar(
+            select(Record)
+            .where(
+                Record.id == instance.reference_id,
+                Record.tenant_id == tenant_id,
+                Record.entity_code == instance.reference_type,
+                Record.workflow_instance_id == instance.id,
+            )
+            .with_for_update()
+        )
+        if record is None:
+            raise HTTPException(status_code=409, detail="workflow action record is not bound to this instance")
+
+        metadata = db.scalar(
+            select(MetadataEntity)
+            .where(
+                MetadataEntity.tenant_id == tenant_id,
+                MetadataEntity.code == record.entity_code,
+                MetadataEntity.published_at.is_not(None),
+            )
+            .order_by(MetadataEntity.version.desc())
+        )
+        if metadata is None:
+            raise HTTPException(status_code=409, detail="workflow action metadata is not published")
+
+        field_code = action.get("field")
+        field_codes = {field["code"] for field in metadata.definition.get("fields", [])}
+        if field_code not in field_codes:
+            raise HTTPException(status_code=422, detail=f"workflow action field is not defined: {field_code}")
+
+        data = deepcopy(record.data)
+        data[field_code] = action.get("value")
+        record.data = data
+        record.version += 1
+        db.add(
+            AuditEvent(
+                tenant_id=tenant_id,
+                actor_id=user_id,
+                action="workflow.action.record_field_set",
+                resource_type=record.entity_code,
+                resource_id=record.id,
+                request_id=request_id,
+                details={"field": field_code, "workflow_instance_id": str(instance.id)},
+            )
+        )
+
+
+# ---------------------------------------------------------------------------
+# Transition request
+# ---------------------------------------------------------------------------
+
+def request_transition(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    role: str,
+    instance_id: UUID,
+    action: str,
+    payload: dict[str, Any] | None = None,
+    request_id: str | None,
+) -> tuple[WorkflowInstance, ApprovalTask | None]:
+    instance = db.scalar(
+        select(WorkflowInstance)
+        .where(WorkflowInstance.id == instance_id, WorkflowInstance.tenant_id == tenant_id)
+        .with_for_update()
+    )
+    if instance is None:
+        raise HTTPException(status_code=404, detail="workflow instance not found")
+    if instance.status != "active":
+        raise HTTPException(status_code=409, detail="workflow instance is not active")
+
+    definition = db.get(WorkflowDefinition, instance.workflow_definition_id)
+    if definition is None or not definition.is_active:
+        raise HTTPException(status_code=409, detail="workflow definition is not active")
+
+    transition = next(
+        (
+            item
+            for item in _definition_graph(definition)
+            if item["from_state"] == instance.current_state and item["action"] == action
+        ),
+        None,
+    )
+    if transition is None:
+        raise HTTPException(status_code=422, detail="transition is not allowed from the current state")
+    if role not in transition["roles"]:
+        raise HTTPException(status_code=403, detail="role cannot request this transition")
+
+    if not evaluate_conditions(
+        build_workflow_context(instance, definition, user_id=user_id, role=role, payload=payload),
+        transition.get("conditions", []),
+    ):
+        raise HTTPException(status_code=422, detail="transition conditions are not satisfied")
+
+    if transition["requires_approval"]:
+        pending = db.scalar(
+            select(ApprovalTask).where(
+                ApprovalTask.workflow_instance_id == instance.id,
+                ApprovalTask.status == "pending",
+            )
+        )
+        if pending is not None:
+            raise HTTPException(status_code=409, detail="workflow instance already has a pending approval")
+        task = ApprovalTask(
+            tenant_id=tenant_id,
+            workflow_instance_id=instance.id,
+            action=action,
+            from_state=instance.current_state,
+            to_state=transition["to_state"],
+            requested_by=user_id,
+        )
+        db.add(task)
+        db.flush()
+        db.add(
+            AuditEvent(
+                tenant_id=tenant_id,
+                actor_id=user_id,
+                action="workflow.approval.requested",
+                resource_type="approval_task",
+                resource_id=task.id,
+                request_id=request_id,
+                details={"action": action, "from_state": task.from_state, "to_state": task.to_state},
+            )
+        )
+        return instance, task
+
+    instance.current_state = transition["to_state"]
+    _apply_transition_actions(
+        db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        instance=instance,
+        actions=transition.get("actions", []),
+        request_id=request_id,
+    )
+    if _is_terminal(definition, instance.current_state):
+        instance.status = "completed"
+    db.add(
+        AuditEvent(
+            tenant_id=tenant_id,
+            actor_id=user_id,
+            action="workflow.transition.applied",
+            resource_type="workflow_instance",
+            resource_id=instance.id,
+            request_id=request_id,
+            details={"action": action, "state": instance.current_state},
+        )
+    )
+    _publish_transition(db, definition, instance, user_id, action, transition, request_id)
+    db.flush()
+    return instance, None
+
+
+def _publish_transition(
+    db: Session,
+    definition: WorkflowDefinition,
+    instance: WorkflowInstance,
+    user_id: UUID,
+    action: str,
+    transition: dict,
+    request_id: str | None,
+) -> None:
+    payload = {
+        **_transition_ref_payload(instance, definition),
+        "action": action,
+        "from_state": transition["from_state"],
+        "to_state": transition["to_state"],
+    }
+    publish_event(
+        db,
+        tenant_id=instance.tenant_id,
+        event_type="workflow.transition.applied",
+        entity_type=instance.reference_type,
+        entity_id=str(instance.reference_id),
+        actor_id=str(user_id),
+        payload=payload,
+        request_id=request_id,
+    )
+    if instance.status == "completed":
+        publish_event(
+            db,
+            tenant_id=instance.tenant_id,
+            event_type="workflow.instance.completed",
+            entity_type=instance.reference_type,
+            entity_id=str(instance.reference_id),
+            actor_id=str(user_id),
+            payload=_transition_ref_payload(instance, definition),
+            request_id=request_id,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Approval decision
+# ---------------------------------------------------------------------------
+
+def decide_approval(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    role: str,
+    task_id: UUID,
+    approved: bool,
+    request_id: str | None,
+) -> tuple[ApprovalTask, WorkflowInstance]:
+    task = db.scalar(
+        select(ApprovalTask)
+        .where(ApprovalTask.id == task_id, ApprovalTask.tenant_id == tenant_id)
+        .with_for_update()
+    )
+    if task is None:
+        raise HTTPException(status_code=404, detail="approval task not found")
+    if task.status != "pending":
+        raise HTTPException(status_code=409, detail="approval task is already decided")
+    if task.requested_by == user_id:
+        raise HTTPException(status_code=403, detail="requester cannot approve the same transition")
+
+    instance = db.scalar(
+        select(WorkflowInstance)
+        .where(WorkflowInstance.id == task.workflow_instance_id, WorkflowInstance.tenant_id == tenant_id)
+        .with_for_update()
+    )
+    if instance is None or instance.status != "active":
+        raise HTTPException(status_code=409, detail="workflow instance is not active")
+
+    definition = db.get(WorkflowDefinition, instance.workflow_definition_id)
+    transition = next(
+        (
+            item
+            for item in _definition_graph(definition)
+            if item["from_state"] == task.from_state and item["action"] == task.action
+        ),
+        None,
+    )
+    if transition is None or role not in transition["roles"]:
+        raise HTTPException(status_code=403, detail="role cannot decide this approval")
+
+    task.status = "approved" if approved else "rejected"
+    task.decided_by = user_id
+    task.decided_at = datetime.now(UTC)
+    if approved:
+        instance.current_state = task.to_state
+        _apply_transition_actions(
+            db,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            instance=instance,
+            actions=transition.get("actions", []),
+            request_id=request_id,
+        )
+        if _is_terminal(definition, instance.current_state):
+            instance.status = "completed"
+    db.add(
+        AuditEvent(
+            tenant_id=tenant_id,
+            actor_id=user_id,
+            action="workflow.approval.approved" if approved else "workflow.approval.rejected",
+            resource_type="approval_task",
+            resource_id=task.id,
+            request_id=request_id,
+            details={"action": task.action, "state": instance.current_state},
+        )
+    )
+    if approved:
+        _publish_transition(db, definition, instance, user_id, task.action, transition, request_id)
+    else:
+        publish_event(
+            db,
+            tenant_id=tenant_id,
+            event_type="workflow.transition.rejected",
+            entity_type=instance.reference_type,
+            entity_id=str(instance.reference_id),
+            actor_id=str(user_id),
+            payload={
+                **_transition_ref_payload(instance, definition),
+                "action": task.action,
+                "from_state": task.from_state,
+                "to_state": task.to_state,
+                "task_id": str(task.id),
+            },
+            request_id=request_id,
+        )
+    db.flush()
+    return task, instance
+
+
+# ---------------------------------------------------------------------------
+# Commit helper
+# ---------------------------------------------------------------------------
+
+def commit_workflow(db: Session) -> None:
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="workflow write conflicted with another transaction") from exc
+
+
+# ---------------------------------------------------------------------------
+# SLA / escalation
+# ---------------------------------------------------------------------------
+
+def check_sla_violations(db: Session, tenant_id: UUID) -> dict:
+    now = datetime.now(UTC)
+    pending = db.scalars(
+        select(ApprovalTask)
+        .where(
+            ApprovalTask.tenant_id == tenant_id,
+            ApprovalTask.status == "pending",
+        )
+        .order_by(ApprovalTask.due_at.asc())
+    ).all()
+
+    violated = [t for t in pending if t.due_at and t.due_at < now]
+    warning = [t for t in pending if t.due_at and t.due_at < now.replace(hour=now.hour + 2, minute=0, second=0, microsecond=0)]
+
+    for task in violated:
+        task.escalated_at = now
+        task.escalated_to = task.escalation_role or "admin"
+        db.add(
+            WorkflowSLALog(
+                tenant_id=tenant_id,
+                workflow_instance_id=task.workflow_instance_id,
+                event_type="violated",
+                sla_hours=task.timeout_hours,
+                message=f"Approval task {task.id} overdue",
+            )
+        )
+    for task in warning:
+        if task.reminder_sent_at is None or (now - task.reminder_sent_at).total_seconds() > 3600:
+            task.reminder_sent_at = now
+            db.add(
+                WorkflowSLALog(
+                    tenant_id=tenant_id,
+                    workflow_instance_id=task.workflow_instance_id,
+                    event_type="warning",
+                    sla_hours=task.timeout_hours,
+                    message=f"Approval task {task.id} due soon",
+                )
+            )
+
+    total = len(pending)
+    on_track = total - len(violated) - len(warning)
+    return {
+        "total_pending": total,
+        "violated": len(violated),
+        "warning": len(warning),
+        "on_track": max(0, on_track),
+    }
+
+
+def get_sla_summary(db: Session, tenant_id: UUID) -> dict:
+    rows = db.scalar(
+        select(func.count()).where(ApprovalTask.tenant_id == tenant_id, ApprovalTask.status == "pending")
+    ) or 0
+    return {"total_pending": rows}
+
+
+# ---------------------------------------------------------------------------
+# NEW: Pending approval tasks for my-tasks endpoint
+# ---------------------------------------------------------------------------
+
+def get_pending_approval_tasks(
+    db: Session,
+    tenant_id: UUID,
+    user_id: UUID,
+) -> list[ApprovalTask]:
+    """Return approval tasks pending action from the given user."""
+    return db.scalars(
+        select(ApprovalTask).where(
+            ApprovalTask.tenant_id == tenant_id,
+            ApprovalTask.status == "pending",
+            ApprovalTask.requested_by == user_id,
+        ).order_by(ApprovalTask.requested_at.desc())
+    ).all()
