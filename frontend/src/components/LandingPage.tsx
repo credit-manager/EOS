@@ -15,6 +15,8 @@ const BRANDS = [
 export default function LandingPage({ onShowLogin }: { onShowLogin: () => void }) {
   const { language, setLanguage, isRTL, t } = useI18n();
 
+  const openDemo = () => { window.location.href = `${window.location.pathname}?demo=1`; };
+
   const navLinks = [
     { label: t.landing.features, href: '#features' },
     { label: t.landing.solutions, href: '#solutions' },
@@ -200,7 +202,7 @@ export default function LandingPage({ onShowLogin }: { onShowLogin: () => void }
 
           <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <button
-              onClick={onShowLogin}
+              onClick={openDemo}
               className="w-full rounded-xl bg-indigo-600 px-8 py-3.5 font-semibold text-white shadow-xl shadow-indigo-600/30 transition-colors hover:bg-indigo-500 sm:w-auto"
             >
               {t.landing.startTrial}
@@ -352,7 +354,7 @@ export default function LandingPage({ onShowLogin }: { onShowLogin: () => void }
                 <div className="h-24 w-8 rounded-t bg-white/15" />
               </div>
               <button
-                onClick={onShowLogin}
+                onClick={openDemo}
                 className="relative rounded-full bg-white px-8 py-3.5 font-semibold text-slate-900 shadow-xl transition-transform hover:scale-105"
               >
                 {t.landing.seeInAction}
