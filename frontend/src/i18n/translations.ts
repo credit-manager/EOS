@@ -294,6 +294,20 @@ export interface TranslationKeys {
     noAccount: string;
     createWorkspace: string;
   };
+  authPage: {
+    eyebrow: string;
+    signInTitle: string;
+    createWorkspaceTitle: string;
+    subtitle: string;
+    workspaceName: string;
+    working: string;
+    signInBtn: string;
+    createWorkspaceBtn: string;
+    orContinueWith: string;
+    createNewWorkspace: string;
+    alreadyHaveAccount: string;
+    authFailed: string;
+  };
   onboard: {
     welcomeTitle: string;
     welcomeSubtitle: string;
@@ -1272,6 +1286,17 @@ export interface TranslationKeys {
     analysisInitializing: string;
     aiEngineConnecting: string;
     createFailed: string;
+    loadFailed: string;
+    loadingMetadata: string;
+    published: string;
+    entities: string;
+    signOut: string;
+    createRecord: string;
+    refresh: string;
+    noRecordsYet: string;
+    id: string;
+    createRecordFailed: string;
+    deleteRecordFailed: string;
   };
   workspacePage: {
     askEos: string;
@@ -1937,6 +1962,9 @@ export interface TranslationKeys {
     generateKey: string;
     noAppsRegistered: string;
     loading: string;
+    eventsDashboardDesc: string;
+    keyCreated: string;
+    keyCreatedHint: string;
   };
   catalogPage: {
     eyebrow: string;
@@ -1950,6 +1978,7 @@ export interface TranslationKeys {
     loading: string;
     noEntities: string;
     fields: string;
+    loadError: string;
   };
   marketplacePage: {
     title: string;
@@ -1964,11 +1993,71 @@ export interface TranslationKeys {
     featured: string;
     noDescription: string;
     noAppsFound: string;
-    tryAdjusting: string;
+tryAdjusting: string;
     free: string;
     freemium: string;
     loading: string;
-    globalizationPage: string;
+    by: string;
+  };
+  globalizationPage: {
+    title: string;
+      loading: string;
+      tabCountries: string;
+      tabCurrencies: string;
+      tabPacks: string;
+      tabRates: string;
+      code: string;
+      name: string;
+      currency: string;
+      language: string;
+      timezone: string;
+      symbol: string;
+      decimals: string;
+      active: string;
+      inactive: string;
+      noPacksInstalled: string;
+      rate: string;
+      from: string;
+      to: string;
+      date: string;
+    };
+  integrationsPage: {
+    title: string;
+    loading: string;
+    newIntegration: string;
+    tabIntegrations: string;
+    tabLogs: string;
+    provider: string;
+    timeout: string;
+    retries: string;
+    na: string;
+  };
+  metadataStudio: {
+    title: string;
+    subtitle: string;
+    entityCode: string;
+    displayName: string;
+    newEntity: string;
+    defaultFieldLabel: string;
+    fieldCode: string;
+    fieldType: string;
+    fieldLabel: string;
+    targetEntity: string;
+    relationTarget: string;
+    text: string;
+    integer: string;
+    decimal: string;
+    boolean: string;
+    date: string;
+    uuid: string;
+    relation: string;
+    required: string;
+    remove: string;
+    addField: string;
+    field: string;
+    publishEntity: string;
+    published: string;
+    unableToPublish: string;
   };
 }
 
@@ -2267,6 +2356,20 @@ export const en: TranslationKeys = {
     signingIn: 'Signing in...',
     noAccount: "Don't have an account?",
     createWorkspace: 'Create a new workspace',
+  },
+  authPage: {
+    eyebrow: '2TO / EOS',
+    signInTitle: 'Sign in',
+    createWorkspaceTitle: 'Create your workspace',
+    subtitle: 'Your workspace and permissions come from the signed access token.',
+    workspaceName: 'Workspace name',
+    working: 'Working…',
+    signInBtn: 'Sign in',
+    createWorkspaceBtn: 'Create workspace',
+    orContinueWith: 'Or continue with',
+    createNewWorkspace: 'Create a new workspace',
+    alreadyHaveAccount: 'I already have an account',
+    authFailed: 'Authentication failed',
   },
   onboard: {
     welcomeTitle: 'Welcome to EOS',
@@ -3246,6 +3349,17 @@ export const en: TranslationKeys = {
     analysisInitializing: 'Analysis feature is being initialized.',
     aiEngineConnecting: 'AI engine connecting...',
     createFailed: 'Create failed',
+    loadFailed: 'Unable to load entity',
+    loadingMetadata: 'Loading metadata',
+    published: 'Published',
+    entities: 'Entities',
+    signOut: 'Sign out',
+    createRecord: 'Create record',
+    refresh: 'Refresh',
+    noRecordsYet: 'No records yet.',
+    id: 'ID',
+    createRecordFailed: 'Unable to create record',
+    deleteRecordFailed: 'Unable to delete record',
   },
   workspacePage: {
     askEos: 'Ask EOS',
@@ -3846,8 +3960,167 @@ export const en: TranslationKeys = {
     approved: 'Approved',
     confirm: 'Confirm',
     areYouSure: 'Are you sure?',
-    failedToLoad: 'Failed to load BOQs',
+failedToLoad: 'Failed to load BOQs',
     failedToSave: 'Failed to save',
+  },
+  claimsPage: {
+    editClaim: 'Edit Claim',
+    createClaim: 'Create Claim',
+    claimNumber: 'Claim Number',
+    contract: 'Contract',
+    selectContract: 'Select Contract',
+    claimDate: 'Claim Date',
+    periodStart: 'Period Start',
+    periodEnd: 'Period End',
+  },
+  reportsPage: {
+    reportType: 'Report Type',
+    exportFormat: 'Export Format',
+    generateReport: 'Generate Report',
+    exportCsv: 'Export CSV',
+    exportExcel: 'Export Excel',
+    exportPdf: 'Export PDF',
+    financialSummary: 'Financial Summary',
+    profitLoss: 'Profit & Loss',
+    trialBalance: 'Trial Balance',
+    accountBalances: 'Account Balances',
+    projects: 'Projects',
+    claims: 'Claims',
+  },
+  sdkPage: {
+    title: 'Developer SDK',
+    subtitle: 'Build apps and integrations for EOS',
+    newApp: 'New App',
+    apiKey: 'API Key',
+    totalEvents: 'Total Events',
+    pending: 'Pending',
+    processed: 'Processed',
+    failed: 'Failed',
+    apps: 'Apps',
+    apiKeys: 'API Keys',
+    webhooks: 'Webhooks',
+    events: 'Events',
+    name: 'Name',
+    keyPrefix: 'Key Prefix',
+    uses: 'Uses',
+    status: 'Status',
+    active: 'Active',
+    revoked: 'Revoked',
+    noApiKeys: 'No API keys',
+    event: 'Event',
+    url: 'URL',
+    triggers: 'Triggers',
+    noWebhooks: 'No webhooks',
+    eventsDashboard: 'Events Dashboard',
+    newSdkApp: 'New SDK App',
+    code: 'Code',
+    plugin: 'Plugin',
+    connector: 'Connector',
+    widget: 'Widget',
+    automation: 'Automation',
+    cancel: 'Cancel',
+    create: 'Create',
+    generateApiKey: 'Generate API Key',
+    keyName: 'Key Name',
+    generateKey: 'Generate Key',
+    noAppsRegistered: 'No apps registered',
+    loading: 'Loading...',
+    eventsDashboardDesc: 'View real-time event stream',
+    keyCreated: 'API Key created',
+    keyCreatedHint: "Save this key - it won't be shown again!",
+  },
+  catalogPage: {
+    eyebrow: 'Entity Workspace',
+    title: 'Entity Catalog',
+    subtitle: 'Browse and manage your business entities',
+    signOut: 'Sign Out',
+    publishedEntities: 'Published Entities',
+    available: 'Available',
+    newEntity: 'New Entity',
+    refresh: 'Refresh',
+    loading: 'Loading catalog...',
+    noEntities: 'No published entities exist yet.',
+    fields: 'Fields',
+    loadError: 'Unable to load entity catalog',
+  },
+  marketplacePage: {
+    title: 'Marketplace',
+    subtitle: 'Discover apps, plugins, and integrations for EOS',
+    loading: 'Loading marketplace...',
+    allCategories: 'All Categories',
+    apps: 'Apps',
+    categories: 'Categories',
+    installs: 'Installs',
+    reviews: 'Reviews',
+    searchPlaceholder: 'Search apps and integrations...',
+    search: 'Search',
+    featured: 'Featured',
+    noDescription: 'No description available',
+    noAppsFound: 'No apps found',
+    tryAdjusting: 'Try adjusting your search or filters',
+    free: 'Free',
+    freemium: 'Freemium',
+    by: 'by',
+  },
+  globalizationPage: {
+    title: 'Globalization Engine',
+    loading: 'Loading globalization...',
+    tabCountries: 'Countries',
+    tabCurrencies: 'Currencies',
+    tabPacks: 'Country Packs',
+    tabRates: 'Exchange Rates',
+    code: 'Code',
+    name: 'Name',
+    currency: 'Currency',
+    language: 'Language',
+    timezone: 'Timezone',
+    symbol: 'Symbol',
+    decimals: 'Decimals',
+    active: 'Active',
+    inactive: 'Inactive',
+    noPacksInstalled: 'No country packs installed',
+    rate: 'Rate',
+    from: 'From',
+    to: 'To',
+    date: 'Date',
+  },
+  integrationsPage: {
+    title: 'Integration Hub',
+    loading: 'Loading integrations...',
+    newIntegration: 'New Integration',
+    tabIntegrations: 'Integrations',
+    tabLogs: 'Logs',
+    provider: 'Provider',
+    timeout: 'Timeout',
+    retries: 'Retries',
+    na: 'N/A',
+  },
+  metadataStudio: {
+    title: 'Metadata Studio',
+    subtitle: 'Define an entity',
+    entityCode: 'Entity code',
+    displayName: 'Display name',
+    newEntity: 'New Entity',
+    defaultFieldLabel: 'Name',
+    fieldCode: 'Field code',
+    fieldType: 'Field type',
+    fieldLabel: 'Field label',
+    targetEntity: 'Target entity',
+    relationTarget: 'Relation target',
+    text: 'Text',
+    integer: 'Integer',
+    decimal: 'Decimal',
+    boolean: 'Boolean',
+    date: 'Date',
+    uuid: 'UUID',
+    relation: 'Relation',
+    required: 'Required',
+    remove: 'Remove',
+    addField: 'Add field',
+    field: 'Field',
+    publishEntity: 'Publish entity',
+    published: 'Published',
+    unableToPublish: 'Unable to publish metadata',
   },
 };
 
@@ -4146,6 +4419,20 @@ export const ar: TranslationKeys = {
     signingIn: 'جاري تسجيل الدخول...',
     noAccount: 'ليس لديك حساب؟',
     createWorkspace: 'إنشاء مساحة عمل جديدة',
+  },
+  authPage: {
+    eyebrow: '2TO / EOS',
+    signInTitle: 'تسجيل الدخول',
+    createWorkspaceTitle: 'أنشئ مساحة عملك',
+    subtitle: 'تأتي مساحة عملك والصلاحيات من رمز الوصول الموقّع.',
+    workspaceName: 'اسم مساحة العمل',
+    working: 'جارٍ العمل…',
+    signInBtn: 'تسجيل الدخول',
+    createWorkspaceBtn: 'إنشاء مساحة عمل',
+    orContinueWith: 'أو المتابعة عبر',
+    createNewWorkspace: 'إنشاء مساحة عمل جديدة',
+    alreadyHaveAccount: 'لدي حساب بالفعل',
+    authFailed: 'فشل المصادقة',
   },
   onboard: {
     welcomeTitle: 'مرحباً بك في EOS',
@@ -5125,6 +5412,17 @@ export const ar: TranslationKeys = {
     analysisInitializing: 'ميزة التحليل قيد التهيئة.',
     aiEngineConnecting: 'محرك الذكاء الاصطناعي يتصل...',
     createFailed: 'فشل الإنشاء',
+    loadFailed: 'تعذّر تحميل الكيان',
+    loadingMetadata: 'جارٍ تحميل البيانات الوصفية',
+    published: 'منشور',
+    entities: 'الكيانات',
+    signOut: 'تسجيل الخروج',
+    createRecord: 'إنشاء سجل',
+    refresh: 'تحديث',
+    noRecordsYet: 'لا توجد سجلات بعد.',
+    id: 'المعرف',
+    createRecordFailed: 'تعذّر إنشاء السجل',
+    deleteRecordFailed: 'تعذّر حذف السجل',
   },
   workspacePage: {
     askEos: 'اسأل EOS',
@@ -5725,7 +6023,166 @@ export const ar: TranslationKeys = {
     approved: 'موافق عليه',
     confirm: 'تأكيد',
     areYouSure: 'هل أنت متأكد؟',
-    failedToLoad: 'فشل في تحميل جداول الكميات',
+failedToLoad: 'فشل في تحميل جداول الكميات',
     failedToSave: 'فشل في الحفظ',
+  },
+  claimsPage: {
+    editClaim: 'تعديل المطالبة',
+    createClaim: 'إنشاء مطالبة',
+    claimNumber: 'رقم المطالبة',
+    contract: 'العقد',
+    selectContract: 'اختر العقد',
+    claimDate: 'تاريخ المطالبة',
+    periodStart: 'بداية الفترة',
+    periodEnd: 'نهاية الفترة',
+  },
+  reportsPage: {
+    reportType: 'نوع التقرير',
+    exportFormat: 'صيغة التصدير',
+    generateReport: 'إنشاء تقرير',
+    exportCsv: 'تصدير CSV',
+    exportExcel: 'تصدير Excel',
+    exportPdf: 'تصدير PDF',
+    financialSummary: 'الملخص المالي',
+    profitLoss: 'الأرباح والخسائر',
+    trialBalance: 'ميزان المراجعة',
+    accountBalances: 'أرصدة الحسابات',
+    projects: 'المشاريع',
+    claims: 'المطالبات',
+  },
+  sdkPage: {
+    title: 'SDK المطورين',
+    subtitle: 'بناء تطبيقات وتكاملات لنظام EOS',
+    newApp: 'تطبيق جديد',
+    apiKey: 'مفتاح API',
+    totalEvents: 'إجمالي الأحداث',
+    pending: 'قيد الانتظار',
+    processed: 'تمت المعالجة',
+    failed: 'فشل',
+    apps: 'التطبيقات',
+    apiKeys: 'مفاتيح API',
+    webhooks: 'Webhooks',
+    events: 'الأحداث',
+    name: 'الاسم',
+    keyPrefix: 'بادئة المفتاح',
+    uses: 'الاستخدامات',
+    status: 'الحالة',
+    active: 'نشط',
+    revoked: 'ملغى',
+    noApiKeys: 'لا توجد مفاتيح API',
+    event: 'الحدث',
+    url: 'الرابط',
+    triggers: 'المشغّلات',
+    noWebhooks: 'لا توجد Webhooks',
+    eventsDashboard: 'لوحة أحداث الأحداث',
+    newSdkApp: 'تطبيق SDK جديد',
+    code: 'الكود',
+    plugin: 'إضافة',
+    connector: 'موصل',
+    widget: 'أداة',
+    automation: 'أتمتة',
+    cancel: 'إلغاء',
+    create: 'إنشاء',
+    generateApiKey: 'توليد مفتاح API',
+    keyName: 'اسم المفتاح',
+    generateKey: 'توليد المفتاح',
+    noAppsRegistered: 'لا توجد تطبيقات مسجلة',
+    loading: 'جارٍ التحميل...',
+    eventsDashboardDesc: 'عرض تدفق الأحداث في الوقت الفعلي',
+    keyCreated: 'تم إنشاء مفتاح API',
+    keyCreatedHint: 'احفظ هذا المفتاح - لن يظهر مرة أخرى!',
+  },
+  catalogPage: {
+    eyebrow: 'مساحة عمل الكيانات',
+    title: 'كتالوج الكيانات',
+    subtitle: 'تصفح وإدارة كيانات عملك',
+    signOut: 'تسجيل الخروج',
+    publishedEntities: 'الكيانات المنشورة',
+    available: 'متاح',
+    newEntity: 'كيان جديد',
+    refresh: 'تحديث',
+    loading: 'جارٍ تحميل الكتالوج...',
+    noEntities: 'لا توجد كيانات منشورة بعد.',
+    fields: 'الحقول',
+    loadError: 'تعذر تحميل كتالوج الكيانات',
+  },
+  marketplacePage: {
+    title: 'سوق التطبيقات',
+    subtitle: 'اكتشف التطبيقات والإضافات والتكاملات لنظام EOS',
+    loading: 'جارٍ تحميل السوق...',
+    allCategories: 'جميع الفئات',
+    apps: 'التطبيقات',
+    categories: 'الفئات',
+    installs: 'التنصيبات',
+    reviews: 'التقييمات',
+    searchPlaceholder: 'البحث عن التطبيقات والتكاملات...',
+    search: 'بحث',
+    featured: 'مميز',
+    noDescription: 'لا يوجد وصف متاح',
+    noAppsFound: 'لم يتم العثور على تطبيقات',
+    tryAdjusting: 'جرّب تعديل البحث أو الفلاتر',
+    free: 'مجاني',
+    freemium: 'مدفوع',
+    by: 'بواسطة',
+  },
+  globalizationPage: {
+    title: 'محرك العولمة',
+    loading: 'جارٍ تحميل بيانات العولمة...',
+    tabCountries: 'الدول',
+    tabCurrencies: 'العملات',
+    tabPacks: 'الحزم الوطنية',
+    tabRates: 'أسعار الصرف',
+    code: 'الكود',
+    name: 'الاسم',
+    currency: 'العملة',
+    language: 'اللغة',
+    timezone: 'المنطقة الزمنية',
+    symbol: 'الرمز',
+    decimals: 'الكسور العشرية',
+    active: 'نشط',
+    inactive: 'غير نشط',
+    noPacksInstalled: 'لا توجد حزم دول مثبتة',
+    rate: 'السعر',
+    from: 'من',
+    to: 'إلى',
+    date: 'التاريخ',
+  },
+  integrationsPage: {
+    title: 'مركز التكامل',
+    loading: 'جارٍ تحميل التكاملات...',
+    newIntegration: 'تكامل جديد',
+    tabIntegrations: 'التكاملات',
+    tabLogs: 'السجلات',
+    provider: 'المزود',
+    timeout: 'مهلة الانتظار',
+    retries: 'المحاولات',
+    na: 'غير متوفر',
+  },
+  metadataStudio: {
+    title: 'استوديو البيانات الوصفية',
+    subtitle: 'تعريف كيان',
+    entityCode: 'رمز الكيان',
+    displayName: 'الاسم المعروض',
+    newEntity: 'كيان جديد',
+    defaultFieldLabel: 'الاسم',
+    fieldCode: 'رمز الحقل',
+    fieldType: 'نوع الحقل',
+    fieldLabel: 'اسم الحقل',
+    targetEntity: 'الكيان الهدف',
+    relationTarget: 'هدف العلاقة',
+    text: 'نص',
+    integer: 'عدد صحيح',
+    decimal: 'عشري',
+    boolean: 'منطقي',
+    date: 'تاريخ',
+    uuid: 'UUID',
+    relation: 'علاقة',
+    required: 'مطلوب',
+    remove: 'إزالة',
+    addField: 'إضافة حقل',
+    field: 'حقل',
+    publishEntity: 'نشر الكيان',
+    published: 'تم نشر',
+    unableToPublish: 'تعذر نشر البيانات الوصفية',
   },
 };

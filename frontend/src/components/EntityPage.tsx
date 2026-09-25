@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import type { Metadata, RecordItem, Field, PermissionAction } from '../types';
+import { useI18n } from '../i18n';
 import { RelationField } from './RelationField';
 
 interface EntityPageProps {
@@ -12,6 +13,7 @@ interface EntityPageProps {
 }
 
 export function EntityPage({ token, role, entityCode, onLogout, onBack }: EntityPageProps) {
+  const { t } = useI18n();
   const [metadata, setMetadata] = useState<Metadata | null>(null);
   const [records, setRecords] = useState<RecordItem[]>([]);
   const [form, setForm] = useState<Record<string, string | boolean>>({});
@@ -36,7 +38,7 @@ export function EntityPage({ token, role, entityCode, onLogout, onBack }: Entity
       setMetadata(meta);
       setRecords(items);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load entity');
+      setError(err instanceof Error ? err.message : t.entityPage.loadFailed);
     } finally {
       setBusy(false);
     }
@@ -74,7 +76,7 @@ export function EntityPage({ token, role, entityCode, onLogout, onBack }: Entity
       setForm({});
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to create record');
+      setError(err instanceof Error ? err.message : t.entityPage.createRecordFailed);
     }
   }
 
@@ -84,7 +86,7 @@ export function EntityPage({ token, role, entityCode, onLogout, onBack }: Entity
       await api(`/entities/${entityCode}/records/${record.id}`, token, { method: 'DELETE' });
       setRecords((current) => current.filter((item) => item.id !== record.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to delete record');
+      setError(err instanceof Error ? err.message : t.entityPage.deleteRecordFailed);
     }
   }
 
@@ -98,13 +100,13 @@ export function EntityPage({ token, role, entityCode, onLogout, onBack }: Entity
         </div>
         <div className="actions">
           <div className="pill">
-            {metadata ? `v${metadata.version} · Published` : 'Loading metadata'}
+            {metadata ? `v${metadata.version} · ${t.entityPage.published}` : t.entityPage.loadingMetadata}
           </div>
           <button className="secondary" onClick={onBack}>
-            Entities
+            {t.entityPage.entities}
           </button>
           <button className="secondary" onClick={onLogout}>
-            Sign out
+            {t.entityPage.signOut}
           </button>
         </div>
       </header>
@@ -115,7 +117,7 @@ export function EntityPage({ token, role, entityCode, onLogout, onBack }: Entity
       )}
       {metadata && (
         <section className="card">
-          <h2>New record</h2>
+          <h2>{t.entityPage.newRecordTitle}</h2>
           <div className="grid">
             {fields.map((field) => (
               <label key={field.code}>
@@ -154,7 +156,7 @@ export function EntityPage({ token, role, entityCode, onLogout, onBack }: Entity
           </div>
           {allowed('create') && (
             <button disabled={busy || fields.length === 0} onClick={() => void create()}>
-              Create record
+              {t.entityPage.createRecord}
             </button>
           )}
         </section>
@@ -162,19 +164,19 @@ export function EntityPage({ token, role, entityCode, onLogout, onBack }: Entity
       {metadata && (
         <section className="card">
           <div className="section-head">
-            <h2>Records</h2>
+            <h2>{t.entityPage.recordsLabel}</h2>
             <button className="secondary" onClick={() => void load()}>
-              Refresh
+              {t.entityPage.refresh}
             </button>
           </div>
           {records.length === 0 ? (
-            <p className="muted">No records yet.</p>
+            <p className="muted">{t.entityPage.noRecordsYet}</p>
           ) : (
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>ID</th>
+                    <th>{t.entityPage.id}</th>
                     {fields.map((field) => (
                       <th key={field.code}>{field.label ?? field.code}</th>
                     ))}
@@ -191,7 +193,7 @@ export function EntityPage({ token, role, entityCode, onLogout, onBack }: Entity
                       <td>
                         {allowed('delete') && (
                           <button className="danger" onClick={() => void remove(record)}>
-                            Delete
+                            {t.entityPage.delete}
                           </button>
                         )}
                       </td>
