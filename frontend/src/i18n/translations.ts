@@ -361,6 +361,163 @@ export interface TranslationKeys {
     uptime: string;
     companies: string;
     solutions: string;
+    navPlatform: string;
+    navAiWorkforce: string;
+    navIndustries: string;
+    navResources: string;
+    requestAccess: string;
+    heroEyebrow: string;
+    heroBadge: string;
+    heroTitle: string;
+    heroSubtitleNew: string;
+    heroCtaPrimary: string;
+    heroCtaSecondary: string;
+    heroScroll: string;
+    dashTitle: string;
+    dashSubtitle: string;
+    dashRevenue: string;
+    dashOperations: string;
+    dashCashFlow: string;
+    dashWorkforce: string;
+    dashAiAgents: string;
+    dashAutomation: string;
+    dashAlerts: string;
+    dashBusinessHealth: string;
+    dashRevenueValue: string;
+    dashRevenueChange: string;
+    dashOperationsValue: string;
+    dashOperationsChange: string;
+    dashCashValue: string;
+    dashCashChange: string;
+    dashWorkforceValue: string;
+    dashAgentsActive: string;
+    dashAgentsIdle: string;
+    dashAutomationRuns: string;
+    dashAutomationRate: string;
+    dashAlertsCount: string;
+    dashAlertsLabel: string;
+    dashHealthLabel: string;
+    dashHealthScore: string;
+    dashStatus: string;
+    dashActive: string;
+    dashPending: string;
+    dashMonthly: string;
+    dashPendingApproval: string;
+    dashLowStock: string;
+    dashOverdueInvoice: string;
+    dashFlowRevenue: string;
+    dashFlowExpenses: string;
+    dashFlowMargin: string;
+    archTitle: string;
+    archSubtitle: string;
+    archTraditional: string;
+    archTraditionalDesc: string;
+    archTraditionalFlow1: string;
+    archTraditionalFlow2: string;
+    archTraditionalFlow3: string;
+    archTraditionalProblem1: string;
+    archTraditionalProblem2: string;
+    archTraditionalProblem3: string;
+    archEos: string;
+    archEosDesc: string;
+    archEosFlow1: string;
+    archEosFlow2: string;
+    archEosFlow3: string;
+    archEosFlow4: string;
+    archEosFlow5: string;
+    archEosFlow6: string;
+    archErosionNote: string;
+    aiTitle: string;
+    aiSubtitle: string;
+    aiIntro: string;
+    aiFinance: string;
+    aiFinanceDesc: string;
+    aiOperations: string;
+    aiOperationsDesc: string;
+    aiSales: string;
+    aiSalesDesc: string;
+    aiProcurement: string;
+    aiProcurementDesc: string;
+    aiExecutive: string;
+    aiExecutiveDesc: string;
+    aiGovernedNote: string;
+    aiNotChatbot: string;
+    aiCapabilities: string;
+    aiCapContext: string;
+    aiCapPlanning: string;
+    aiCapTools: string;
+    aiCapPolicy: string;
+    aiCapVerify: string;
+    aiCapAudit: string;
+    autoTitle: string;
+    autoSubtitle: string;
+    autoStep1: string;
+    autoStep1Desc: string;
+    autoStep2: string;
+    autoStep2Desc: string;
+    autoStep3: string;
+    autoStep3Desc: string;
+    autoStep4: string;
+    autoStep4Desc: string;
+    autoStep5: string;
+    autoStep5Desc: string;
+    autoNote: string;
+    trustTitle: string;
+    trustSubtitle: string;
+    trustSecurity: string;
+    trustSecurityDesc: string;
+    trustGovernance: string;
+    trustGovernanceDesc: string;
+    trustPermissions: string;
+    trustPermissionsDesc: string;
+    trustAudit: string;
+    trustAuditDesc: string;
+    trustScalability: string;
+    trustScalabilityDesc: string;
+    trustIsolation: string;
+    trustIsolationDesc: string;
+    trustAiGovernance: string;
+    trustAiGovernanceDesc: string;
+    trustTenantIsolation: string;
+    trustTenantIsolationDesc: string;
+    adoptTitle: string;
+    adoptSubtitle: string;
+    adoptPlatform: string;
+    adoptPlatformDesc: string;
+    adoptBusiness: string;
+    adoptBusinessDesc: string;
+    adoptEnterprise: string;
+    adoptEnterpriseDesc: string;
+    adoptIncludes: string;
+    adoptStarterFeature1: string;
+    adoptStarterFeature2: string;
+    adoptStarterFeature3: string;
+    adoptStarterFeature4: string;
+    adoptProFeature1: string;
+    adoptProFeature2: string;
+    adoptProFeature3: string;
+    adoptProFeature4: string;
+    adoptEntFeature1: string;
+    adoptEntFeature2: string;
+    adoptEntFeature3: string;
+    adoptEntFeature4: string;
+    adoptPopular: string;
+    adoptPriceStarter: string;
+    adoptPricePro: string;
+    adoptPriceEnt: string;
+    adoptPricePeriod: string;
+    adoptCta: string;
+    adoptContact: string;
+    adoptNote: string;
+    ctaEyebrow: string;
+    ctaHeading: string;
+    ctaDesc: string;
+    ctaPrimary: string;
+    ctaSecondary: string;
+    footerTagline: string;
+    footerDesc: string;
+    footerSystemStatus: string;
+    footerAllSystems: string;
   };
   login: {
     backToHome: string;
@@ -2503,6 +2660,163 @@ export const en: TranslationKeys = {
     uptime: '99.9% Uptime',
     companies: 'companies',
     solutions: 'Solutions',
+    navPlatform: 'Platform',
+    navAiWorkforce: 'AI Workforce',
+    navIndustries: 'Industries',
+    navResources: 'Resources',
+    requestAccess: 'Request Access',
+    heroEyebrow: '2TO EOS',
+    heroBadge: 'AI-native Business Operating System',
+    heroTitle: 'The operating system for your business.',
+    heroSubtitleNew: '2TO EOS unifies your business model, data, rules, workflows, financial reality, and AI workforce into one intelligent platform that understands, orchestrates, and executes work.',
+    heroCtaPrimary: 'Request Access',
+    heroCtaSecondary: 'Explore the Platform',
+    heroScroll: 'Scroll to explore',
+    dashTitle: 'Enterprise Command Center',
+    dashSubtitle: 'A single view of revenue, operations, cash flow, and AI workforce — in real time.',
+    dashRevenue: 'Revenue',
+    dashOperations: 'Operations',
+    dashCashFlow: 'Cash Flow',
+    dashWorkforce: 'Workforce',
+    dashAiAgents: 'AI Agents',
+    dashAutomation: 'Automation',
+    dashAlerts: 'Alerts',
+    dashBusinessHealth: 'Business Health',
+    dashRevenueValue: '$2.4M',
+    dashRevenueChange: '+12.4%',
+    dashOperationsValue: '1,247',
+    dashOperationsChange: '+8.1%',
+    dashCashValue: '$847K',
+    dashCashChange: '+5.3%',
+    dashWorkforceValue: '342',
+    dashAgentsActive: '12 Active',
+    dashAgentsIdle: '3 Idle',
+    dashAutomationRuns: '1,847',
+    dashAutomationRate: '94.2%',
+    dashAlertsCount: '3',
+    dashAlertsLabel: 'Requires attention',
+    dashHealthLabel: 'Overall score',
+    dashHealthScore: '92',
+    dashStatus: 'Status',
+    dashActive: 'Active',
+    dashPending: 'Pending',
+    dashMonthly: 'this month',
+    dashPendingApproval: 'PO requires approval — $12,400',
+    dashLowStock: 'Low stock alert — Steel beams',
+    dashOverdueInvoice: 'Invoice overdue — 7 days',
+    dashFlowRevenue: 'Revenue',
+    dashFlowExpenses: 'Expenses',
+    dashFlowMargin: 'Margin',
+    archTitle: 'Beyond Traditional ERP',
+    archSubtitle: 'ERP is the first application inside 2TO EOS — not the entire product.',
+    archTraditional: 'Traditional ERP',
+    archTraditionalDesc: 'Applications produce data. Data feeds reports. Humans interpret and act.',
+    archTraditionalFlow1: 'Applications',
+    archTraditionalFlow2: 'Data',
+    archTraditionalFlow3: 'Reports',
+    archTraditionalProblem1: 'Siloed modules',
+    archTraditionalProblem2: 'Manual interpretation',
+    archTraditionalProblem3: 'No continuous execution',
+    archEos: '2TO EOS',
+    archEosDesc: 'The business model becomes executable software. AI understands context, plans, and acts within policy.',
+    archEosFlow1: 'Business Model',
+    archEosFlow2: 'Business OS',
+    archEosFlow3: 'ERP',
+    archEosFlow4: 'AI Workforce',
+    archEosFlow5: 'Automation',
+    archEosFlow6: 'Continuous Execution',
+    archErosionNote: 'Every business event is traceable to its financial impact.',
+    aiTitle: 'AI Workforce',
+    aiSubtitle: 'Not a chatbot. Governed agents that understand your business and execute within your policies.',
+    aiIntro: 'EOS AI agents work inside the Business Graph, operating on real company context — not isolated records.',
+    aiFinance: 'Finance Agent',
+    aiFinanceDesc: 'Monitors budgets, tracks variances, flags anomalies, and prepares financial summaries.',
+    aiOperations: 'Operations Agent',
+    aiOperationsDesc: 'Tracks process health, identifies bottlenecks, and suggests workflow optimizations.',
+    aiSales: 'Sales Agent',
+    aiSalesDesc: 'Analyzes pipeline, identifies at-risk deals, and generates customer insights.',
+    aiProcurement: 'Procurement Agent',
+    aiProcurementDesc: 'Compares suppliers, monitors spend against budget, and flags compliance issues.',
+    aiExecutive: 'Executive Agent',
+    aiExecutiveDesc: 'Synthesizes cross-departmental data into strategic insights and decision support.',
+    aiGovernedNote: 'Every agent operates under defined permissions, policies, and audit trails. Agents cannot bypass tenant isolation, financial invariants, or approval requirements.',
+    aiNotChatbot: 'AI does not merely answer. It understands, plans, coordinates, acts, verifies, and explains.',
+    aiCapabilities: 'Capabilities',
+    aiCapContext: 'Business Context',
+    aiCapPlanning: 'Planning',
+    aiCapTools: 'Tool Selection',
+    aiCapPolicy: 'Policy Evaluation',
+    aiCapVerify: 'Verification',
+    aiCapAudit: 'Audit Trail',
+    autoTitle: 'Automation Engine',
+    autoSubtitle: 'Transform business logic into execution. Events trigger decisions, AI acts, and the system verifies.',
+    autoStep1: 'Event',
+    autoStep1Desc: 'A business event occurs — invoice created, threshold exceeded, contract expiring.',
+    autoStep2: 'Decision',
+    autoStep2Desc: 'Rules engine evaluates conditions and determines the appropriate response.',
+    autoStep3: 'AI',
+    autoStep3Desc: 'AI agent analyzes context, selects tools, and plans the action within policy.',
+    autoStep4: 'Action',
+    autoStep4Desc: 'Execution through governed tools with proper approvals and transaction boundaries.',
+    autoStep5: 'Verification',
+    autoStep5Desc: 'System verifies the outcome, records audit trail, and triggers follow-up events.',
+    autoNote: 'The system does not just record what happened — it can turn business logic into execution.',
+    trustTitle: 'Enterprise Trust',
+    trustSubtitle: 'Built for organizations that require security, governance, and accountability at every layer.',
+    trustSecurity: 'Security',
+    trustSecurityDesc: 'Authentication, encryption, rate limiting, input validation, and security headers at every endpoint.',
+    trustGovernance: 'Governance',
+    trustGovernanceDesc: 'Policy engine controls what actions are permitted, by whom, under which conditions.',
+    trustPermissions: 'Permissions',
+    trustPermissionsDesc: 'Role-based access control with granular permissions across all business objects.',
+    trustAudit: 'Auditability',
+    trustAuditDesc: 'Every action, approval, and data change is recorded with full context and history.',
+    trustScalability: 'Scalability',
+    trustScalabilityDesc: 'Multi-tenant architecture designed for growth from startup to enterprise scale.',
+    trustIsolation: 'Data Isolation',
+    trustIsolationDesc: 'Strict tenant isolation ensures each organization sees only its own data.',
+    trustAiGovernance: 'AI Governance',
+    trustAiGovernanceDesc: 'AI agents operate within defined limits, require approvals for sensitive actions, and are fully auditable.',
+    trustTenantIsolation: 'Tenant Isolation',
+    trustTenantIsolationDesc: 'Complete data separation between tenants at the database and API level.',
+    adoptTitle: 'Platform Adoption',
+    adoptSubtitle: 'Choose how your organization adopts EOS. Every plan includes the core platform.',
+    adoptPlatform: 'Starter',
+    adoptPlatformDesc: 'For teams getting started with their first connected workspace.',
+    adoptBusiness: 'Professional',
+    adoptBusinessDesc: 'For growing companies that need AI workforce and advanced automation.',
+    adoptEnterprise: 'Enterprise',
+    adoptEnterpriseDesc: 'For organizations requiring full platform capabilities and dedicated support.',
+    adoptIncludes: "What's included",
+    adoptStarterFeature1: 'Up to 5 users',
+    adoptStarterFeature2: '5 GB storage',
+    adoptStarterFeature3: 'Core platform modules',
+    adoptStarterFeature4: 'Email support',
+    adoptProFeature1: 'Up to 25 users',
+    adoptProFeature2: '50 GB storage',
+    adoptProFeature3: 'All modules + AI Copilot',
+    adoptProFeature4: 'SSO & priority support',
+    adoptEntFeature1: 'Unlimited users & storage',
+    adoptEntFeature2: 'All modules + AI Copilot',
+    adoptEntFeature3: 'Custom objects & API access',
+    adoptEntFeature4: '24/7 support & audit trail',
+    adoptPopular: 'Most adopted',
+    adoptPriceStarter: '$49',
+    adoptPricePro: '$149',
+    adoptPriceEnt: '$499',
+    adoptPricePeriod: '/ month',
+    adoptCta: 'Get Started',
+    adoptContact: 'Contact Sales',
+    adoptNote: 'All plans include multi-tenant security, audit logging, and API access. Annual billing available.',
+    ctaEyebrow: 'Get Started',
+    ctaHeading: 'Ready to see EOS in action?',
+    ctaDesc: 'Connect your systems, model your business, and let AI operate within your policies.',
+    ctaPrimary: 'Request Access',
+    ctaSecondary: 'Sign In',
+    footerTagline: 'AI-native Business Operating System',
+    footerDesc: '2TO EOS turns your business model, data, rules, workflows, and financial reality into one intelligent operating system.',
+    footerSystemStatus: 'System Status',
+    footerAllSystems: 'All systems operational',
   },
   login: {
     backToHome: 'Back to Home',
@@ -4645,6 +4959,163 @@ export const ar: TranslationKeys = {
     uptime: 'وقت تشغيل 99.9%',
     companies: 'شركة',
     solutions: 'الحلول',
+    navPlatform: 'المنصة',
+    navAiWorkforce: 'قوة عمل AI',
+    navIndustries: 'القطاعات',
+    navResources: 'الموارد',
+    requestAccess: 'طلب وصول',
+    heroEyebrow: '2TO EOS',
+    heroBadge: 'نظام تشغيل أعمال مبني على الذكاء الاصطناعي',
+    heroTitle: 'نظام تشغيل شركتك.',
+    heroSubtitleNew: 'يوحد 2TO EOS نموذج عملك وبياناتك وقواعدها وعملياتك وحقيقتك المالية وقوة عمل AI في منصة ذكية واحدة تفهم العمل وتنسيقه وتنفيذه.',
+    heroCtaPrimary: 'طلب وصول',
+    heroCtaSecondary: 'استكشف المنصة',
+    heroScroll: 'مرر للاستكشاف',
+    dashTitle: 'مركز قيادة المؤسسات',
+    dashSubtitle: 'عرض موحد للإيرادات والعمليات والتدفق النقدي وقوة عمل AI — في الوقت الفعلي.',
+    dashRevenue: 'الإيرادات',
+    dashOperations: 'العمليات',
+    dashCashFlow: 'التدفق النقدي',
+    dashWorkforce: 'القوى العاملة',
+    dashAiAgents: 'وكلاء AI',
+    dashAutomation: 'الأتمتة',
+    dashAlerts: 'التنبيهات',
+    dashBusinessHealth: 'صحة الأعمال',
+    dashRevenueValue: '$2.4M',
+    dashRevenueChange: '+12.4%',
+    dashOperationsValue: '1,247',
+    dashOperationsChange: '+8.1%',
+    dashCashValue: '$847K',
+    dashCashChange: '+5.3%',
+    dashWorkforceValue: '342',
+    dashAgentsActive: '12 نشط',
+    dashAgentsIdle: '3 خامل',
+    dashAutomationRuns: '1,847',
+    dashAutomationRate: '94.2%',
+    dashAlertsCount: '3',
+    dashAlertsLabel: 'تتطلب انتباه',
+    dashHealthLabel: 'النتيجة الإجمالية',
+    dashHealthScore: '92',
+    dashStatus: 'الحالة',
+    dashActive: 'نشط',
+    dashPending: 'قيد الانتظار',
+    dashMonthly: 'هذا الشهر',
+    dashPendingApproval: 'أمر شراء يتطلب موافقة — $12,400',
+    dashLowStock: 'تنبيه مخزون منخفض — عوارض فولاذية',
+    dashOverdueInvoice: 'فاتورة متأخرة — 7 أيام',
+    dashFlowRevenue: 'الإيرادات',
+    dashFlowExpenses: 'المصروفات',
+    dashFlowMargin: 'الهامش',
+    archTitle: 'ما وراء ERP التقليدي',
+    archSubtitle: 'ERP هو أول تطبيق داخل 2TO EOS — وليس المنتج كله.',
+    archTraditional: 'ERP التقليدي',
+    archTraditionalDesc: 'التطبيقات تنتج البيانات. البيانات تغذي التقارير. البشر يفسرون ويستجيبون.',
+    archTraditionalFlow1: 'التطبيقات',
+    archTraditionalFlow2: 'البيانات',
+    archTraditionalFlow3: 'التقارير',
+    archTraditionalProblem1: 'وحدات معزولة',
+    archTraditionalProblem2: 'تفسير يدوي',
+    archTraditionalProblem3: 'لا تنفيذ مستمر',
+    archEos: '2TO EOS',
+    archEosDesc: 'نموذج العمل يتحول إلى برنامج قابل للتنفيذ. AI يفهم السياق ويخطط وينفذ ضمن السياسات.',
+    archEosFlow1: 'نموذج العمل',
+    archEosFlow2: 'نظام تشغيل الأعمال',
+    archEosFlow3: 'ERP',
+    archEosFlow4: 'قوة عمل AI',
+    archEosFlow5: 'الأتمتة',
+    archEosFlow6: 'التنفيذ المستمر',
+    archErosionNote: 'كل حدث تجاري قابل للتتبع حتى أثره المالي.',
+    aiTitle: 'قوة عمل AI',
+    aiSubtitle: 'ليس محادثة. وكلاء محكومون يفهمون أعمالك وينفذون ضمن سياساتك.',
+    aiIntro: 'وكلاء EOS AI يعملون داخل الرسم التجاري، بسياق الشركة الحقيقي — وليس سجلات معزولة.',
+    aiFinance: 'وكيل المالية',
+    aiFinanceDesc: 'يراقب الميزانيات ويتابع الانحرافات ويشير إلى الشذوذ ويجهز الملخصات المالية.',
+    aiOperations: 'وكيل العمليات',
+    aiOperationsDesc: 'يتتبع صحة العمليات ويحدد الاختناقات ويقترح تحسينات سير العمل.',
+    aiSales: 'وكيل المبيعات',
+    aiSalesDesc: 'يحلل خط المبيعات ويحدد الصفقات المعرّضة للخطر ويولّد رؤى العملاء.',
+    aiProcurement: 'وكيل المشتريات',
+    aiProcurementDesc: 'يقارن الموردين ويراقب الإنفاق مقابل الميزانية ويشير إلى مشاكل الامتثال.',
+    aiExecutive: 'وكيل تنفيذي',
+    aiExecutiveDesc: 'يجمع بيانات الأقسام المختلفة في رؤى استراتيجية ودعم للقرار.',
+    aiGovernedNote: 'كل وكيل يعمل ضمن صلاحيات وسياسات وسجلات تدقيق محددة. لا يمكن للوكلاء تجاوز عزل المستأجرين أو الثوابت المالية أو متطلبات الموافقة.',
+    aiNotChatbot: 'AI لا يكتفي بالإجابة. إنه يفهم ويخطط وينسق وينفذ ويتحقق ويشرح.',
+    aiCapabilities: 'القدرات',
+    aiCapContext: 'سياق الأعمال',
+    aiCapPlanning: 'التخطيط',
+    aiCapTools: 'اختيار الأدوات',
+    aiCapPolicy: 'تقييم السياسات',
+    aiCapVerify: 'التحقق',
+    aiCapAudit: 'سجل التدقيق',
+    autoTitle: 'محرك الأتمتة',
+    autoSubtitle: 'حول منطق العمل إلى تنفيذ. الأحداث تطلق القرارات، AI ينفذ، والنظام يتحقق.',
+    autoStep1: 'حدث',
+    autoStep1Desc: 'حدث تجاري — فاتورة منشورة، تجاوز عتبة، عقد ينتهي قريباً.',
+    autoStep2: 'قرار',
+    autoStep2Desc: 'محرك القواعد يقيّم الشروط ويحدد الاستجابة المناسبة.',
+    autoStep3: 'AI',
+    autoStep3Desc: 'وكيل AI يحلل السياق ويحدد الأدوات ويخطط للإجراء ضمن السياسة.',
+    autoStep4: 'إجراء',
+    autoStep4Desc: 'تنفيذ عبر أدوات محكومة مع الموافقات المناسبة وحدود المعاملات.',
+    autoStep5: 'تحقق',
+    autoStep5Desc: 'النظام يتحقق من النتيجة ويسجل سجل التدقيق ويطلق أحداث المتابعة.',
+    autoNote: 'النظام لا يسجل ما حدث فقط — بل يمكنه تحويل منطق العمل إلى تنفيذ.',
+    trustTitle: 'ثقة المؤسسات',
+    trustSubtitle: 'مبني للمؤسسات التي تتطلب أماناً وحوكمة ومساءلة في كل طبقة.',
+    trustSecurity: 'الأمان',
+    trustSecurityDesc: 'المصادقة والتشفير وتحديد المعدل والتحقق من المدخلات ورؤوس الأمان في كل نقطة نهاية.',
+    trustGovernance: 'الحوكمة',
+    trustGovernanceDesc: 'محرك السياسات يتحكم في العمليات المسموح بها، من طرف، وتحت أي ظروف.',
+    trustPermissions: 'الصلاحيات',
+    trustPermissionsDesc: 'تحكم وصول قائم على الأدوار مع صلاحيات دقيقة عبر جميع الكيانات التجارية.',
+    trustAudit: 'المساءلة',
+    trustAuditDesc: 'كل إجراء وموافقة وتغيير بيانات يُسجل بالسياق الكامل والسجل التاريخي.',
+    trustScalability: 'قابلية التوسع',
+    trustScalabilityDesc: 'معمارية متعددة المستأجرين مصممة للنمو من الشركة الناشئة إلى مستوى المؤسسات.',
+    trustIsolation: 'عزل البيانات',
+    trustIsolationDesc: 'عزل صارم للمستأجرين يضمن أن كل مؤسسة ترى بياناتها فقط.',
+    trustAiGovernance: 'حوكمة AI',
+    trustAiGovernanceDesc: 'وكلاء AI يعملون ضمن حدود محددة ويتطلبون موافقات للإجراءات الحساسة وقابلون للتدقيق بالكامل.',
+    trustTenantIsolation: 'عزل المستأجرين',
+    trustTenantIsolationDesc: 'فصل كامل للبيانات بين المستأجرين على مستوى قاعدة البيانات و API.',
+    adoptTitle: 'تبني المنصة',
+    adoptSubtitle: 'اختر كيف تتبنى مؤسستك EOS. كل خطة تشمل المنصة الأساسية.',
+    adoptPlatform: 'الأساسي',
+    adoptPlatformDesc: 'للفرق التي تبدأ بأول مساحة عمل مرتبطة.',
+    adoptBusiness: 'الاحترافي',
+    adoptBusinessDesc: 'للشركات النامية التي تحتاج قوة عمل AI وأتمتة متقدمة.',
+    adoptEnterprise: 'المؤسسات',
+    adoptEnterpriseDesc: 'للمؤسسات التي تتطلب قدرات المنصة الكاملة ودعماً مخصصاً.',
+    adoptIncludes: 'ما تحصل عليه',
+    adoptStarterFeature1: 'حتى 5 مستخدمين',
+    adoptStarterFeature2: 'تخزين 5 جيجابايت',
+    adoptStarterFeature3: 'وحدات المنصة الأساسية',
+    adoptStarterFeature4: 'دعم بالبريد الإلكتروني',
+    adoptProFeature1: 'حتى 25 مستخدم',
+    adoptProFeature2: 'تخزين 50 جيجابايت',
+    adoptProFeature3: 'جميع الوحدات + مساعد AI',
+    adoptProFeature4: 'تسجيل دخول موحد ودعم ذو أولوية',
+    adoptEntFeature1: 'مستخدمون وتخزين غير محدودين',
+    adoptEntFeature2: 'جميع الوحدات + مساعد AI',
+    adoptEntFeature3: 'كيانات مخصصة ووصول API',
+    adoptEntFeature4: 'دعم 24/7 وسجل تدقيق',
+    adoptPopular: 'الأكثر تبنياً',
+    adoptPriceStarter: '$49',
+    adoptPricePro: '$149',
+    adoptPriceEnt: '$499',
+    adoptPricePeriod: '/ شهرياً',
+    adoptCta: 'ابدأ الآن',
+    adoptContact: 'تواصل مع المبيعات',
+    adoptNote: 'كل الخطط تشمل أمان متعدد المستأجرين وتسجيل التدقيق ووصول API. الفوترة السنوية متاحة.',
+    ctaEyebrow: 'ابدأ الآن',
+    ctaHeading: 'مستعد لرؤية EOS بالفعل؟',
+    ctaDesc: 'اربط أنظمتك ونمذجة أعمالك ودع AI ينفذ ضمن سياساتك.',
+    ctaPrimary: 'طلب وصول',
+    ctaSecondary: 'تسجيل الدخول',
+    footerTagline: 'نظام تشغيل أعمال مبني على الذكاء الاصطناعي',
+    footerDesc: 'يحول 2TO EOS نموذج عملك وبياناتك وقواعدها وعملياتك وحقيقتك المالية إلى نظام تشغيل ذكي واحد.',
+    footerSystemStatus: 'حالة النظام',
+    footerAllSystems: 'جميع الأنظمة تعمل',
   },
   login: {
     backToHome: 'العودة للرئيسية',
