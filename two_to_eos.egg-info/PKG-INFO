@@ -1,0 +1,21 @@
+Metadata-Version: 2.4
+Name: two-to-eos
+Version: 0.3.0
+Summary: 2TO EOS ERP Platform
+Requires-Python: >=3.11
+License-File: LICENSE
+Requires-Dist: fastapi<1,>=0.116
+Requires-Dist: uvicorn[standard]<1,>=0.35
+Requires-Dist: pydantic-settings<3,>=2.10
+Requires-Dist: sqlalchemy<3,>=2.0.43
+Requires-Dist: psycopg[binary]<4,>=3.2
+Requires-Dist: alembic<2,>=1.16
+Requires-Dist: redis<6,>=5.0
+Requires-Dist: openpyxl<4,>=3.1
+Requires-Dist: reportlab<5,>=4.0
+Provides-Extra: test
+Requires-Dist: pytest<10,>=9.0.3; extra == "test"
+Requires-Dist: httpx<1,>=0.28; extra == "test"
+Requires-Dist: ruff<1,>=0.12; extra == "test"
+Requires-Dist: pip-audit<4,>=2.7; extra == "test"
+Dynamic: license-file
