@@ -322,7 +322,7 @@ export default function App() {
         />
       )}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 flex items-center justify-between shrink-0">
+        <header className="border-b border-slate-200 bg-white px-4 py-3 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <button
               className="md:hidden p-2"
@@ -332,11 +332,11 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <h1 className="text-lg font-bold text-gray-900">{t.app.name}</h1>
+            <div><h1 className="text-sm font-bold tracking-tight text-slate-950">2TO EOS</h1><p className="text-[9px] uppercase tracking-[0.16em] text-slate-400">Business Operating System</p></div>
           </div>
           <div className="flex items-center gap-2 md:gap-4">
             <LanguageSwitcher language={language} onSwitch={setLanguage} isRTL={isRTL} />
-            <span className="hidden md:inline text-sm text-gray-600">{user.email}</span>
+            <span className="hidden md:inline text-xs text-slate-500">{user.email}</span>
             <span className="hidden sm:inline text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
               {user.role}
             </span>
@@ -487,113 +487,79 @@ function Sidebar({
   onToggle: () => void;
 }) {
   const { t } = useI18n();
-  const renderNavGroup = (title: string, items: NavItem[], labelFor: (id: Page) => string) => (
-    <div className="mb-4">
-      <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
-        {title}
-      </p>
-      {items.map((item) => (
-        <button
-          key={item.id}
-          onClick={() => onNavigate(item.id)}
-          className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors ${
-            currentPage === item.id
-              ? 'bg-blue-50 text-blue-700 font-medium'
-              : 'text-gray-600 hover:bg-gray-100'
-          } ${isRTL ? 'flex-row-reverse' : ''}`}
-        >
-          <span className="text-base">{item.icon}</span>
-          <span>{labelFor(item.id)}</span>
-        </button>
-      ))}
+  const navLabel = (id: Page): string => {
+    const labels: Partial<Record<Page,string>> = {
+      home:t.nav.home, objects:t.nav.businessObjects, graph:t.nav.businessGraph,
+      workflows:t.nav.workflows, rules:t.nav.rules, events:t.nav.events,
+      analytics:t.nav.analytics, ai:t.nav.aiCopilot, documents:t.nav.documents,
+      'integrations-hub':t.nav.integrations, globalization:t.nav.globalization,
+      builder:t.nav.builder, sdk:t.nav.developerSdk, marketplace:t.nav.marketplace,
+      workspace:t.nav.workspace, projects:t.nav.projects, contracts:t.nav.contracts,
+      boq:t.nav.boq, claims:t.nav.claims, procurements:t.nav.procurements,
+      financial:t.nav.financial, reports:t.nav.reports, users:t.nav.users,
+      notifications:t.nav.notifications, audit:t.nav.audit, settings:t.nav.settings,
+      overview:t.nav.overview, tenants:t.nav.tenants, 'users-admin':t.nav.users,
+      roles:t.nav.rolesPermissions, plans:t.nav.plans, billing:t.nav.billing,
+      'feature-flags':t.nav.featureFlags, 'ai-control':t.nav.aiControlCenter,
+      'ai-models':t.nav.aiControlCenter, 'ai-workforce':t.nav.aiControlCenter,
+      'ai-usage':t.nav.aiControlCenter, automation:t.nav.automation, jobs:t.nav.automation,
+      applications:t.nav.applications, api:t.nav.apiManagement,
+      'security-center':t.nav.securityCenter, sessions:t.nav.securityCenter,
+      'audit-logs':t.nav.auditLogs, 'system-health':t.nav.systemHealth,
+      monitoring:t.nav.systemHealth, backups:t.nav.backupRecovery,
+      'notifications-center':t.nav.notifications, tickets:t.nav.support,
+      'global-search':t.nav.search,
+    };
+    return labels[id] ?? id;
+  };
+
+  const group = (title:string, items:NavItem[]) => (
+    <div className="mb-5">
+      <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{title}</div>
+      <div className="space-y-0.5">
+        {items.map(item => (
+          <button key={item.id} onClick={()=>onNavigate(item.id)}
+            className={`group flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-[13px] transition-all ${currentPage===item.id?'bg-slate-950 text-white shadow-sm':'text-slate-600 hover:bg-slate-100 hover:text-slate-950'} ${isRTL?'flex-row-reverse':''}`}>
+            <span className="flex min-w-0 items-center gap-3">
+              <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[9px] font-black ${currentPage===item.id?'bg-white/10 text-white':'bg-slate-100 text-slate-500 group-hover:bg-white'}`}>{item.id=== 'home' || item.id==='overview' ? '⌂' : item.id==='ai' || item.id==='ai-control' ? '✦' : '•'}</span>
+              <span className="truncate font-semibold">{navLabel(item.id)}</span>
+            </span>
+            <span className={currentPage===item.id?'text-white/40':'text-slate-300'}>›</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 
-  const navLabel = (id: Page): string => {
-    switch (id) {
-      case 'home': return t.nav.home;
-      case 'objects': return t.nav.businessObjects;
-      case 'graph': return t.nav.businessGraph;
-      case 'workflows': return t.nav.workflows;
-      case 'rules': return t.nav.rules;
-      case 'events': return t.nav.events;
-      case 'analytics': return t.nav.analytics;
-      case 'ai': return t.nav.aiCopilot;
-      case 'documents': return t.nav.documents;
-      case 'integrations-hub': return t.nav.integrations;
-      case 'globalization': return t.nav.globalization;
-      case 'builder': return t.nav.builder;
-      case 'sdk': return t.nav.developerSdk;
-      case 'marketplace': return t.nav.marketplace;
-      case 'workspace': return t.nav.workspace;
-      case 'projects': return t.nav.projects;
-      case 'contracts': return t.nav.contracts;
-      case 'boq': return t.nav.boq;
-      case 'claims': return t.nav.claims;
-      case 'procurements': return t.nav.procurements;
-      case 'financial': return t.nav.financial;
-      case 'reports': return t.nav.reports;
-      case 'users': return t.nav.users;
-      case 'notifications': return t.nav.notifications;
-      case 'audit': return t.nav.audit;
-      case 'settings': return t.nav.settings;
-      case 'overview': return t.nav.overview;
-      case 'tenants': return t.nav.tenants;
-      case 'users-admin': return t.nav.users;
-      case 'roles': return t.nav.rolesPermissions;
-      case 'plans': return t.nav.plans;
-      case 'billing': return t.nav.billing;
-      case 'feature-flags': return t.nav.featureFlags;
-      case 'ai-control':
-      case 'ai-models':
-      case 'ai-workforce':
-      case 'ai-usage': return t.nav.aiControlCenter;
-      case 'automation':
-      case 'jobs': return t.nav.automation;
-      case 'applications': return t.nav.applications;
-      case 'api': return t.nav.apiManagement;
-      case 'security-center':
-      case 'sessions': return t.nav.securityCenter;
-      case 'audit-logs': return t.nav.auditLogs;
-      case 'system-health':
-      case 'monitoring': return t.nav.systemHealth;
-      case 'backups': return t.nav.backupRecovery;
-      case 'notifications-center': return t.nav.notifications;
-      case 'tickets': return t.nav.support;
-      case 'global-search': return t.nav.search;
-      default: return id;
-    }
-  };
-
   return (
-    <aside
-      className={`${isOpen ? 'flex' : 'hidden'} md:flex flex-col w-64 bg-white border-r border-gray-200 overflow-hidden shrink-0 fixed md:static inset-y-0 left-0 z-30 ${isRTL ? 'left-auto right-0' : ''}`}
-    >
-      <div className="p-4 border-b border-gray-100">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">
-            E
-          </div>
-          <div>
-            <p className="font-bold text-gray-900 text-sm leading-tight">{t.app.name}</p>
-            <p className="text-xs text-gray-400">{t.app.description}</p>
+    <aside className={`${isOpen?'flex':'hidden'} md:flex w-[270px] shrink-0 flex-col border-r border-slate-200 bg-white fixed md:static inset-y-0 left-0 z-30 ${isRTL?'left-auto right-0 border-r-0 border-l':''}`}>
+      <div className="border-b border-slate-100 px-5 py-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-[10px] font-black text-white">2TO</div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold tracking-tight text-slate-950">2TO EOS</p>
+            <p className="text-[9px] uppercase tracking-[0.16em] text-slate-400">Business Operating System</p>
           </div>
         </div>
       </div>
+      <div className="border-b border-slate-100 px-4 py-3">
+        <div className="rounded-xl bg-slate-950 px-3 py-2.5 text-white">
+          <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500">Workspace</div>
+          <div className="mt-1 truncate text-xs font-semibold">Business Environment</div>
+        </div>
+      </div>
       <nav className="flex-1 overflow-y-auto p-3">
-        {renderNavGroup(t.sidebar.platform, platformNav, navLabel)}
-        {renderNavGroup(t.sidebar.erp, erpNav, navLabel)}
-        {renderNavGroup(t.sidebar.administration, adminNav, navLabel)}
-        {renderNavGroup(t.sidebar.master, masterNav, navLabel)}
+        {group('Business OS', platformNav)}
+        {group('Operations', erpNav)}
+        {group('Administration', adminNav)}
+        {user.role==='super_admin' && group('Platform Control Plane', masterNav)}
       </nav>
-      <div className="p-3 border-t border-gray-100">
-        <div className="flex items-center gap-2 px-3 py-2">
-          <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-xs font-medium text-gray-600">
-            {user.email[0].toUpperCase()}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">{user.email}</p>
-            <p className="text-xs text-gray-400">{user.role}</p>
+      <div className="border-t border-slate-100 p-3">
+        <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">{user.email[0].toUpperCase()}</div>
+          <div className="min-w-0">
+            <p className="truncate text-xs font-semibold text-slate-900">{user.email}</p>
+            <p className="truncate text-[10px] text-slate-400">{user.role}</p>
           </div>
         </div>
       </div>
